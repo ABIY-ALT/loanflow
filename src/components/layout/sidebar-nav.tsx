@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -8,6 +9,7 @@ import {
   SearchCheck,
   Settings,
   KanbanSquare,
+  AlertTriangle, // Added AlertTriangle
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -21,6 +23,7 @@ const navItems = [
   { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
   { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
+  { href: '/overdue-tasks', label: 'Overdue Tasks', icon: AlertTriangle }, // Added Overdue Tasks
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
