@@ -4,7 +4,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { mockLoanRequests } from '@/lib/mock-data';
@@ -12,8 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
-import { loanStages } from '@/types/loan'; // This is an array of enum values
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; // "Mock" import for prototype
+import { loanStages } from '@/types/loan'; 
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
 import {
   Dialog,
   DialogContent,
@@ -22,12 +22,39 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import React from 'react';
 import { useToast } from '@/hooks/use-toast';
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import {
+  Form,
+  FormControl,
+  FormDescription as FormDesc, // Renamed to avoid conflict with CardDescription
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+
+// Schema for editing loan details
+const editLoanFormSchema = z.object({
+  customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
+  customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
+  customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
+  loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
+  loanType: z.string().min(2, { message: 'Loan type is required.' }),
+  loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
+});
+
+type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
+
 
 // Helper function to get stage color
 const getStageColor = (stage: LoanStage) => {
@@ -49,19 +76,18 @@ const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
     case 'Submitted': return <FileSymlink className="h-4 w-4 text-blue-500" />;
     case 'Verified': return <CheckCircle className="h-4 w-4 text-green-500" />;
     case 'Rejected': return <XCircle className="h-4 w-4 text-red-500" />;
-    case 'Missing': return <FileText className="h-4 w-4 text-gray-400" />; // Icon for missing but required
+    case 'Missing': return <FileText className="h-4 w-4 text-gray-400" />; 
     default: return <FileText className="h-4 w-4 text-gray-500" />;
   }
 };
 
-// Simplified document status variant for badge
 const getDocumentBadgeVariant = (status: LoanDocument['status'] | 'Missing'): "default" | "secondary" | "destructive" | "outline" => {
   switch (status) {
-    case 'Verified': return 'default'; // default is often primary, consider a specific green
+    case 'Verified': return 'default'; 
     case 'Submitted': return 'secondary';
     case 'Pending': return 'outline';
     case 'Rejected': return 'destructive';
-    case 'Missing': return 'outline'; // Or a more distinct variant
+    case 'Missing': return 'outline'; 
     default: return 'outline';
   }
 };
@@ -73,13 +99,31 @@ export default function LoanDetailPage() {
   const { toast } = useToast();
   const loanId = params.id as string;
 
-  // In a real app, fetch this data & stage configs
   const [loan, setLoan] = React.useState<LoanRequest | undefined>(() => mockLoanRequests.find(l => l.id === loanId));
   
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
-  const [currentDocumentToUpload, setCurrentDocumentToUpload] = React.useState<string | null>(null); // To contextualize dialog
+  const [currentDocumentToUpload, setCurrentDocumentToUpload] = React.useState<string | null>(null);
   const [additionalInfo, setAdditionalInfo] = React.useState('');
+  const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = React.useState(false);
+
+  const form = useForm<EditLoanFormValues>({
+    resolver: zodResolver(editLoanFormSchema),
+    // Default values will be set when opening the dialog using form.reset()
+  });
+
+  React.useEffect(() => {
+    if (loan && isEditLoanDialogOpen) {
+      form.reset({
+        customerName: loan.customerName,
+        customerEmail: loan.customerEmail,
+        customerPhone: loan.customerPhone,
+        loanAmount: loan.loanAmount,
+        loanType: loan.loanType,
+        loanPurpose: loan.loanPurpose,
+      });
+    }
+  }, [loan, isEditLoanDialogOpen, form]);
 
 
   if (!loan) {
@@ -100,7 +144,6 @@ export default function LoanDetailPage() {
   const currentStageIndex = loanStages.indexOf(loan.currentStage);
   const progressPercentage = ((currentStageIndex + 1) / loanStages.length) * 100;
 
-  // Find current stage configuration from the "mock" imported settings
   const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
     (config) => config.loanStageEnum === loan.currentStage
   );
@@ -115,7 +158,7 @@ export default function LoanDetailPage() {
         if (!prevLoan) return undefined;
         const newHistoryEntry: LoanHistoryEntry = {
             id: `hist-${prevLoan.history.length + 1}`,
-            stage: LoanStage.ADDITIONAL_INFO_REQUIRED, // Explicitly set
+            stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
             timestamp: new Date().toISOString(),
             userId: 'current-user-id', 
             userName: 'Bank User',
@@ -137,12 +180,11 @@ export default function LoanDetailPage() {
   const handleAdvanceWorkflow = (nextStage: LoanStage) => {
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
-        // Basic check: if moving to approved, ensure no pending "additional info"
         if (nextStage === LoanStage.APPROVED && prevLoan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-            const hasOpenInfoRequest = prevLoan.history.some(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && !h.notes?.includes("Fulfilled")); // Simplistic check
+            const hasOpenInfoRequest = prevLoan.history.some(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && !h.notes?.includes("Fulfilled")); 
             if (hasOpenInfoRequest) {
                 toast({title: "Action Pending", description: "Cannot approve. Outstanding information request.", variant: "destructive"});
-                return prevLoan; // Don't advance
+                return prevLoan; 
             }
         }
 
@@ -165,10 +207,7 @@ export default function LoanDetailPage() {
   };
 
   const handleUploadDocument = (docName: string) => {
-    // Simulate document upload
-    setCurrentDocumentToUpload(docName); // For dialog context
-    // This function will be called by the "Upload" button in the dialog
-    // For now, we just add it to loan.documents with 'Submitted' status
+    setCurrentDocumentToUpload(docName); 
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
         const existingDocIndex = prevLoan.documents.findIndex(d => d.name === docName);
@@ -187,7 +226,7 @@ export default function LoanDetailPage() {
         return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
     });
     toast({ title: "Document Submitted", description: `${docName} marked as submitted.` });
-    setIsUploadDocDialogOpen(false); // Close dialog after "upload"
+    setIsUploadDocDialogOpen(false); 
   };
 
   const handleVerifyDocument = (docName: string) => {
@@ -201,6 +240,22 @@ export default function LoanDetailPage() {
     toast({ title: "Document Verified", description: `${docName} has been verified.` });
   };
 
+  function onEditLoanSubmit(data: EditLoanFormValues) {
+    setLoan(prevLoan => {
+      if (!prevLoan) return undefined;
+      return {
+        ...prevLoan,
+        ...data, // Update loan with form data
+        loanAmount: Number(data.loanAmount), // Ensure loanAmount is number
+        lastUpdatedDate: new Date().toISOString(),
+      };
+    });
+    setIsEditLoanDialogOpen(false);
+    toast({
+      title: "Loan Details Updated",
+      description: "The loan information has been successfully saved.",
+    });
+  }
 
   return (
     <div className="space-y-8">
@@ -209,6 +264,137 @@ export default function LoanDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <div className="flex gap-2">
+          <Dialog open={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline"><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Edit Loan Details</DialogTitle>
+                <DialogDescription>
+                  Modify the loan application information below. Click save when you're done.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onEditLoanSubmit)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="customerName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Customer Name</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="e.g., John Doe" {...field} className="pl-10" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="customerEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Customer Email</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Info className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="customerPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Customer Phone</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="loanAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Loan Amount ($)</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="loanType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Loan Type</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <FormField
+                    control={form.control}
+                    name="loanPurpose"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Loan Purpose</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                            <Textarea
+                              placeholder="Briefly describe the purpose of the loan..."
+                              className="resize-none pl-10"
+                              {...field}
+                              rows={3}
+                            />
+                          </div>
+                        </FormControl>
+                        <FormDesc>
+                          Provide a clear and concise reason for the loan application.
+                        </FormDesc>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <DialogFooter className="pt-4">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit">Save Changes</Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline"><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
@@ -230,7 +416,9 @@ export default function LoanDetailPage() {
                 />
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsAddInfoDialogOpen(false)}>Cancel</Button>
+                 <DialogClose asChild>
+                    <Button type="button" variant="outline">Cancel</Button>
+                  </DialogClose>
                 <Button type="submit" onClick={handleAddInfoSubmit}>Confirm & Request</Button>
               </DialogFooter>
             </DialogContent>
@@ -238,7 +426,8 @@ export default function LoanDetailPage() {
           
           {currentStageIndex < loanStages.length -1 && 
            loan.currentStage !== LoanStage.REJECTED && 
-           loan.currentStage !== LoanStage.FUNDS_DISBURSED && (
+           loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
+           loan.currentStage !== LoanStage.APPROVED && ( // Also don't advance if already approved
             <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])}>
                 Advance to: {loanStages[currentStageIndex + 1]}
             </Button>
@@ -345,7 +534,6 @@ export default function LoanDetailPage() {
                             if(currentDocumentToUpload) {
                                 handleUploadDocument(currentDocumentToUpload);
                             } else {
-                                // Handle generic upload if needed or show error
                                 toast({title: "Error", description: "No document type specified for upload.", variant: "destructive"});
                             }
                           }}>
@@ -371,8 +559,6 @@ export default function LoanDetailPage() {
                   </ul>
                 </>
               )}
-
-
             </div>
 
             <div>
@@ -428,3 +614,4 @@ const HistoryEntryItem = ({ entry }: HistoryEntryItemProps) => (
     {entry.requiredFulfilment && <p className="text-sm mt-1 p-2 rounded-md border border-amber-500 bg-amber-50 text-amber-700">Required: {entry.requiredFulfilment}</p>}
   </div>
 );
+
