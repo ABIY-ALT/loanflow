@@ -4,7 +4,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquareCheck } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { mockLoanRequests } from '@/lib/mock-data';
@@ -12,8 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
-import { loanStages } from '@/types/loan'; 
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
+import { loanStages } from '@/types/loan';
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
 import {
   Dialog,
   DialogContent,
@@ -76,18 +76,18 @@ const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
     case 'Submitted': return <FileSymlink className="h-4 w-4 text-blue-500" />;
     case 'Verified': return <CheckCircle className="h-4 w-4 text-green-500" />;
     case 'Rejected': return <XCircle className="h-4 w-4 text-red-500" />;
-    case 'Missing': return <FileText className="h-4 w-4 text-gray-400" />; 
+    case 'Missing': return <FileText className="h-4 w-4 text-gray-400" />;
     default: return <FileText className="h-4 w-4 text-gray-500" />;
   }
 };
 
 const getDocumentBadgeVariant = (status: LoanDocument['status'] | 'Missing'): "default" | "secondary" | "destructive" | "outline" => {
   switch (status) {
-    case 'Verified': return 'default'; 
+    case 'Verified': return 'default';
     case 'Submitted': return 'secondary';
     case 'Pending': return 'outline';
     case 'Rejected': return 'destructive';
-    case 'Missing': return 'outline'; 
+    case 'Missing': return 'outline';
     default: return 'outline';
   }
 };
@@ -100,7 +100,7 @@ export default function LoanDetailPage() {
   const loanId = params.id as string;
 
   const [loan, setLoan] = React.useState<LoanRequest | undefined>(() => mockLoanRequests.find(l => l.id === loanId));
-  
+
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
   const [currentDocumentToUpload, setCurrentDocumentToUpload] = React.useState<string | null>(null);
@@ -109,7 +109,6 @@ export default function LoanDetailPage() {
 
   const form = useForm<EditLoanFormValues>({
     resolver: zodResolver(editLoanFormSchema),
-    // Default values will be set when opening the dialog using form.reset()
   });
 
   React.useEffect(() => {
@@ -148,7 +147,7 @@ export default function LoanDetailPage() {
     (config) => config.loanStageEnum === loan.currentStage
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
-  
+
   const handleAddInfoSubmit = () => {
     if (!additionalInfo.trim()) {
         toast({ title: "Info Required", description: "Please specify what information is needed.", variant: "destructive" });
@@ -160,7 +159,7 @@ export default function LoanDetailPage() {
             id: `hist-${prevLoan.history.length + 1}`,
             stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
             timestamp: new Date().toISOString(),
-            userId: 'current-user-id', 
+            userId: 'current-user-id',
             userName: 'Bank User',
             requiredFulfilment: additionalInfo,
             notes: `Requested additional info: ${additionalInfo}`
@@ -177,14 +176,47 @@ export default function LoanDetailPage() {
     toast({ title: "Information Requested", description: "Customer has been notified about the required information." });
   };
 
+  const handleFulfillInfoRequest = (entryId: string, requirementText: string) => {
+    setLoan(prevLoan => {
+        if (!prevLoan) return undefined;
+
+        const updatedHistory = prevLoan.history.map(h =>
+            h.id === entryId
+                ? { ...h, notes: `${h.notes || ''}\n[FULFILLED] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
+                : h
+        );
+
+        updatedHistory.push({
+            id: `hist-${updatedHistory.length + 1}`,
+            stage: prevLoan.currentStage, // Still ADDITIONAL_INFO_REQUIRED
+            timestamp: new Date().toISOString(),
+            userId: 'current-user-id', // Replace with actual user ID
+            userName: 'Bank User', // Replace with actual user name
+            notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
+        });
+
+        return {
+            ...prevLoan,
+            history: updatedHistory,
+            lastUpdatedDate: new Date().toISOString(),
+        };
+    });
+    toast({ title: "Information Received", description: "The customer's information has been recorded." });
+  };
+
+
   const handleAdvanceWorkflow = (nextStage: LoanStage) => {
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
         if (nextStage === LoanStage.APPROVED && prevLoan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-            const hasOpenInfoRequest = prevLoan.history.some(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && !h.notes?.includes("Fulfilled")); 
+            const hasOpenInfoRequest = prevLoan.history.some(
+              h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED &&
+                   h.requiredFulfilment &&
+                   (!h.notes || !h.notes.includes("[FULFILLED]"))
+            );
             if (hasOpenInfoRequest) {
-                toast({title: "Action Pending", description: "Cannot approve. Outstanding information request.", variant: "destructive"});
-                return prevLoan; 
+                toast({title: "Action Pending", description: "Cannot approve. Outstanding information request that has not been marked as fulfilled.", variant: "destructive"});
+                return prevLoan;
             }
         }
 
@@ -207,33 +239,33 @@ export default function LoanDetailPage() {
   };
 
   const handleUploadDocument = (docName: string) => {
-    setCurrentDocumentToUpload(docName); 
+    setCurrentDocumentToUpload(docName);
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
         const existingDocIndex = prevLoan.documents.findIndex(d => d.name === docName);
         let updatedDocuments: LoanDocument[];
 
         if (existingDocIndex > -1) {
-            updatedDocuments = prevLoan.documents.map((doc, index) => 
-                index === existingDocIndex ? { ...doc, status: 'Submitted' } : doc
+            updatedDocuments = prevLoan.documents.map((doc, index) =>
+                index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded by user.' } : doc
             );
         } else {
             updatedDocuments = [
                 ...prevLoan.documents,
-                { id: `doc-${Date.now()}`, name: docName, status: 'Submitted' }
+                { id: `doc-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded by user.' }
             ];
         }
         return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
     });
     toast({ title: "Document Submitted", description: `${docName} marked as submitted.` });
-    setIsUploadDocDialogOpen(false); 
+    setIsUploadDocDialogOpen(false);
   };
 
   const handleVerifyDocument = (docName: string) => {
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
-        const updatedDocuments = prevLoan.documents.map(doc => 
-            doc.name === docName ? { ...doc, status: 'Verified' } : doc
+        const updatedDocuments = prevLoan.documents.map(doc =>
+            doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified by bank staff.' } : doc
         );
         return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
     });
@@ -245,8 +277,8 @@ export default function LoanDetailPage() {
       if (!prevLoan) return undefined;
       return {
         ...prevLoan,
-        ...data, // Update loan with form data
-        loanAmount: Number(data.loanAmount), // Ensure loanAmount is number
+        ...data,
+        loanAmount: Number(data.loanAmount),
         lastUpdatedDate: new Date().toISOString(),
       };
     });
@@ -256,6 +288,13 @@ export default function LoanDetailPage() {
       description: "The loan information has been successfully saved.",
     });
   }
+  
+  const activeInfoRequestEntry = loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
+  ? [...loan.history]
+    .reverse()
+    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED]")))
+  : undefined;
+
 
   return (
     <div className="space-y-8">
@@ -359,7 +398,7 @@ export default function LoanDetailPage() {
                       )}
                     />
                   </div>
-                  
+
                   <FormField
                     control={form.control}
                     name="loanPurpose"
@@ -408,11 +447,11 @@ export default function LoanDetailPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <Label htmlFor="additional-info">Information to Fulfill</Label>
-                <Textarea 
-                  id="additional-info" 
+                <Textarea
+                  id="additional-info"
                   value={additionalInfo}
                   onChange={(e) => setAdditionalInfo(e.target.value)}
-                  placeholder="e.g., Latest utility bill, Clarification on income source" 
+                  placeholder="e.g., Latest utility bill, Clarification on income source"
                 />
               </div>
               <DialogFooter>
@@ -423,11 +462,11 @@ export default function LoanDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          
-          {currentStageIndex < loanStages.length -1 && 
-           loan.currentStage !== LoanStage.REJECTED && 
-           loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
-           loan.currentStage !== LoanStage.APPROVED && ( // Also don't advance if already approved
+
+          {currentStageIndex < loanStages.length -1 &&
+           loan.currentStage !== LoanStage.REJECTED &&
+           loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
+           loan.currentStage !== LoanStage.APPROVED && (
             <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])}>
                 Advance to: {loanStages[currentStageIndex + 1]}
             </Button>
@@ -491,7 +530,7 @@ export default function LoanDetailPage() {
                            {status === 'Missing' && <Badge variant="outline" className="ml-2 text-xs border-dashed">Missing</Badge>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge 
+                          <Badge
                             variant={getDocumentBadgeVariant(status)}
                             className={status === 'Verified' ? 'bg-green-100 text-green-700 border-green-300' : status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-300' : ''}
                           >
@@ -529,7 +568,9 @@ export default function LoanDetailPage() {
                           <p className="text-xs text-muted-foreground mt-2">Actual file handling & upload to storage needs backend integration.</p>
                       </div>
                       <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsUploadDocDialogOpen(false)}>Cancel</Button>
+                          <DialogClose asChild>
+                            <Button variant="outline" >Cancel</Button>
+                          </DialogClose>
                           <Button onClick={() => {
                             if(currentDocumentToUpload) {
                                 handleUploadDocument(currentDocumentToUpload);
@@ -566,7 +607,12 @@ export default function LoanDetailPage() {
               {loan.history.length > 0 ? (
                 <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                   {loan.history.slice().reverse().map(entry => (
-                    <HistoryEntryItem key={entry.id} entry={entry} />
+                    <HistoryEntryItem
+                      key={entry.id}
+                      entry={entry}
+                      isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
+                      onFulfillInfoRequest={handleFulfillInfoRequest}
+                    />
                   ))}
                 </div>
               ) : (
@@ -602,16 +648,32 @@ const InfoItem = ({ icon, label, value }: InfoItemProps) => (
 
 interface HistoryEntryItemProps {
   entry: LoanHistoryEntry;
+  isActiveInfoRequest?: boolean;
+  onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
 }
-const HistoryEntryItem = ({ entry }: HistoryEntryItemProps) => (
+const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest }: HistoryEntryItemProps) => (
   <div className="relative pl-6 pb-4 border-l border-border">
     <div className={`absolute -left-[0.30rem] top-1 w-2.5 h-2.5 rounded-full ${getStageColor(entry.stage)}`}></div>
     <p className="text-sm font-medium">{entry.stage}</p>
     <p className="text-xs text-muted-foreground">
       {format(parseISO(entry.timestamp), 'MMM dd, yyyy, HH:mm')} by {entry.userName}
     </p>
-    {entry.notes && <p className="text-sm mt-1 bg-background p-2 rounded-md border">{entry.notes}</p>}
-    {entry.requiredFulfilment && <p className="text-sm mt-1 p-2 rounded-md border border-amber-500 bg-amber-50 text-amber-700">Required: {entry.requiredFulfilment}</p>}
+    {entry.notes && <p className="text-sm mt-1 bg-background p-2 rounded-md border whitespace-pre-wrap">{entry.notes}</p>}
+    {entry.requiredFulfilment && (
+      <div className={`text-sm mt-1 p-2 rounded-md border ${isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-700' : 'bg-muted/50'}`}>
+        <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
+        {isActiveInfoRequest && onFulfillInfoRequest && entry.requiredFulfilment && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 w-full sm:w-auto border-amber-600 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
+            onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!)}
+          >
+            <MessageSquareCheck className="mr-2 h-4 w-4" /> Mark Information Received
+          </Button>
+        )}
+      </div>
+    )}
   </div>
 );
 
