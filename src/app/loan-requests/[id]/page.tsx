@@ -4,7 +4,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquareCheck } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { mockLoanRequests } from '@/lib/mock-data';
@@ -669,7 +669,7 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest }: 
             className="mt-2 w-full sm:w-auto border-amber-600 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
             onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!)}
           >
-            <MessageSquareCheck className="mr-2 h-4 w-4" /> Mark Information Received
+            <MessageSquare className="mr-2 h-4 w-4" /> Mark Information Received
           </Button>
         )}
       </div>
