@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical } from 'lucide-react';
 import React, { useState } from 'react';
 import {
   Accordion,
@@ -15,11 +16,28 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface WorkflowStage {
   id: string;
   name: string;
-  defaultTimelineDays: number; // e.g., 5 days for this stage
+  defaultTimelineDays: number; 
 }
 
 const initialStages: WorkflowStage[] = [
@@ -30,6 +48,86 @@ const initialStages: WorkflowStage[] = [
   { id: 'disbursement', name: 'Funds Disbursed', defaultTimelineDays: 1 },
 ];
 
+interface DraggableAccordionItemProps {
+  stage: WorkflowStage;
+  handleStageChange: (id: string, field: keyof WorkflowStage, value: string | number) => void;
+  handleRemoveStage: (id: string) => void;
+}
+
+const DraggableAccordionItem = ({ stage, handleStageChange, handleRemoveStage }: DraggableAccordionItemProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: stage.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 'auto',
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative' as 'relative',
+  };
+
+  return (
+    <AccordionItem 
+      value={stage.id} 
+      key={stage.id} 
+      ref={setNodeRef}
+      style={style}
+      className="bg-card border rounded-md mb-2 shadow-sm"
+    >
+      <AccordionTrigger 
+        className="hover:no-underline w-full data-[state=open]:border-b"
+        {...attributes} 
+        {...listeners} 
+      >
+        <div className="flex items-center justify-between w-full pr-4 py-2">
+          <div className="flex items-center">
+            <GripVertical className="h-5 w-5 text-muted-foreground mr-3 cursor-grab" />
+            <span>{stage.name}</span>
+          </div>
+          <span className="text-sm text-muted-foreground">
+            {stage.defaultTimelineDays} days
+          </span>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="space-y-4 p-4 bg-background rounded-b-md">
+        <div>
+          <Label htmlFor={`stage-name-${stage.id}`}>Stage Name</Label>
+          <Input
+            id={`stage-name-${stage.id}`}
+            value={stage.name}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onChange={(e) => handleStageChange(stage.id, 'name', e.target.value)}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <Label htmlFor={`stage-timeline-${stage.id}`}>Default Timeline (days)</Label>
+          <Input
+            id={`stage-timeline-${stage.id}`}
+            type="number"
+            value={stage.defaultTimelineDays}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onChange={(e) => handleStageChange(stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)}
+            className="mt-1"
+            min="1"
+          />
+        </div>
+        <Button variant="destructive" size="sm" onClick={() => handleRemoveStage(stage.id)}>
+          <Trash2 className="mr-2 h-4 w-4" /> Remove Stage
+        </Button>
+      </AccordionContent>
+    </AccordionItem>
+  );
+};
+
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -37,7 +135,26 @@ export default function SettingsPage() {
   const [newStageName, setNewStageName] = useState('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [enableNotifications, setEnableNotifications] = useState(true);
-  const [overdueThreshold, setOverdueThreshold] = useState(2); // days
+  const [overdueThreshold, setOverdueThreshold] = useState(2); 
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setStages((currentStages) => {
+        const oldIndex = currentStages.findIndex((stage) => stage.id === active.id);
+        const newIndex = currentStages.findIndex((stage) => stage.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return currentStages;
+        return arrayMove(currentStages, oldIndex, newIndex);
+      });
+    }
+  };
 
   const handleAddStage = () => {
     if (!newStageName.trim()) {
@@ -79,86 +196,68 @@ export default function SettingsPage() {
           Configure loan workflows, timelines, and notification preferences.
         </p>
       </div>
+      
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>Workflow Configuration</CardTitle>
+            <CardDescription>Define and reorder the stages and default timelines for loan processing. Drag to reorder.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <SortableContext
+              items={stages.map(s => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <Accordion type="single" collapsible className="w-full">
+                {stages.map((stage) => (
+                  <DraggableAccordionItem
+                    key={stage.id}
+                    stage={stage}
+                    handleStageChange={handleStageChange}
+                    handleRemoveStage={handleRemoveStage}
+                  />
+                ))}
+              </Accordion>
+            </SortableContext>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Workflow Configuration</CardTitle>
-          <CardDescription>Define the stages and default timelines for loan processing.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <Accordion type="single" collapsible className="w-full">
-            {stages.map((stage, index) => (
-              <AccordionItem value={`item-${index}`} key={stage.id}>
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <span>{stage.name}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {stage.defaultTimelineDays} days
-                    </span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4 p-4 bg-background rounded-b-md border-t-0">
-                  <div>
-                    <Label htmlFor={`stage-name-${stage.id}`}>Stage Name</Label>
-                    <Input
-                      id={`stage-name-${stage.id}`}
-                      value={stage.name}
-                      onChange={(e) => handleStageChange(stage.id, 'name', e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor={`stage-timeline-${stage.id}`}>Default Timeline (days)</Label>
-                    <Input
-                      id={`stage-timeline-${stage.id}`}
-                      type="number"
-                      value={stage.defaultTimelineDays}
-                      onChange={(e) => handleStageChange(stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)}
-                      className="mt-1"
-                      min="1"
-                    />
-                  </div>
-                  <Button variant="destructive" size="sm" onClick={() => handleRemoveStage(stage.id)}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Remove Stage
-                  </Button>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-
-          <Separator />
-          
-          <div className="space-y-2 p-4 border rounded-lg bg-muted/20">
-            <h4 className="font-medium">Add New Stage</h4>
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
-              <div className="flex-grow">
-                <Label htmlFor="new-stage-name">Stage Name</Label>
-                <Input 
-                  id="new-stage-name" 
-                  value={newStageName} 
-                  onChange={(e) => setNewStageName(e.target.value)} 
-                  placeholder="e.g., Final Verification"
-                  className="mt-1" 
-                />
+            <Separator />
+            
+            <div className="space-y-2 p-4 border rounded-lg bg-muted/20">
+              <h4 className="font-medium">Add New Stage</h4>
+              <div className="flex flex-col sm:flex-row gap-4 items-end">
+                <div className="flex-grow">
+                  <Label htmlFor="new-stage-name">Stage Name</Label>
+                  <Input 
+                    id="new-stage-name" 
+                    value={newStageName} 
+                    onChange={(e) => setNewStageName(e.target.value)} 
+                    placeholder="e.g., Final Verification"
+                    className="mt-1" 
+                  />
+                </div>
+                <div className="w-full sm:w-auto">
+                  <Label htmlFor="new-stage-timeline">Timeline (days)</Label>
+                  <Input 
+                    id="new-stage-timeline" 
+                    type="number" 
+                    value={newStageTimeline} 
+                    onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10))} 
+                    className="mt-1"
+                    min="1"
+                  />
+                </div>
+                <Button onClick={handleAddStage} className="w-full sm:w-auto">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Stage
+                </Button>
               </div>
-              <div className="w-full sm:w-auto">
-                <Label htmlFor="new-stage-timeline">Timeline (days)</Label>
-                <Input 
-                  id="new-stage-timeline" 
-                  type="number" 
-                  value={newStageTimeline} 
-                  onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10))} 
-                  className="mt-1"
-                  min="1"
-                />
-              </div>
-              <Button onClick={handleAddStage} className="w-full sm:w-auto">
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Stage
-              </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </DndContext>
 
       <Card>
         <CardHeader>
