@@ -1,6 +1,9 @@
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 
+// Define a fixed reference date for consistent mock data generation
+const MOCK_REFERENCE_DATE = new Date('2024-07-15T10:00:00.000Z').getTime();
+
 export const mockLoanRequests: LoanRequest[] = [
   {
     id: 'loan-001',
@@ -13,8 +16,8 @@ export const mockLoanRequests: LoanRequest[] = [
     loanType: 'Personal Loan',
     loanPurpose: 'Home Renovation',
     currentStage: LoanStage.APPLICATION_SUBMITTED,
-    submittedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
-    lastUpdatedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days before reference
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day before reference
     assignedTo: 'user-jane-doe',
     documents: [
       { id: 'doc-id-1', name: 'Proof of Income', status: 'Pending' },
@@ -24,14 +27,14 @@ export const mockLoanRequests: LoanRequest[] = [
       {
         id: 'hist-1',
         stage: LoanStage.APPLICATION_SUBMITTED,
-        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'system',
         userName: 'System',
         notes: 'Loan application submitted by customer.',
       },
     ],
-    stageDeadline: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days from now
-    isOverdue: false,
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days after reference
+    isOverdue: new Date(MOCK_REFERENCE_DATE + 2 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
   {
     id: 'loan-002',
@@ -44,8 +47,8 @@ export const mockLoanRequests: LoanRequest[] = [
     loanType: 'Mortgage',
     loanPurpose: 'New House Purchase',
     currentStage: LoanStage.DOCUMENT_COLLECTION,
-    submittedDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [
       { id: 'doc-id-3', name: 'Payslips (3 months)', status: 'Submitted' },
       { id: 'doc-id-4', name: 'Bank Statements (6 months)', status: 'Pending' },
@@ -55,7 +58,7 @@ export const mockLoanRequests: LoanRequest[] = [
       {
         id: 'hist-2a',
         stage: LoanStage.APPLICATION_SUBMITTED,
-        timestamp: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: new Date(MOCK_REFERENCE_DATE - 10 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'system',
         userName: 'System',
         notes: 'Loan application submitted.',
@@ -63,15 +66,15 @@ export const mockLoanRequests: LoanRequest[] = [
       {
         id: 'hist-2b',
         stage: LoanStage.DOCUMENT_COLLECTION,
-        timestamp: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: new Date(MOCK_REFERENCE_DATE - 8 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'user-john-smith',
         userName: 'John Smith',
         notes: 'Moved to document collection. Requested Payslips, Bank Statements, Property Details.',
         requiredFulfilment: 'Customer to provide Bank Statements and Property Details.',
       },
     ],
-    stageDeadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    isOverdue: new Date(MOCK_REFERENCE_DATE + 5 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
   {
     id: 'loan-003',
@@ -84,8 +87,8 @@ export const mockLoanRequests: LoanRequest[] = [
     loanType: 'Auto Loan',
     loanPurpose: 'Used Car Purchase',
     currentStage: LoanStage.UNDER_REVIEW,
-    submittedDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [
       { id: 'doc-id-6', name: 'Driver\'s License', status: 'Verified' },
       { id: 'doc-id-7', name: 'Vehicle Purchase Agreement', status: 'Verified' },
@@ -94,14 +97,14 @@ export const mockLoanRequests: LoanRequest[] = [
       {
         id: 'hist-3',
         stage: LoanStage.UNDER_REVIEW,
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'user-jane-doe',
         userName: 'Jane Doe',
         notes: 'All documents received. Loan is now under review.',
       },
     ],
-    stageDeadline: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-    isOverdue: true,
+    stageDeadline: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day before reference
+    isOverdue: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
   {
     id: 'loan-004',
@@ -114,10 +117,12 @@ export const mockLoanRequests: LoanRequest[] = [
     loanType: 'Business Loan',
     loanPurpose: 'Startup Capital',
     currentStage: LoanStage.APPROVED,
-    submittedDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [],
     history: [],
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).toISOString(), 
+    isOverdue: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
    {
     id: 'loan-005',
@@ -130,21 +135,21 @@ export const mockLoanRequests: LoanRequest[] = [
     loanType: 'Personal Loan',
     loanPurpose: 'Debt Consolidation',
     currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
-    submittedDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [ { id: 'doc-id-8', name: 'Proof of Address', status: 'Submitted' }],
     history: [
       {
         id: 'hist-5',
         stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'user-john-smith',
         userName: 'John Smith',
         notes: 'Additional income verification needed.',
         requiredFulfilment: 'Customer to provide latest tax return.',
       },
     ],
-    stageDeadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    isOverdue: new Date(MOCK_REFERENCE_DATE + 3 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
 ];
