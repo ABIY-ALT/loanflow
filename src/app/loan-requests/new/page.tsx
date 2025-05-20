@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,7 +19,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User, Mail, Phone, Type, Info } from 'lucide-react';
+import { DollarSign, User, Mail, Phone, Type, Info, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { addLoanRequest } from '@/services/loan-service';
+import type { LoanRequest } from '@/types/loan';
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, {
@@ -46,6 +50,7 @@ type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
 export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -59,16 +64,38 @@ export default function NewLoanRequestPage() {
     },
   });
 
-  function onSubmit(data: LoanRequestFormValues) {
-    // In a real app, you would send this data to your backend
-    console.log(data);
-    toast({
-      title: "Loan Request Submitted",
-      description: `Request for ${data.customerName} for $${data.loanAmount} has been received.`,
-    });
-    // Potentially redirect or clear form
-    // router.push('/loan-process'); // Example redirect
-    form.reset(); 
+  async function onSubmit(data: LoanRequestFormValues) {
+    setIsSubmitting(true);
+    try {
+      // Prepare data for addLoanRequest, excluding fields auto-generated or managed by the service
+      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'> = {
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        customerPhone: data.customerPhone,
+        loanAmount: data.loanAmount,
+        loanType: data.loanType,
+        loanPurpose: data.loanPurpose,
+      };
+
+      const newLoanId = await addLoanRequest(loanDataForService);
+      toast({
+        title: "Loan Request Submitted",
+        description: `Request for ${data.customerName} for $${data.loanAmount} has been received. Loan ID: ${newLoanId}`,
+      });
+      form.reset();
+      // Optional: redirect to the new loan's detail page or the pipeline
+      // router.push(`/loan-requests/${newLoanId}`);
+       router.push('/loan-process');
+    } catch (error) {
+      console.error("Failed to submit loan request:", error);
+      toast({
+        title: "Submission Error",
+        description: "There was an error submitting the loan request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -97,7 +124,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <div className="relative">
                           <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="e.g., John Doe" {...field} className="pl-10" />
+                          <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -113,7 +140,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <div className="relative">
                           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" />
+                          <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -129,7 +156,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <div className="relative">
                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" />
+                          <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -145,7 +172,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <div className="relative">
                           <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" />
+                          <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSubmitting}/>
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -161,7 +188,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <div className="relative">
                           <Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" />
+                          <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -183,6 +210,7 @@ export default function NewLoanRequestPage() {
                           placeholder="Briefly describe the purpose of the loan..."
                           className="resize-none pl-10"
                           {...field}
+                          disabled={isSubmitting}
                         />
                       </div>
                     </FormControl>
@@ -193,7 +221,10 @@ export default function NewLoanRequestPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full sm:w-auto">Submit Loan Request</Button>
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting ? 'Submitting...' : 'Submit Loan Request'}
+              </Button>
             </form>
           </Form>
         </CardContent>

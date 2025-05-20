@@ -4,16 +4,16 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2 } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
-import { mockLoanRequests } from '@/lib/mock-data';
+// import { mockLoanRequests } from '@/lib/mock-data'; // Replaced with Firestore fetch
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; // Settings integration for docs is still from here
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -36,12 +36,14 @@ import * as z from 'zod';
 import {
   Form,
   FormControl,
-  FormDescription as FormDesc, // Renamed to avoid conflict with CardDescription
+  FormDescription as FormDesc, 
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { getLoanRequestById } from '@/services/loan-service';
+import { Alert, AlertTitle as AlertTitle ShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert'; // Renamed to avoid conflict
 
 // Schema for editing loan details
 const editLoanFormSchema = z.object({
@@ -55,8 +57,6 @@ const editLoanFormSchema = z.object({
 
 type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
 
-
-// Helper function to get stage color
 const getStageColor = (stage: LoanStage) => {
   switch (stage) {
     case LoanStage.APPLICATION_SUBMITTED: return 'bg-sky-500';
@@ -99,7 +99,9 @@ export default function LoanDetailPage() {
   const { toast } = useToast();
   const loanId = params.id as string;
 
-  const [loan, setLoan] = React.useState<LoanRequest | undefined>(() => mockLoanRequests.find(l => l.id === loanId));
+  const [loan, setLoan] = React.useState<LoanRequest | undefined>(undefined);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
@@ -110,6 +112,30 @@ export default function LoanDetailPage() {
   const form = useForm<EditLoanFormValues>({
     resolver: zodResolver(editLoanFormSchema),
   });
+
+  useEffect(() => {
+    if (loanId) {
+      const fetchLoan = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const fetchedLoan = await getLoanRequestById(loanId);
+          if (fetchedLoan) {
+            setLoan(fetchedLoan);
+          } else {
+            setError(`Loan request with ID "${loanId}" not found.`);
+          }
+        } catch (err) {
+          console.error("Failed to fetch loan:", err);
+          setError(err instanceof Error ? err.message : "An unknown error occurred while fetching loan data.");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchLoan();
+    }
+  }, [loanId]);
+
 
   React.useEffect(() => {
     if (loan && isEditLoanDialogOpen) {
@@ -123,30 +149,16 @@ export default function LoanDetailPage() {
       });
     }
   }, [loan, isEditLoanDialogOpen, form]);
+  
+  const showTemporaryUpdateToast = (title: string) => {
+    toast({
+      title: title,
+      description: "Note: This change is currently local and will not be saved to the database in this phase.",
+      variant: "default",
+      duration: 5000,
+    });
+  };
 
-
-  if (!loan) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center">
-        <AlertCircle className="w-16 h-16 text-destructive mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">Loan Request Not Found</h1>
-        <p className="text-muted-foreground mb-6">
-          The loan request with ID "{loanId}" could not be found. It might have been deleted or the ID is incorrect.
-        </p>
-        <Button onClick={() => router.push('/loan-process')}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Loan Pipeline
-        </Button>
-      </div>
-    );
-  }
-
-  const currentStageIndex = loanStages.indexOf(loan.currentStage);
-  const progressPercentage = ((currentStageIndex + 1) / loanStages.length) * 100;
-
-  const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
-    (config) => config.loanStageEnum === loan.currentStage
-  );
-  const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
 
   const handleAddInfoSubmit = () => {
     if (!additionalInfo.trim()) {
@@ -173,35 +185,32 @@ export default function LoanDetailPage() {
     });
     setAdditionalInfo('');
     setIsAddInfoDialogOpen(false);
-    toast({ title: "Information Requested", description: "Customer has been notified about the required information." });
+    showTemporaryUpdateToast("Information Requested (Local Update)");
   };
 
   const handleFulfillInfoRequest = (entryId: string, requirementText: string) => {
     setLoan(prevLoan => {
         if (!prevLoan) return undefined;
-
         const updatedHistory = prevLoan.history.map(h =>
             h.id === entryId
                 ? { ...h, notes: `${h.notes || ''}\n[FULFILLED] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
                 : h
         );
-
         updatedHistory.push({
             id: `hist-${updatedHistory.length + 1}`,
-            stage: prevLoan.currentStage, // Still ADDITIONAL_INFO_REQUIRED
+            stage: prevLoan.currentStage, 
             timestamp: new Date().toISOString(),
-            userId: 'current-user-id', // Replace with actual user ID
-            userName: 'Bank User', // Replace with actual user name
+            userId: 'current-user-id', 
+            userName: 'Bank User', 
             notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
         });
-
         return {
             ...prevLoan,
             history: updatedHistory,
             lastUpdatedDate: new Date().toISOString(),
         };
     });
-    toast({ title: "Information Received", description: "The customer's information has been recorded." });
+    showTemporaryUpdateToast("Information Received (Local Update)");
   };
 
 
@@ -219,7 +228,6 @@ export default function LoanDetailPage() {
                 return prevLoan;
             }
         }
-
         const newHistoryEntry: LoanHistoryEntry = {
             id: `hist-${prevLoan.history.length + 1}`,
             stage: nextStage,
@@ -235,7 +243,7 @@ export default function LoanDetailPage() {
             lastUpdatedDate: new Date().toISOString(),
         };
     });
-    toast({ title: "Workflow Advanced", description: `Loan moved to ${nextStage}.`});
+    showTemporaryUpdateToast(`Workflow Advanced to ${nextStage} (Local Update)`);
   };
 
   const handleUploadDocument = (docName: string) => {
@@ -244,7 +252,6 @@ export default function LoanDetailPage() {
         if (!prevLoan) return undefined;
         const existingDocIndex = prevLoan.documents.findIndex(d => d.name === docName);
         let updatedDocuments: LoanDocument[];
-
         if (existingDocIndex > -1) {
             updatedDocuments = prevLoan.documents.map((doc, index) =>
                 index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded by user.' } : doc
@@ -257,7 +264,7 @@ export default function LoanDetailPage() {
         }
         return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
     });
-    toast({ title: "Document Submitted", description: `${docName} marked as submitted.` });
+    showTemporaryUpdateToast(`Document ${docName} Submitted (Local Update)`);
     setIsUploadDocDialogOpen(false);
   };
 
@@ -269,7 +276,7 @@ export default function LoanDetailPage() {
         );
         return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
     });
-    toast({ title: "Document Verified", description: `${docName} has been verified.` });
+    showTemporaryUpdateToast(`Document ${docName} Verified (Local Update)`);
   };
 
   function onEditLoanSubmit(data: EditLoanFormValues) {
@@ -283,11 +290,41 @@ export default function LoanDetailPage() {
       };
     });
     setIsEditLoanDialogOpen(false);
-    toast({
-      title: "Loan Details Updated",
-      description: "The loan information has been successfully saved.",
-    });
+    showTemporaryUpdateToast("Loan Details Updated (Local Update)");
   }
+
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading loan details...</p>
+      </div>
+    );
+  }
+
+  if (error || !loan) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center">
+        <AlertCircle className="w-16 h-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
+        <p className="text-muted-foreground mb-6">
+          {error || `The loan request with ID "${loanId}" could not be found.`}
+        </p>
+        <Button onClick={() => router.push('/loan-process')}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Loan Pipeline
+        </Button>
+      </div>
+    );
+  }
+
+  const currentStageIndex = loanStages.indexOf(loan.currentStage);
+  const progressPercentage = ((currentStageIndex + 1) / loanStages.length) * 100;
+
+  const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
+    (config) => config.loanStageEnum === loan.currentStage
+  );
+  const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
   
   const activeInfoRequestEntry = loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
@@ -311,7 +348,7 @@ export default function LoanDetailPage() {
               <DialogHeader>
                 <DialogTitle>Edit Loan Details</DialogTitle>
                 <DialogDescription>
-                  Modify the loan application information below. Click save when you're done.
+                  Modify the loan application information below. Click save when you're done. (Note: Changes are local for now)
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -442,7 +479,7 @@ export default function LoanDetailPage() {
               <DialogHeader>
                 <DialogTitle>Request Additional Information</DialogTitle>
                 <DialogDescription>
-                  Specify what the customer needs to provide. This will move the loan to 'Additional Info Required'.
+                  Specify what the customer needs to provide. This will move the loan to 'Additional Info Required'. (Note: Changes are local for now)
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -516,7 +553,7 @@ export default function LoanDetailPage() {
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <h3 className="text-lg font-semibold mb-4 flex items-center"><Paperclip className="mr-2 h-5 w-5 text-primary" />Documents</h3>
-              <p className="text-sm text-muted-foreground mb-1">Required for current stage: <span className="font-semibold">{loan.currentStage}</span></p>
+              <p className="text-sm text-muted-foreground mb-1">Required for current stage: <span className="font-semibold">{loan.currentStage}</span> (Note: Document changes are local for now)</p>
               {requiredDocumentsForCurrentStage.length > 0 ? (
                 <ul className="space-y-3 mb-4">
                   {requiredDocumentsForCurrentStage.map(reqDoc => {
@@ -559,7 +596,7 @@ export default function LoanDetailPage() {
                       <DialogHeader>
                         <DialogTitle>Upload Document: {currentDocumentToUpload || "General Upload"}</DialogTitle>
                         <DialogDescription>
-                            {currentDocumentToUpload ? `Upload the file for "${currentDocumentToUpload}".` : "Select a file to upload."}
+                            {currentDocumentToUpload ? `Upload the file for "${currentDocumentToUpload}".` : "Select a file to upload."} (Note: Actual file upload not implemented)
                         </DialogDescription>
                       </DialogHeader>
                       <div className="py-4">
@@ -676,4 +713,3 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest }: 
     )}
   </div>
 );
-
