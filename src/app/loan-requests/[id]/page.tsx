@@ -7,13 +7,12 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2 } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
-// import { mockLoanRequests } from '@/lib/mock-data'; // Replaced with Firestore fetch
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; // Settings integration for docs is still from here
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
 import {
   Dialog,
   DialogContent,
@@ -42,8 +41,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { getLoanRequestById } from '@/services/loan-service';
-import { Alert, AlertTitle as AlertTitle ShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert'; // Renamed to avoid conflict
+import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; // Added updateLoanRequest
+import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 
 // Schema for editing loan details
 const editLoanFormSchema = z.object({
@@ -101,6 +100,7 @@ export default function LoanDetailPage() {
 
   const [loan, setLoan] = React.useState<LoanRequest | undefined>(undefined);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false); // For save operations
   const [error, setError] = React.useState<string | null>(null);
 
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
@@ -150,147 +150,208 @@ export default function LoanDetailPage() {
     }
   }, [loan, isEditLoanDialogOpen, form]);
   
-  const showTemporaryUpdateToast = (title: string) => {
-    toast({
-      title: title,
-      description: "Note: This change is currently local and will not be saved to the database in this phase.",
-      variant: "default",
-      duration: 5000,
-    });
+  const handleDatabaseUpdate = async (
+    updatedFields: Partial<Omit<LoanRequest, 'id'>>,
+    successMessage: string,
+    optimisticUpdateFn: () => LoanRequest 
+  ) => {
+    if (!loan) return;
+    setIsSaving(true);
+    try {
+      await updateLoanRequest(loan.id, updatedFields);
+      setLoan(optimisticUpdateFn()); // Update local state with the full new state
+      toast({
+        title: "Update Successful",
+        description: successMessage,
+        variant: "default",
+      });
+    } catch (err) {
+      console.error("Failed to update loan:", err);
+      toast({
+        title: "Update Error",
+        description: err instanceof Error ? err.message : "Could not save changes to the database. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
 
-  const handleAddInfoSubmit = () => {
+  const handleAddInfoSubmit = async () => {
     if (!additionalInfo.trim()) {
         toast({ title: "Info Required", description: "Please specify what information is needed.", variant: "destructive" });
         return;
     }
-    setLoan(prevLoan => {
-        if (!prevLoan) return undefined;
-        const newHistoryEntry: LoanHistoryEntry = {
-            id: `hist-${prevLoan.history.length + 1}`,
-            stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
-            timestamp: new Date().toISOString(),
-            userId: 'current-user-id',
-            userName: 'Bank User',
-            requiredFulfilment: additionalInfo,
-            notes: `Requested additional info: ${additionalInfo}`
-        };
-        return {
-            ...prevLoan,
-            currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
-            history: [...prevLoan.history, newHistoryEntry],
-            lastUpdatedDate: new Date().toISOString(),
-        };
-    });
+    if (!loan) return;
+
+    const newHistoryEntry: LoanHistoryEntry = {
+        id: `hist-${Date.now()}`,
+        stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
+        timestamp: new Date().toISOString(),
+        userId: 'current-user-id', // Placeholder
+        userName: 'Bank User', // Placeholder
+        requiredFulfilment: additionalInfo,
+        notes: `Requested additional info: ${additionalInfo}`
+    };
+
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+        currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
+        history: [...loan.history, newHistoryEntry],
+    };
+    
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      lastUpdatedDate: new Date().toISOString() // Simulate service update
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, "Information request saved.", optimisticLoanState);
+    
     setAdditionalInfo('');
     setIsAddInfoDialogOpen(false);
-    showTemporaryUpdateToast("Information Requested (Local Update)");
   };
 
-  const handleFulfillInfoRequest = (entryId: string, requirementText: string) => {
-    setLoan(prevLoan => {
-        if (!prevLoan) return undefined;
-        const updatedHistory = prevLoan.history.map(h =>
-            h.id === entryId
-                ? { ...h, notes: `${h.notes || ''}\n[FULFILLED] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
-                : h
+  const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
+    if (!loan) return;
+
+    const updatedHistory = loan.history.map(h =>
+        h.id === entryId
+            ? { ...h, notes: `${h.notes || ''}\n[FULFILLED] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
+            : h
+    );
+    updatedHistory.push({
+        id: `hist-${Date.now()}`,
+        stage: loan.currentStage, 
+        timestamp: new Date().toISOString(),
+        userId: 'current-user-id', 
+        userName: 'Bank User', 
+        notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
+    });
+
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+        history: updatedHistory,
+    };
+    
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      lastUpdatedDate: new Date().toISOString()
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, "Information fulfillment status saved.", optimisticLoanState);
+  };
+
+
+  const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
+    if (!loan) return;
+    if (nextStage === LoanStage.APPROVED && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
+        const hasOpenInfoRequest = loan.history.some(
+          h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED &&
+               h.requiredFulfilment &&
+               (!h.notes || !h.notes.includes("[FULFILLED]"))
         );
-        updatedHistory.push({
-            id: `hist-${updatedHistory.length + 1}`,
-            stage: prevLoan.currentStage, 
-            timestamp: new Date().toISOString(),
-            userId: 'current-user-id', 
-            userName: 'Bank User', 
-            notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
-        });
-        return {
-            ...prevLoan,
-            history: updatedHistory,
-            lastUpdatedDate: new Date().toISOString(),
-        };
-    });
-    showTemporaryUpdateToast("Information Received (Local Update)");
-  };
-
-
-  const handleAdvanceWorkflow = (nextStage: LoanStage) => {
-    setLoan(prevLoan => {
-        if (!prevLoan) return undefined;
-        if (nextStage === LoanStage.APPROVED && prevLoan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-            const hasOpenInfoRequest = prevLoan.history.some(
-              h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED &&
-                   h.requiredFulfilment &&
-                   (!h.notes || !h.notes.includes("[FULFILLED]"))
-            );
-            if (hasOpenInfoRequest) {
-                toast({title: "Action Pending", description: "Cannot approve. Outstanding information request that has not been marked as fulfilled.", variant: "destructive"});
-                return prevLoan;
-            }
+        if (hasOpenInfoRequest) {
+            toast({title: "Action Pending", description: "Cannot approve. Outstanding information request that has not been marked as fulfilled.", variant: "destructive"});
+            return;
         }
-        const newHistoryEntry: LoanHistoryEntry = {
-            id: `hist-${prevLoan.history.length + 1}`,
-            stage: nextStage,
-            timestamp: new Date().toISOString(),
-            userId: 'current-user-id',
-            userName: 'Bank User',
-            notes: `Moved to stage: ${nextStage}`
-        };
-        return {
-            ...prevLoan,
-            currentStage: nextStage,
-            history: [...prevLoan.history, newHistoryEntry],
-            lastUpdatedDate: new Date().toISOString(),
-        };
-    });
-    showTemporaryUpdateToast(`Workflow Advanced to ${nextStage} (Local Update)`);
+    }
+    const newHistoryEntry: LoanHistoryEntry = {
+        id: `hist-${Date.now()}`,
+        stage: nextStage,
+        timestamp: new Date().toISOString(),
+        userId: 'current-user-id',
+        userName: 'Bank User',
+        notes: `Moved to stage: ${nextStage}`
+    };
+    
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+        currentStage: nextStage,
+        history: [...loan.history, newHistoryEntry],
+    };
+
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      lastUpdatedDate: new Date().toISOString()
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage}.`, optimisticLoanState);
   };
 
-  const handleUploadDocument = (docName: string) => {
+  const handleUploadDocument = async (docName: string) => {
+    if (!loan) return;
     setCurrentDocumentToUpload(docName);
-    setLoan(prevLoan => {
-        if (!prevLoan) return undefined;
-        const existingDocIndex = prevLoan.documents.findIndex(d => d.name === docName);
-        let updatedDocuments: LoanDocument[];
-        if (existingDocIndex > -1) {
-            updatedDocuments = prevLoan.documents.map((doc, index) =>
-                index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded by user.' } : doc
-            );
-        } else {
-            updatedDocuments = [
-                ...prevLoan.documents,
-                { id: `doc-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded by user.' }
-            ];
-        }
-        return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
-    });
-    showTemporaryUpdateToast(`Document ${docName} Submitted (Local Update)`);
-    setIsUploadDocDialogOpen(false);
-  };
 
-  const handleVerifyDocument = (docName: string) => {
-    setLoan(prevLoan => {
-        if (!prevLoan) return undefined;
-        const updatedDocuments = prevLoan.documents.map(doc =>
-            doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified by bank staff.' } : doc
+    const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
+    let updatedDocuments: LoanDocument[];
+    if (existingDocIndex > -1) {
+        updatedDocuments = loan.documents.map((doc, index) =>
+            index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded by user.' } : doc
         );
-        return { ...prevLoan, documents: updatedDocuments, lastUpdatedDate: new Date().toISOString() };
-    });
-    showTemporaryUpdateToast(`Document ${docName} Verified (Local Update)`);
+    } else {
+        updatedDocuments = [
+            ...loan.documents,
+            { id: `doc-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded by user.' }
+        ];
+    }
+    
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+        documents: updatedDocuments,
+    };
+
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      lastUpdatedDate: new Date().toISOString()
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, `Document ${docName} submitted.`, optimisticLoanState);
+    
+    setIsUploadDocDialogOpen(false); // Close dialog after successful or attempted save
   };
 
-  function onEditLoanSubmit(data: EditLoanFormValues) {
-    setLoan(prevLoan => {
-      if (!prevLoan) return undefined;
-      return {
-        ...prevLoan,
-        ...data,
-        loanAmount: Number(data.loanAmount),
-        lastUpdatedDate: new Date().toISOString(),
-      };
-    });
+  const handleVerifyDocument = async (docName: string) => {
+    if (!loan) return;
+    const updatedDocuments = loan.documents.map(doc =>
+        doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified by bank staff.' } : doc
+    );
+    
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+        documents: updatedDocuments,
+    };
+
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      lastUpdatedDate: new Date().toISOString()
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, `Document ${docName} verified.`, optimisticLoanState);
+  };
+
+  async function onEditLoanSubmit(data: EditLoanFormValues) {
+    if (!loan) return;
+
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+      customerName: data.customerName,
+      customerEmail: data.customerEmail,
+      customerPhone: data.customerPhone,
+      loanAmount: Number(data.loanAmount),
+      loanType: data.loanType,
+      loanPurpose: data.loanPurpose,
+    };
+    
+    const optimisticLoanState = () => ({
+      ...loan,
+      ...updatedFields,
+      loanAmount: Number(data.loanAmount), // ensure type consistency
+      lastUpdatedDate: new Date().toISOString()
+    } as LoanRequest);
+
+    await handleDatabaseUpdate(updatedFields, "Loan details updated.", optimisticLoanState);
+    
     setIsEditLoanDialogOpen(false);
-    showTemporaryUpdateToast("Loan Details Updated (Local Update)");
   }
 
 
@@ -336,19 +397,19 @@ export default function LoanDetailPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => router.back()}>
+        <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <div className="flex gap-2">
           <Dialog open={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline"><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
+              <Button variant="outline" disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Edit Loan Details</DialogTitle>
                 <DialogDescription>
-                  Modify the loan application information below. Click save when you're done. (Note: Changes are local for now)
+                  Modify the loan application information below. Click save when you're done.
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -363,7 +424,7 @@ export default function LoanDetailPage() {
                           <FormControl>
                             <div className="relative">
                               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="e.g., John Doe" {...field} className="pl-10" />
+                              <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -379,7 +440,7 @@ export default function LoanDetailPage() {
                           <FormControl>
                             <div className="relative">
                               <Info className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                              <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" />
+                              <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -395,7 +456,7 @@ export default function LoanDetailPage() {
                           <FormControl>
                             <div className="relative">
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                              <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" />
+                              <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -411,7 +472,7 @@ export default function LoanDetailPage() {
                           <FormControl>
                             <div className="relative">
                               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                              <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" />
+                              <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -427,7 +488,7 @@ export default function LoanDetailPage() {
                           <FormControl>
                             <div className="relative">
                               <Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" />
+                              <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
                           <FormMessage />
@@ -450,6 +511,7 @@ export default function LoanDetailPage() {
                               className="resize-none pl-10"
                               {...field}
                               rows={3}
+                              disabled={isSaving}
                             />
                           </div>
                         </FormControl>
@@ -462,9 +524,12 @@ export default function LoanDetailPage() {
                   />
                   <DialogFooter className="pt-4">
                     <DialogClose asChild>
-                      <Button type="button" variant="outline">Cancel</Button>
+                      <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
                     </DialogClose>
-                    <Button type="submit">Save Changes</Button>
+                    <Button type="submit" disabled={isSaving}>
+                      {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Save Changes
+                    </Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -473,13 +538,13 @@ export default function LoanDetailPage() {
 
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline"><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
+              <Button variant="outline" disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Request Additional Information</DialogTitle>
                 <DialogDescription>
-                  Specify what the customer needs to provide. This will move the loan to 'Additional Info Required'. (Note: Changes are local for now)
+                  Specify what the customer needs to provide. This will move the loan to 'Additional Info Required'.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -489,13 +554,17 @@ export default function LoanDetailPage() {
                   value={additionalInfo}
                   onChange={(e) => setAdditionalInfo(e.target.value)}
                   placeholder="e.g., Latest utility bill, Clarification on income source"
+                  disabled={isSaving}
                 />
               </div>
               <DialogFooter>
                  <DialogClose asChild>
-                    <Button type="button" variant="outline">Cancel</Button>
+                    <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
                   </DialogClose>
-                <Button type="submit" onClick={handleAddInfoSubmit}>Confirm & Request</Button>
+                <Button type="submit" onClick={handleAddInfoSubmit} disabled={isSaving}>
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm & Request
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -504,7 +573,8 @@ export default function LoanDetailPage() {
            loan.currentStage !== LoanStage.REJECTED &&
            loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
            loan.currentStage !== LoanStage.APPROVED && (
-            <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])}>
+            <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])} disabled={isSaving}>
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Advance to: {loanStages[currentStageIndex + 1]}
             </Button>
           )}
@@ -553,7 +623,7 @@ export default function LoanDetailPage() {
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <h3 className="text-lg font-semibold mb-4 flex items-center"><Paperclip className="mr-2 h-5 w-5 text-primary" />Documents</h3>
-              <p className="text-sm text-muted-foreground mb-1">Required for current stage: <span className="font-semibold">{loan.currentStage}</span> (Note: Document changes are local for now)</p>
+              <p className="text-sm text-muted-foreground mb-1">Required for current stage: <span className="font-semibold">{loan.currentStage}</span></p>
               {requiredDocumentsForCurrentStage.length > 0 ? (
                 <ul className="space-y-3 mb-4">
                   {requiredDocumentsForCurrentStage.map(reqDoc => {
@@ -574,12 +644,12 @@ export default function LoanDetailPage() {
                             {status}
                           </Badge>
                           {status === 'Missing' || status === 'Pending' || status === 'Rejected' ? (
-                            <Button variant="outline" size="sm" onClick={() => { setCurrentDocumentToUpload(reqDoc.name); setIsUploadDocDialogOpen(true); }}>
-                              <UploadCloud className="mr-1 h-4 w-4" /> Upload
+                            <Button variant="outline" size="sm" onClick={() => { setCurrentDocumentToUpload(reqDoc.name); setIsUploadDocDialogOpen(true); }} disabled={isSaving}>
+                              {isSaving && status !== 'Submitted' && status !== 'Verified' ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <UploadCloud className="mr-1 h-4 w-4" />} Upload
                             </Button>
                           ) : status === 'Submitted' ? (
-                             <Button variant="outline" size="sm" onClick={() => handleVerifyDocument(reqDoc.name)}>
-                              <BadgeCheck className="mr-1 h-4 w-4" /> Verify
+                             <Button variant="outline" size="sm" onClick={() => handleVerifyDocument(reqDoc.name)} disabled={isSaving}>
+                              {isSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                             </Button>
                           ) : null}
                         </div>
@@ -601,12 +671,12 @@ export default function LoanDetailPage() {
                       </DialogHeader>
                       <div className="py-4">
                           <Label htmlFor="doc-upload">Select file</Label>
-                          <Input id="doc-upload" type="file" className="mt-1"/>
+                          <Input id="doc-upload" type="file" className="mt-1" disabled={isSaving}/>
                           <p className="text-xs text-muted-foreground mt-2">Actual file handling & upload to storage needs backend integration.</p>
                       </div>
                       <DialogFooter>
                           <DialogClose asChild>
-                            <Button variant="outline" >Cancel</Button>
+                            <Button variant="outline" disabled={isSaving} >Cancel</Button>
                           </DialogClose>
                           <Button onClick={() => {
                             if(currentDocumentToUpload) {
@@ -614,7 +684,10 @@ export default function LoanDetailPage() {
                             } else {
                                 toast({title: "Error", description: "No document type specified for upload.", variant: "destructive"});
                             }
-                          }}>
+                          }}
+                          disabled={isSaving}
+                          >
+                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Simulate Upload
                           </Button>
                       </DialogFooter>
@@ -649,6 +722,7 @@ export default function LoanDetailPage() {
                       entry={entry}
                       isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
                       onFulfillInfoRequest={handleFulfillInfoRequest}
+                      isSaving={isSaving}
                     />
                   ))}
                 </div>
@@ -687,8 +761,9 @@ interface HistoryEntryItemProps {
   entry: LoanHistoryEntry;
   isActiveInfoRequest?: boolean;
   onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
+  isSaving?: boolean;
 }
-const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest }: HistoryEntryItemProps) => (
+const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, isSaving }: HistoryEntryItemProps) => (
   <div className="relative pl-6 pb-4 border-l border-border">
     <div className={`absolute -left-[0.30rem] top-1 w-2.5 h-2.5 rounded-full ${getStageColor(entry.stage)}`}></div>
     <p className="text-sm font-medium">{entry.stage}</p>
@@ -705,11 +780,14 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest }: 
             variant="outline"
             className="mt-2 w-full sm:w-auto border-amber-600 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
             onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!)}
+            disabled={isSaving}
           >
-            <MessageSquare className="mr-2 h-4 w-4" /> Mark Information Received
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />} 
+            Mark Information Received
           </Button>
         )}
       </div>
     )}
   </div>
 );
+

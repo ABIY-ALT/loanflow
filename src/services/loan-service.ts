@@ -12,7 +12,8 @@ import {
   Timestamp,
   query, 
   orderBy,
-  serverTimestamp
+  updateDoc // Added updateDoc
+  // serverTimestamp // Not using serverTimestamp for now to keep types simple with ISO strings
 } from 'firebase/firestore';
 
 // Helper to convert Firestore Timestamps to ISO strings if they exist
@@ -21,13 +22,22 @@ const mapTimestamps = (data: any) : any => {
   for (const key in mappedData) {
     if (mappedData[key] instanceof Timestamp) {
       mappedData[key] = mappedData[key].toDate().toISOString();
+    } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null) {
+      // Recursively map nested objects if necessary, e.g., history or documents
+      if (Array.isArray(mappedData[key])) {
+        mappedData[key] = mappedData[key].map(item => 
+            typeof item === 'object' && item !== null ? mapTimestamps(item) : item
+        );
+      } else {
+        mappedData[key] = mapTimestamps(mappedData[key]);
+      }
     }
   }
   return mappedData;
 };
 
 
-export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber'>): Promise<string> {
+export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>): Promise<string> {
   try {
     const newLoanNumber = `LN${String(Date.now()).slice(-5)}${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
     const newCustomerNumber = `CUST${String(Date.now()).slice(-4)}${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
@@ -39,29 +49,22 @@ export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submitt
       currentStage: LoanStage.APPLICATION_SUBMITTED,
       submittedDate: new Date().toISOString(),
       lastUpdatedDate: new Date().toISOString(),
-      documents: [], // Initialize with empty documents array
+      documents: [], 
       history: [
         {
           id: `hist-${Date.now()}`,
           stage: LoanStage.APPLICATION_SUBMITTED,
           timestamp: new Date().toISOString(),
-          userId: 'system', // Placeholder
+          userId: 'system', 
           userName: 'System via New Application Form',
           notes: 'Loan application submitted by customer.',
         },
       ],
-      isOverdue: false, // Default to not overdue
+      isOverdue: false, 
       // stageDeadline: Calculate based on currentStage and settings (future enhancement)
     };
 
-    const docRef = await addDoc(collection(db, 'loanRequests'), {
-      ...docData,
-      // Use serverTimestamp for fields that should be set by the server upon write
-      // For example, if you want Firestore to manage created/updated timestamps:
-      // submittedDate: serverTimestamp(),
-      // lastUpdatedDate: serverTimestamp(),
-      // However, LoanRequest type expects strings, so we use ISO strings from client
-    });
+    const docRef = await addDoc(collection(db, 'loanRequests'), docData);
     return docRef.id;
   } catch (error) {
     console.error('Error adding loan request: ', error);
@@ -72,17 +75,14 @@ export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submitt
 export async function getLoanRequests(): Promise<LoanRequest[]> {
   try {
     const loanRequestsCol = collection(db, 'loanRequests');
-    // Optionally, order by submittedDate or lastUpdatedDate
     const q = query(loanRequestsCol, orderBy('submittedDate', 'desc'));
     const loanRequestsSnapshot = await getDocs(q);
     const loanRequestsList = loanRequestsSnapshot.docs.map(doc => {
       const data = doc.data();
-      // Ensure all necessary fields are present and map Timestamps
       const mappedData = mapTimestamps(data);
       return { 
         id: doc.id, 
         ...mappedData,
-        // Ensure all fields from LoanRequest type are present with defaults if necessary
         loanNumber: mappedData.loanNumber || '',
         customerNumber: mappedData.customerNumber || '',
         customerName: mappedData.customerName || '',
@@ -97,7 +97,6 @@ export async function getLoanRequests(): Promise<LoanRequest[]> {
         documents: mappedData.documents || [],
         history: mappedData.history || [],
         isOverdue: mappedData.isOverdue || false,
-
       } as LoanRequest;
     });
     return loanRequestsList;
@@ -117,7 +116,6 @@ export async function getLoanRequestById(id: string): Promise<LoanRequest | unde
       return { 
         id: loanRequestSnapshot.id, 
         ...mappedData,
-        // Ensure all fields from LoanRequest type are present with defaults if necessary
         loanNumber: mappedData.loanNumber || '',
         customerNumber: mappedData.customerNumber || '',
         customerName: mappedData.customerName || '',
@@ -143,16 +141,16 @@ export async function getLoanRequestById(id: string): Promise<LoanRequest | unde
   }
 }
 
-// Placeholder for update function - will be implemented in a future phase
-// export async function updateLoanRequest(id: string, updatedData: Partial<LoanRequest>): Promise<void> {
-//   try {
-//     const loanRequestDoc = doc(db, 'loanRequests', id);
-//     await updateDoc(loanRequestDoc, {
-//        ...updatedData,
-//        lastUpdatedDate: new Date().toISOString() // Or serverTimestamp()
-//     });
-//   } catch (error) {
-//     console.error("Error updating loan request: ", error);
-//     throw new Error("Failed to update loan request.");
-//   }
-// }
+export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<void> {
+  try {
+    const loanRequestDoc = doc(db, 'loanRequests', id);
+    await updateDoc(loanRequestDoc, {
+       ...dataToUpdate,
+       lastUpdatedDate: new Date().toISOString() // Always update this field
+    });
+  } catch (error) {
+    console.error("Error updating loan request: ", error);
+    // Consider re-throwing a more specific error or handling it based on application needs
+    throw new Error(`Failed to update loan request with ID ${id}.`);
+  }
+}
