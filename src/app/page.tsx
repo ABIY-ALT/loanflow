@@ -10,11 +10,12 @@ import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
-  approvalRate: string; // Keeping as string/placeholder for now
+  approvalRate: string; 
   overdueTasksCount: number;
 }
 
@@ -22,11 +23,13 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailedError, setDetailedError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
+      setDetailedError(null);
       try {
         const loans = await getLoanRequests();
         
@@ -47,9 +50,17 @@ export default function DashboardPage() {
           approvalRate: "78.5%", // Placeholder
           overdueTasksCount: overdueTasks,
         });
-      } catch (err) {
-        console.error("Failed to fetch dashboard data:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred while fetching dashboard data.");
+      } catch (err: any) {
+        console.error("Failed to fetch dashboard data:", err); // THIS IS THE IMPORTANT LOG
+        setError("Error Loading Dashboard Data.");
+        // Attempt to get a more specific message
+        if (err.message) {
+            setDetailedError(`Details: ${err.message}${err.code ? ` (Code: ${err.code})` : ''}`);
+        } else if (typeof err === 'string') {
+            setDetailedError(`Details: ${err}`);
+        } else {
+            setDetailedError("An unknown error occurred while fetching dashboard data. Check browser console for specifics.");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -99,12 +110,23 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center text-destructive">
               <AlertCircle className="mr-2 h-5 w-5" />
-              Error Loading Dashboard Data
+              {error}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-destructive">{error}</p>
-            <p className="text-sm text-muted-foreground mt-2">Please try refreshing the page. If the problem persists, check the console or contact support.</p>
+            <p className="text-destructive font-semibold">{detailedError || "Please check the browser console for more specific error messages from Firebase."}</p>
+            <p className="text-sm text-muted-foreground mt-2">
+                Common causes include:
+                <ul className="list-disc pl-5 mt-1">
+                    <li>Incorrect Firebase API keys or project ID in your <code>.env</code> file (ensure server was restarted after changes).</li>
+                    <li>Firestore database not enabled/created in your Firebase project.</li>
+                    <li>Firestore security rules blocking access (for development, try rules that allow reads).</li>
+                    <li>Network connectivity issues to Firebase services.</li>
+                </ul>
+            </p>
+             <p className="text-sm text-muted-foreground mt-3">
+                <strong>Action: Open your browser's developer console (usually by right-clicking, then "Inspect", then "Console" tab) and look for error messages when this page loads. The specific error message there is crucial for diagnosis.</strong>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -129,17 +151,15 @@ export default function DashboardPage() {
           title="Active Loans"
           value={stats?.activeLoansCount ?? (isLoading ? '' : 0)}
           icon={Briefcase}
-          // description="+12 since last month" // Dynamic description would need more data
         />
         <StatCard
           title="New Applications (7 days)"
           value={stats?.newApplicationsCount ?? (isLoading ? '' : 0)}
           icon={Users}
-          // description="+5 in the last week"
         />
         <StatCard
           title="Approval Rate"
-          value={stats?.approvalRate ?? (isLoading ? '' : "N/A")} // Static for now
+          value={stats?.approvalRate ?? (isLoading ? '' : "N/A")} 
           icon={TrendingUp}
           description={isLoading ? "" : "vs last month (placeholder)"}
         />
@@ -149,7 +169,7 @@ export default function DashboardPage() {
           icon={AlertTriangle}
           description={isLoading ? "" : "Require immediate attention"}
           link="/overdue-tasks"
-          isErrorSource={true}
+          isErrorSource={stats ? (stats.overdueTasksCount > 0) : false}
         />
       </div>
 
@@ -188,9 +208,4 @@ export default function DashboardPage() {
 
     </div>
   );
-}
-
-// Helper to cn class names
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(' ');
 }
