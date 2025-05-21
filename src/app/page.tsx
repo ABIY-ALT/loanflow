@@ -115,7 +115,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-destructive font-semibold">{detailedError || "Please check the browser console for more specific error messages from Firebase."}</p>
-            <p className="text-sm text-muted-foreground mt-2">
+            <div className="text-sm text-muted-foreground mt-2">
                 Common causes include:
                 <ul className="list-disc pl-5 mt-1">
                     <li>Incorrect Firebase API keys or project ID in your <code>.env</code> file (ensure server was restarted after changes).</li>
@@ -123,7 +123,7 @@ export default function DashboardPage() {
                     <li>Firestore security rules blocking access (for development, try rules that allow reads).</li>
                     <li>Network connectivity issues to Firebase services.</li>
                 </ul>
-            </p>
+            </div>
              <p className="text-sm text-muted-foreground mt-3">
                 <strong>Action: Open your browser's developer console (usually by right-clicking, then "Inspect", then "Console" tab) and look for error messages when this page loads. The specific error message there is crucial for diagnosis.</strong>
             </p>
@@ -209,3 +209,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
