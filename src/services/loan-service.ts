@@ -37,6 +37,11 @@ const mapTimestamps = (data: any) : any => {
 };
 
 
+// Define a type for the result of getLoanRequests
+interface GetLoanRequestsResult {
+  loans?: LoanRequest[];
+  error?: any; // Use 'any' to capture any type of error
+}
 export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>): Promise<string> {
   try {
     const newLoanNumber = `LN${String(Date.now()).slice(-5)}${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
@@ -72,18 +77,19 @@ export async function addLoanRequest(loanData: Omit<LoanRequest, 'id' | 'submitt
   }
 }
 
-export async function getLoanRequests(): Promise<LoanRequest[]> {
-  try {
-    const loanRequestsCol = collection(db, 'loanRequests');
-    const q = query(loanRequestsCol, orderBy('submittedDate', 'desc'));
-    const loanRequestsSnapshot = await getDocs(q);
-    const loanRequestsList = loanRequestsSnapshot.docs.map(doc => {
+export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
+ try {
+    const loanRequestsCol = collection(db, 'loanRequests'); // Start of Firestore interaction
+    const q = query(loanRequestsCol, orderBy('submittedDate', 'desc')); // Added desc
+    const loanRequestsSnapshot = await getDocs(q); // Potential error source
+
+    const loanRequestsList = loanRequestsSnapshot.docs.map(doc => { // Processing data
       const data = doc.data();
-      const mappedData = mapTimestamps(data);
-      return { 
-        id: doc.id, 
+      const mappedData = mapTimestamps(data); // Helper function call
+      return {
+        id: doc.id,
         ...mappedData,
-        loanNumber: mappedData.loanNumber || '',
+        loanNumber: mappedData.loanNumber || '', // Handling potentially missing fields
         customerNumber: mappedData.customerNumber || '',
         customerName: mappedData.customerName || '',
         customerEmail: mappedData.customerEmail || '',
@@ -97,13 +103,14 @@ export async function getLoanRequests(): Promise<LoanRequest[]> {
         documents: mappedData.documents || [],
         history: mappedData.history || [],
         isOverdue: mappedData.isOverdue || false,
-      } as LoanRequest;
-    });
-    return loanRequestsList;
+      } as LoanRequest; // Type assertion
+    }); // End of data processing loop
+
+ return { loans: loanRequestsList }; // Return object with loans if successful
   } catch (error) {
-    console.error('Error getting loan requests: ', error);
-    throw new Error('Failed to retrieve loan requests.');
-  }
+ console.error("Error in getLoanRequests:", error);
+ return { error: error }; // Return object with error if an error occurs
+ }
 }
 
 export async function getLoanRequestById(id: string): Promise<LoanRequest | undefined> {

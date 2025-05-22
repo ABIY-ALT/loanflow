@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
-  approvalRate: string; 
+  approvalRate: string;
   overdueTasksCount: number;
 }
 
@@ -23,16 +23,19 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailedError, setDetailedError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
-      setDetailedError(null);
-      try {
-        const loans = await getLoanRequests();
-        
+
+      const result = await getLoanRequests();
+
+      if (result.error) {
+        console.error("Failed to fetch dashboard data:", result.error);
+        setError("Error Loading Dashboard Data"); // Set a general error message for the card title
+      } else if (result.loans) {
+        const loans = result.loans;
         const activeLoans = loans.filter(
           loan => ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage)
         ).length;
@@ -41,7 +44,6 @@ export default function DashboardPage() {
         const newApplications = loans.filter(
           loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
         ).length;
-
         const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
         setStats({
@@ -50,17 +52,7 @@ export default function DashboardPage() {
           approvalRate: "78.5%", // Placeholder
           overdueTasksCount: overdueTasks,
         });
-      } catch (err: any) {
-        console.error("Failed to fetch dashboard data:", err); // THIS IS THE IMPORTANT LOG
-        setError("Error Loading Dashboard Data.");
-        // Attempt to get a more specific message
-        if (err.message) {
-            setDetailedError(`Details: ${err.message}${err.code ? ` (Code: ${err.code})` : ''}`);
-        } else if (typeof err === 'string') {
-            setDetailedError(`Details: ${err}`);
-        } else {
-            setDetailedError("An unknown error occurred while fetching dashboard data. Check browser console for specifics.");
-        }
+        setError(null); // Clear any previous errors
       } finally {
         setIsLoading(false);
       }
@@ -114,20 +106,45 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-destructive font-semibold">{detailedError || "Please check the browser console for more specific error messages from Firebase."}</p>
-            <div className="text-sm text-muted-foreground mt-2">
-                Common causes include:
-                <ul className="list-disc pl-5 mt-1">
-                    <li>Incorrect Firebase API keys or project ID in your <code>.env</code> file (ensure server was restarted after changes).</li>
-                    <li>Firestore database not enabled/created in your Firebase project.</li>
-                    <li>Firestore security rules blocking access (for development, try rules that allow reads).</li>
-                    <li>Network connectivity issues to Firebase services.</li>
-                </ul>
-            </div>
-             <p className="text-sm text-muted-foreground mt-3">
-                <strong>Action: Open your browser's developer console (usually by right-clicking, then "Inspect", then "Console" tab) and look for error messages when this page loads. The specific error message there is crucial for diagnosis.</strong>
+            <p className="text-destructive font-semibold">
+              Could not load dashboard statistics.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+                Please try refreshing the page. If the problem persists, check your network connection and Firebase setup. For more specific details, open your browser's developer console.
             </p>
           </CardContent>
+        </Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>Quick Access</CardTitle>
+                <CardDescription>Navigate to key areas of the application.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Link href="/loan-process" passHref>
+                    <Button variant="outline" className="w-full justify-start text-left h-auto py-3">
+                        <div className="flex flex-col items-start">
+                            <span className="font-semibold">View Loan Pipeline</span>
+                            <span className="text-xs text-muted-foreground">Visualize loan stages on the Kanban board.</span>
+                        </div>
+                    </Button>
+                </Link>
+                <Link href="/loan-status" passHref>
+                    <Button variant="outline" className="w-full justify-start text-left h-auto py-3">
+                        <div className="flex flex-col items-start">
+                            <span className="font-semibold">Loan Status Lookup</span>
+                            <span className="text-xs text-muted-foreground">Quickly find loan status using AI.</span>
+                        </div>
+                    </Button>
+                </Link>
+                 <Link href="/settings" passHref>
+                     <Button variant="outline" className="w-full justify-start text-left h-auto py-3">
+                        <div className="flex flex-col items-start">
+                            <span className="font-semibold">Configure Workflows</span>
+                            <span className="text-xs text-muted-foreground">Manage loan stages and timelines.</span>
+                        </div>
+                    </Button>
+                </Link>
+            </CardContent>
         </Card>
       </div>
     );
@@ -159,7 +176,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Approval Rate"
-          value={stats?.approvalRate ?? (isLoading ? '' : "N/A")} 
+          value={stats?.approvalRate ?? (isLoading ? '' : "N/A")}
           icon={TrendingUp}
           description={isLoading ? "" : "vs last month (placeholder)"}
         />
@@ -209,4 +226,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

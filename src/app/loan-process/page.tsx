@@ -132,7 +132,23 @@ export default function LoanProcessPage() {
         setAllLoans(loans);
       } catch (err) {
         console.error("Failed to fetch loans:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred while fetching loans.");
+        // Log the entire error object for inspection
+        console.log("Full error object:", err);
+        // Add more specific error handling here
+        if (err instanceof Error) {
+          if (err.message.includes("FirebaseError")) {
+            // This might indicate a Firebase-specific error
+            setError(`Firebase Error fetching loans: ${err.message}`);
+          } else if (err.message.includes("network")) {
+            // This might indicate a network issue
+            setError(`Network Error fetching loans: ${err.message}`);
+          } else {
+            // Handle other types of errors
+            setError(`An error occurred while fetching loans: ${err.message}`);
+          }
+        } else {
+          setError("An unknown error occurred while fetching loans.");
+        }
       } finally {
         setIsLoading(false);
       }

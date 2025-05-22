@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/toaster";
 export const metadata: Metadata = {
   title: 'LoanFlow - Loan Management System',
   description: 'Efficiently manage loan requests and processes.',
+  icons: null, // Explicitly disable automatic icon generation
 };
 
 export default function RootLayout({
