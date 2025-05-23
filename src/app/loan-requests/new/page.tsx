@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User, Mail, Phone, Type, Info, Loader2 } from 'lucide-react';
 import React, { useState } from 'react';
-import { addLoanRequest } from '@/services/loan-service';
+import { addLoanRequest } from '@/services/loan-service'; // Will use mock service
 import type { LoanRequest } from '@/types/loan';
 
 const loanRequestFormSchema = z.object({
@@ -67,7 +67,6 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      // Prepare data for addLoanRequest, excluding fields auto-generated or managed by the service
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -77,20 +76,19 @@ export default function NewLoanRequestPage() {
         loanPurpose: data.loanPurpose,
       };
 
+      // This now calls the mock service
       const newLoanId = await addLoanRequest(loanDataForService);
       toast({
-        title: "Loan Request Submitted",
-        description: `Request for ${data.customerName} for $${data.loanAmount} has been received. Loan ID: ${newLoanId}`,
+        title: "Mock Loan Request Submitted",
+        description: `Mock request for ${data.customerName} for $${data.loanAmount} has been received. Mock Loan ID: ${newLoanId}`,
       });
       form.reset();
-      // Optional: redirect to the new loan's detail page or the pipeline
-      // router.push(`/loan-requests/${newLoanId}`);
        router.push('/loan-process');
     } catch (error) {
-      console.error("Failed to submit loan request:", error);
+      console.error("Failed to submit mock loan request:", error);
       toast({
-        title: "Submission Error",
-        description: "There was an error submitting the loan request. Please try again.",
+        title: "Mock Submission Error",
+        description: "There was an error submitting the mock loan request. Please try again.",
         variant: "destructive",
       });
     } finally {

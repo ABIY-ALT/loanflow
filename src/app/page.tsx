@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service'; // Will now use mock service
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
@@ -28,31 +28,34 @@ export default function DashboardPage() {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
+      try {
+        const result = await getLoanRequests(); // This now calls the mock service
 
-      const result = await getLoanRequests();
+        if (result.error) {
+          console.error("Failed to fetch dashboard data (mock service):", result.error);
+          setError("Error Loading Dashboard Data. Check console for mock service details.");
+        } else if (result.loans) {
+          const loans = result.loans;
+          const activeLoans = loans.filter(
+            loan => ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage)
+          ).length;
 
-      if (result.error) {
-        console.error("Failed to fetch dashboard data:", result.error);
-        setError("Error Loading Dashboard Data"); // Set a general error message for the card title
-      } else if (result.loans) {
-        const loans = result.loans;
-        const activeLoans = loans.filter(
-          loan => ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage)
-        ).length;
+          const sevenDaysAgo = subDays(new Date(), 7);
+          const newApplications = loans.filter(
+            loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
+          ).length;
+          const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
-        const sevenDaysAgo = subDays(new Date(), 7);
-        const newApplications = loans.filter(
-          loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
-        ).length;
-        const overdueTasks = loans.filter(loan => loan.isOverdue).length;
-
-        setStats({
-          activeLoansCount: activeLoans,
-          newApplicationsCount: newApplications,
-          approvalRate: "78.5%", // Placeholder
-          overdueTasksCount: overdueTasks,
-        });
-        setError(null); // Clear any previous errors
+          setStats({
+            activeLoansCount: activeLoans,
+            newApplicationsCount: newApplications,
+            approvalRate: "78.5%", // Placeholder, as before
+            overdueTasksCount: overdueTasks,
+          });
+        }
+      } catch (err) {
+        console.error("Unexpected error fetching dashboard data:", err);
+        setError("An unexpected error occurred. Check console.");
       } finally {
         setIsLoading(false);
       }
@@ -70,10 +73,12 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
+          ) : error && title === "Active Loans" /* Show error only on one card to avoid repetition */ ? (
+            <AlertCircle className="h-6 w-6 text-destructive" />
           ) : (
             <div className={cn("text-2xl font-bold", isErrorSource && "text-destructive")}>{value}</div>
           )}
-          {description && !isLoading && <p className="text-xs text-muted-foreground">{description}</p>}
+          {description && !isLoading && !error && <p className="text-xs text-muted-foreground">{description}</p>}
           {isLoading && <p className="text-xs text-muted-foreground">Loading...</p>}
         </CardContent>
       </Card>
@@ -86,7 +91,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error) {
+  if (error && !isLoading) { // Show a more prominent error if data fetching failed
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -102,15 +107,15 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center text-destructive">
               <AlertCircle className="mr-2 h-5 w-5" />
-              {error}
+              Error Loading Dashboard Data
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-destructive font-semibold">
-              Could not load dashboard statistics.
+            <p className="text-destructive">
+              Could not load dashboard statistics. Using mock data or simulated service.
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please try refreshing the page. If the problem persists, check your network connection and Firebase setup. For more specific details, open your browser's developer console.
+                Please try refreshing the page. If the problem persists, it might be an issue with the mock data setup. Check browser console for details.
             </p>
           </CardContent>
         </Card>

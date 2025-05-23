@@ -11,7 +11,7 @@ import { PlusCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
 import {
   Tooltip,
   TooltipContent,
@@ -26,19 +26,9 @@ interface LoanCardProps {
 }
 
 function LoanCard({ loan }: LoanCardProps) {
-  // DND related properties are removed for now
-  // const { setNodeRef, attributes, listeners, isDragging } = useDraggable(loan.id);
-  // const style = {
-  //   opacity: isDragging ? 0.5 : 1,
-  // };
-
   return (
     <Card
-      // ref={setNodeRef}
-      // style={style}
-      // {...attributes}
-      // {...listeners}
-      className="mb-3 shadow-md hover:shadow-lg transition-shadow" // Removed cursor-grab
+      className="mb-3 shadow-md hover:shadow-lg transition-shadow"
     >
       <CardHeader className="p-4">
         <div className="flex justify-between items-start">
@@ -87,17 +77,8 @@ interface KanbanColumnProps {
 }
 
 function KanbanColumn({ stage, loans }: KanbanColumnProps) {
-  // DND related properties are removed for now
-  // const { setNodeRef, isOver } = useDroppable(stage);
-  // const style = {
-  //   backgroundColor: isOver ? 'hsl(var(--accent)/0.1)' : undefined,
-  //   minHeight: '300px'
-  // };
-
   return (
     <div
-      // ref={setNodeRef}
-      // style={style}
       className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]"
     >
       <div className="flex justify-between items-center p-2 mb-2">
@@ -128,27 +109,17 @@ export default function LoanProcessPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const loans = await getLoanRequests();
-        setAllLoans(loans);
-      } catch (err) {
-        console.error("Failed to fetch loans:", err);
-        // Log the entire error object for inspection
-        console.log("Full error object:", err);
-        // Add more specific error handling here
-        if (err instanceof Error) {
-          if (err.message.includes("FirebaseError")) {
-            // This might indicate a Firebase-specific error
-            setError(`Firebase Error fetching loans: ${err.message}`);
-          } else if (err.message.includes("network")) {
-            // This might indicate a network issue
-            setError(`Network Error fetching loans: ${err.message}`);
-          } else {
-            // Handle other types of errors
-            setError(`An error occurred while fetching loans: ${err.message}`);
-          }
+        const result = await getLoanRequests(); // Will use mock service
+        if (result.error) {
+          setError(result.error);
+        } else if (result.loans) {
+          setAllLoans(result.loans);
         } else {
-          setError("An unknown error occurred while fetching loans.");
+          setAllLoans([]); // Should not happen with mock service but good practice
         }
+      } catch (err) {
+        console.error("Failed to fetch loans (mock service):", err);
+        setError(err instanceof Error ? `An error occurred: ${err.message}` : "An unknown error occurred fetching mock loans.");
       } finally {
         setIsLoading(false);
       }
@@ -163,7 +134,7 @@ export default function LoanProcessPage() {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="ml-3 text-lg">Loading loan pipeline...</p>
+        <p className="ml-3 text-lg">Loading loan pipeline (mock data)...</p>
       </div>
     );
   }
@@ -172,9 +143,9 @@ export default function LoanProcessPage() {
     return (
       <Alert variant="destructive" className="max-w-2xl mx-auto">
         <AlertTriangle className="h-5 w-5" />
-        <AlertTitle>Error Fetching Loans</AlertTitle>
+        <AlertTitle>Error Fetching Loans (Mock Service)</AlertTitle>
         <AlertDescription>
-          {error} Please try refreshing the page. If the problem persists, contact support.
+          {error} Please try refreshing the page. This uses mock data, so the error might be in the mock service or data.
         </AlertDescription>
       </Alert>
     );
@@ -186,7 +157,7 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
           <p className="text-muted-foreground">
-            Visualize and manage loan applications through various stages.
+            Visualize and manage loan applications through various stages (using mock data).
           </p>
         </div>
         <Link href="/loan-requests/new" passHref>
@@ -196,7 +167,6 @@ export default function LoanProcessPage() {
         </Link>
       </div>
       
-      {/* DndContext removed for now */}
       <ScrollArea className="w-full whitespace-nowrap pb-4">
         <div className="flex gap-4">
           {loanStages.map((stage) => (
