@@ -11,15 +11,14 @@ import { PlusCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequests } from '@/services/loan-service';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
+import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert'; // Aliased to avoid conflict
 
 interface LoanCardProps {
   loan: LoanRequest;
@@ -109,17 +108,18 @@ export default function LoanProcessPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // Will use mock service
+        const result = await getLoanRequests();
         if (result.error) {
           setError(result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
         } else {
-          setAllLoans([]); // Should not happen with mock service but good practice
+          setAllLoans([]);
+          setError("No loans data returned from service.");
         }
       } catch (err) {
-        console.error("Failed to fetch loans (mock service):", err);
-        setError(err instanceof Error ? `An error occurred: ${err.message}` : "An unknown error occurred fetching mock loans.");
+        console.error("Failed to fetch loans:", err);
+        setError(err instanceof Error ? `An error occurred: ${err.message}` : "An unknown error occurred fetching loans.");
       } finally {
         setIsLoading(false);
       }
@@ -134,7 +134,7 @@ export default function LoanProcessPage() {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="ml-3 text-lg">Loading loan pipeline (mock data)...</p>
+        <p className="ml-3 text-lg">Loading loan pipeline...</p>
       </div>
     );
   }
@@ -143,10 +143,10 @@ export default function LoanProcessPage() {
     return (
       <Alert variant="destructive" className="max-w-2xl mx-auto">
         <AlertTriangle className="h-5 w-5" />
-        <AlertTitle>Error Fetching Loans (Mock Service)</AlertTitle>
-        <AlertDescription>
-          {error} Please try refreshing the page. This uses mock data, so the error might be in the mock service or data.
-        </AlertDescription>
+        <AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
+        <AlertDescShadCN>
+          {error} Please try refreshing the page or check your connection.
+        </AlertDescShadCN>
       </Alert>
     );
   }
@@ -157,7 +157,7 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
           <p className="text-muted-foreground">
-            Visualize and manage loan applications through various stages (using mock data).
+            Visualize and manage loan applications through various stages.
           </p>
         </div>
         <Link href="/loan-requests/new" passHref>

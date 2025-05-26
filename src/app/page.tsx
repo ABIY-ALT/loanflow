@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service'; // Will now use mock service
+import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
-  approvalRate: string;
+  approvalRate: string; // Placeholder for now
   overdueTasksCount: number;
 }
 
@@ -29,11 +29,11 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // This now calls the mock service
+        const result = await getLoanRequests();
 
         if (result.error) {
-          console.error("Failed to fetch dashboard data (mock service):", result.error);
-          setError("Error Loading Dashboard Data. Check console for mock service details.");
+          console.error("Failed to fetch dashboard data:", result.error);
+          setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
           const activeLoans = loans.filter(
@@ -44,18 +44,22 @@ export default function DashboardPage() {
           const newApplications = loans.filter(
             loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
           ).length;
+
+          // Overdue tasks calculation relies on the isOverdue flag set by the service
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
           setStats({
             activeLoansCount: activeLoans,
             newApplicationsCount: newApplications,
-            approvalRate: "78.5%", // Placeholder, as before
+            approvalRate: "78.5%", // Still a placeholder
             overdueTasksCount: overdueTasks,
           });
+        } else {
+          setError("No loans data received from service.");
         }
       } catch (err) {
         console.error("Unexpected error fetching dashboard data:", err);
-        setError("An unexpected error occurred. Check console.");
+        setError(err instanceof Error ? err.message : "An unexpected error occurred. Check console.");
       } finally {
         setIsLoading(false);
       }
@@ -74,7 +78,10 @@ export default function DashboardPage() {
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
           ) : error && title === "Active Loans" /* Show error only on one card to avoid repetition */ ? (
-            <AlertCircle className="h-6 w-6 text-destructive" />
+             <div className="flex items-center text-destructive">
+                <AlertCircle className="h-6 w-6 mr-2" />
+                <span>Error</span>
+            </div>
           ) : (
             <div className={cn("text-2xl font-bold", isErrorSource && "text-destructive")}>{value}</div>
           )}
@@ -91,7 +98,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !isLoading) { // Show a more prominent error if data fetching failed
+  if (error && !stats && !isLoading) { // Show a more prominent error if data fetching failed and no stats are available
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -112,10 +119,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-destructive">
-              Could not load dashboard statistics. Using mock data or simulated service.
+              Could not load dashboard statistics. Error: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please try refreshing the page. If the problem persists, it might be an issue with the mock data setup. Check browser console for details.
+                Please try refreshing the page. If the problem persists, check your Firebase setup and browser console for more details.
             </p>
           </CardContent>
         </Card>
