@@ -22,36 +22,71 @@ const LOAN_REQUESTS_COLLECTION = 'loanRequests';
 const createErrorResult = (message: string, originalError?: unknown) => {
   let detailedMessage = message;
   if (originalError instanceof Error) {
-    detailedMessage = `${message} (Firebase Error: Name: ${(originalError as any).name || 'N/A'}, Code: ${(originalError as any).code || 'N/A'}, Message: ${originalError.message})`;
+    const firebaseError = originalError as any; 
+    detailedMessage = `${message} (Firebase Error: Name: ${firebaseError.name || 'N/A'}, Code: ${firebaseError.code || 'N/A'}, Message: ${firebaseError.message})`;
+    if (firebaseError.details) {
+      detailedMessage += `, Details: ${firebaseError.details}`;
+    }
   } else if (typeof originalError === 'string') {
     detailedMessage = `${message} (Details: ${originalError})`;
+  } else if (originalError) {
+    try {
+      detailedMessage = `${message} (Unknown error type: ${JSON.stringify(originalError)})`;
+    } catch (e) {
+      detailedMessage = `${message} (Unknown error type and could not stringify error)`;
+    }
   }
-  // Log on the server for more detailed server-side debugging
-  console.error("Loan Service Error Encountered:", detailedMessage, "\nOriginal Error Object (if any):", originalError);
-  return { error: detailedMessage }; // Return a serializable error object
+  
+  console.error("Loan Service Error Encountered on Server:", detailedMessage, "\nOriginal Error Object (if any):", originalError);
+  return { error: detailedMessage }; 
 };
 
 
-// Helper to convert Firestore Timestamps to ISO strings if they exist
-const mapTimestamps = (data: any): any => {
+const mapTimestampsInDoc = (data: any): any => {
+  if (!data) return data;
   const mappedData = { ...data };
   for (const key in mappedData) {
     if (mappedData[key] instanceof Timestamp) {
       mappedData[key] = mappedData[key].toDate().toISOString();
-    } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null) {
-      // Recursively map nested objects, but be careful with deep recursion
-      // For this app, loan history/documents are arrays of objects, handle them if necessary
-      if (Array.isArray(mappedData[key])) {
-        mappedData[key] = mappedData[key].map(item => 
-            typeof item === 'object' && item !== null ? mapTimestamps(item) : item
-        );
-      } else {
-        // mappedData[key] = mapTimestamps(mappedData[key]); // Avoid deep recursion for now unless specifically needed
+    } else if (Array.isArray(mappedData[key])) {
+      mappedData[key] = mappedData[key].map(item => 
+        (item instanceof Timestamp) ? item.toDate().toISOString() :
+        (typeof item === 'object' && item !== null) ? mapTimestampsInDoc(item) : item
+      );
+    } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null && !(mappedData[key] instanceof Date)) {
+      // Avoid recursing on Date objects or other non-plain objects not intended for deep mapping
+      if (Object.prototype.toString.call(mappedData[key]) === '[object Object]') {
+         // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Limit deep recursion for now
       }
     }
   }
   return mappedData;
 };
+
+const prepareDataForFirestoreWrite = (data: any): any => {
+    if (data === undefined || data === null) return data;
+
+    if (data instanceof Date) {
+        return formatISO(data);
+    }
+    if (data instanceof Timestamp) { // Should ideally not happen if converting from app types
+        return data.toDate().toISOString();
+    }
+
+    if (Array.isArray(data)) {
+        return data.map(item => prepareDataForFirestoreWrite(item));
+    }
+
+    if (typeof data === 'object') {
+        const res: { [key: string]: any } = {};
+        for (const key of Object.keys(data)) {
+            res[key] = prepareDataForFirestoreWrite(data[key]);
+        }
+        return res;
+    }
+    return data;
+};
+
 
 interface AddLoanRequestResult {
   id?: string;
@@ -66,28 +101,28 @@ export async function addLoanRequest(
   }
   try {
     const currentDate = new Date();
-    const newLoanData = {
+    const newLoanDataBase = {
       ...loanData,
       loanNumber: `LN-${String(Date.now()).slice(-6)}`,
       customerNumber: `CUST-${String(Date.now()).slice(-5)}`,
       currentStage: LoanStage.APPLICATION_SUBMITTED,
-      submittedDate: formatISO(currentDate),
-      lastUpdatedDate: formatISO(currentDate),
-      documents: [],
+      submittedDate: currentDate, // Will be converted by prepareDataForFirestoreWrite
+      lastUpdatedDate: currentDate, // Will be converted by prepareDataForFirestoreWrite
+      documents: [], 
       history: [
         {
           id: `hist-${Date.now()}`,
           stage: LoanStage.APPLICATION_SUBMITTED,
-          timestamp: formatISO(currentDate),
+          timestamp: currentDate, // Will be converted
           userId: 'system-entry',
           userName: 'System',
           notes: 'Loan application submitted.',
         },
       ],
       isOverdue: false,
-      // stageDeadline will be set based on workflow settings, potentially later or not at all for initial submission
     };
-    const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), newLoanData);
+    const preparedLoanData = prepareDataForFirestoreWrite(newLoanDataBase);
+    const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), preparedLoanData);
     return { id: docRef.id };
   } catch (error) {
     return createErrorResult("Failed to add loan request.", error);
@@ -108,12 +143,14 @@ export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
     const querySnapshot = await getDocs(q);
     const loans = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      const stageDeadline = data.stageDeadline ? new Date(data.stageDeadline) : null;
-      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && data.currentStage !== LoanStage.FUNDS_DISBURSED && data.currentStage !== LoanStage.REJECTED && data.currentStage !== LoanStage.APPROVED : false;
+      const mappedData = mapTimestampsInDoc(data);
+      const stageDeadline = mappedData.stageDeadline ? new Date(mappedData.stageDeadline) : null;
+      const currentStage = mappedData.currentStage || LoanStage.APPLICATION_SUBMITTED;
+      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(currentStage) : false;
       
       return { 
         id: doc.id, 
-        ...mapTimestamps(data), // Ensure timestamps are converted
+        ...mappedData,
         isOverdue,
       } as LoanRequest;
     });
@@ -141,17 +178,22 @@ export async function getLoanRequestById(id: string): Promise<GetLoanRequestById
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
-      const stageDeadline = data.stageDeadline ? new Date(data.stageDeadline) : null;
-      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && data.currentStage !== LoanStage.FUNDS_DISBURSED && data.currentStage !== LoanStage.REJECTED && data.currentStage !== LoanStage.APPROVED : false;
+      const mappedData = mapTimestampsInDoc(data);
+      const stageDeadline = mappedData.stageDeadline ? new Date(mappedData.stageDeadline) : null;
+      const currentStage = mappedData.currentStage || LoanStage.APPLICATION_SUBMITTED;
+      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(currentStage) : false;
       
       return { 
         loan: { 
           id: docSnap.id, 
-          ...mapTimestamps(data), // Ensure timestamps are converted
+          ...mappedData,
           isOverdue,
         } as LoanRequest 
       };
     } else {
+      // This is not an "error" in the sense of a system failure, but a "not found" case.
+      // The client should handle { loan: null } without an error property if it's an expected outcome.
+      // However, for consistency and to ensure client-side error states are triggered, returning an error string is also an option.
       console.log(`No such document in getLoanRequestById service for ID: ${id}`);
       return { loan: null, error: `Loan request with ID "${id}" not found.` };
     }
@@ -175,11 +217,14 @@ export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<L
   }
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
-    const updateDataWithTimestamp = {
+    // Ensure lastUpdatedDate is a Date object before prepareDataForFirestoreWrite converts it
+    const updatePayload = {
       ...dataToUpdate,
-      lastUpdatedDate: formatISO(new Date()),
+      lastUpdatedDate: new Date(), 
     };
-    await updateDoc(docRef, updateDataWithTimestamp);
+    const preparedUpdateData = prepareDataForFirestoreWrite(updatePayload);
+    
+    await updateDoc(docRef, preparedUpdateData);
     return { success: true };
   } catch (error) {
     return createErrorResult(`Failed to update loan request with ID: ${id}.`, error);
