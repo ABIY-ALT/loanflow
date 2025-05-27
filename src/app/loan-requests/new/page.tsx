@@ -79,10 +79,10 @@ export default function NewLoanRequestPage() {
       const result = await addLoanRequest(loanDataForService);
 
       if (result.error) {
-        console.error("Failed to submit loan request:", result.error, result);
+        console.error("Full error result from addLoanRequest service on client:", result);
         toast({
           title: "Submission Error",
-          description: result.error,
+          description: `Failed to save loan request: ${result.error}`,
           variant: "destructive",
         });
       } else if (result.id) {
@@ -93,19 +93,26 @@ export default function NewLoanRequestPage() {
         form.reset();
         router.push('/loan-process');
       } else {
+         console.error("Unexpected result from addLoanRequest (no ID and no error):", result);
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred: No ID returned and no error specified.",
+          description: "An unexpected issue occurred: No ID returned and no error specified. Check console for details.",
           variant: "destructive",
         });
       }
-    } catch (error: any) { // Catch errors from the onSubmit async function itself
-      console.error("Critical error during loan request submission:", error);
+    } catch (error: any) { 
+      console.error("Client-side error during loan request submission:", error);
       let displayError = "A critical error occurred. Please try again.";
        if (error instanceof Error) {
           displayError = `Error: ${error.name} - ${error.message}.`;
       } else if (typeof error === 'string') {
           displayError = error;
+      } else {
+        try {
+          displayError = `Unexpected error: ${JSON.stringify(error)}`;
+        } catch {
+          displayError = "Unexpected and unstringifyable error occurred.";
+        }
       }
       toast({
         title: "Submission System Error",

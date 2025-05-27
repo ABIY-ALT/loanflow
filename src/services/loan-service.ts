@@ -33,7 +33,7 @@ const createErrorResult = (message: string, originalError?: unknown) => {
     try {
       detailedMessage = `${message} (Unknown error type: ${JSON.stringify(originalError)})`;
     } catch (e) {
-      detailedMessage = `${message} (Unknown error type and could not stringify error)`;
+      detailedMessage = `${message} (Unknown error type and could not stringify error: ${String(originalError)})`;
     }
   }
   
@@ -51,12 +51,11 @@ const mapTimestampsInDoc = (data: any): any => {
     } else if (Array.isArray(mappedData[key])) {
       mappedData[key] = mappedData[key].map(item => 
         (item instanceof Timestamp) ? item.toDate().toISOString() :
-        (typeof item === 'object' && item !== null) ? mapTimestampsInDoc(item) : item
+        (typeof item === 'object' && item !== null && !(item instanceof Date)) ? mapTimestampsInDoc(item) : item
       );
     } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null && !(mappedData[key] instanceof Date)) {
-      // Avoid recursing on Date objects or other non-plain objects not intended for deep mapping
       if (Object.prototype.toString.call(mappedData[key]) === '[object Object]') {
-         // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Limit deep recursion for now
+        // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Avoid deep recursion for now
       }
     }
   }
@@ -67,17 +66,17 @@ const prepareDataForFirestoreWrite = (data: any): any => {
     if (data === undefined || data === null) return data;
 
     if (data instanceof Date) {
-        return formatISO(data);
+        return formatISO(data); // Convert Date to ISO string
     }
-    if (data instanceof Timestamp) { // Should ideally not happen if converting from app types
-        return data.toDate().toISOString();
+     if (data instanceof Timestamp) { 
+        return data.toDate().toISOString(); // Convert Timestamp to ISO string if somehow present
     }
 
     if (Array.isArray(data)) {
         return data.map(item => prepareDataForFirestoreWrite(item));
     }
 
-    if (typeof data === 'object') {
+    if (typeof data === 'object' && Object.prototype.toString.call(data) === '[object Object]') {
         const res: { [key: string]: any } = {};
         for (const key of Object.keys(data)) {
             res[key] = prepareDataForFirestoreWrite(data[key]);
@@ -100,31 +99,37 @@ export async function addLoanRequest(
     return createErrorResult("Firestore database is not initialized. Cannot add loan request.");
   }
   try {
-    const currentDate = new Date();
+    const currentDate = new Date(); // Use JS Date object directly
     const newLoanDataBase = {
       ...loanData,
       loanNumber: `LN-${String(Date.now()).slice(-6)}`,
       customerNumber: `CUST-${String(Date.now()).slice(-5)}`,
       currentStage: LoanStage.APPLICATION_SUBMITTED,
-      submittedDate: currentDate, // Will be converted by prepareDataForFirestoreWrite
-      lastUpdatedDate: currentDate, // Will be converted by prepareDataForFirestoreWrite
+      submittedDate: currentDate, 
+      lastUpdatedDate: currentDate, 
       documents: [], 
       history: [
         {
           id: `hist-${Date.now()}`,
           stage: LoanStage.APPLICATION_SUBMITTED,
-          timestamp: currentDate, // Will be converted
+          timestamp: currentDate, 
           userId: 'system-entry',
           userName: 'System',
           notes: 'Loan application submitted.',
         },
       ],
       isOverdue: false,
+      // stageDeadline: null, // Explicitly set to null or calculate if needed
     };
+
+    console.log("Data before preparing for Firestore (addLoanRequest):", JSON.stringify(newLoanDataBase, null, 2));
     const preparedLoanData = prepareDataForFirestoreWrite(newLoanDataBase);
+    console.log("Data prepared for Firestore (addLoanRequest):", JSON.stringify(preparedLoanData, null, 2));
+
     const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), preparedLoanData);
     return { id: docRef.id };
   } catch (error) {
+    console.error("Raw error in addLoanRequest service:", error);
     return createErrorResult("Failed to add loan request.", error);
   }
 }
@@ -191,9 +196,6 @@ export async function getLoanRequestById(id: string): Promise<GetLoanRequestById
         } as LoanRequest 
       };
     } else {
-      // This is not an "error" in the sense of a system failure, but a "not found" case.
-      // The client should handle { loan: null } without an error property if it's an expected outcome.
-      // However, for consistency and to ensure client-side error states are triggered, returning an error string is also an option.
       console.log(`No such document in getLoanRequestById service for ID: ${id}`);
       return { loan: null, error: `Loan request with ID "${id}" not found.` };
     }
@@ -217,16 +219,18 @@ export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<L
   }
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
-    // Ensure lastUpdatedDate is a Date object before prepareDataForFirestoreWrite converts it
     const updatePayload = {
       ...dataToUpdate,
-      lastUpdatedDate: new Date(), 
+      lastUpdatedDate: new Date(), // Use JS Date object directly
     };
+    console.log("Data before preparing for Firestore (updateLoanRequest):", JSON.stringify(updatePayload, null, 2));
     const preparedUpdateData = prepareDataForFirestoreWrite(updatePayload);
+    console.log("Data prepared for Firestore (updateLoanRequest):", JSON.stringify(preparedUpdateData, null, 2));
     
     await updateDoc(docRef, preparedUpdateData);
     return { success: true };
   } catch (error) {
+     console.error("Raw error in updateLoanRequest service:", error);
     return createErrorResult(`Failed to update loan request with ID: ${id}.`, error);
   }
 }
