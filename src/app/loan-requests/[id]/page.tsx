@@ -126,10 +126,7 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          // Fetch users first or ensure they are available if needed for assignment logic on load
-          // For now, mockUsers is directly used, but a real app might fetch.
-          setUsers(mockUsers);
-
+          setUsers(mockUsers); 
           const result = await getLoanRequestById(loanId); 
           if (result.error) {
             console.error("Error from getLoanRequestById service (mock):", result.error);
@@ -137,7 +134,6 @@ export default function LoanDetailPage() {
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
-            // No need to set users from result here, as mockUsers is used directly
           } else {
             setError(`Loan request with ID "${loanId}" not found (mock).`);
             setLoan(null);
@@ -176,21 +172,19 @@ export default function LoanDetailPage() {
     setIsSaving(true);
 
     const currentLoanState = { ...loan };
-    // Create a new loan state by merging current state with updated fields
-    // The 'lastUpdatedDate' is now handled by the mock service
     const newLoanStateBasis = { ...loan, ...updatedFields };
     
     try {
+      // The updateLoanRequest function for mock data will handle setting lastUpdatedDate
       const result = await updateLoanRequest(loan.id, updatedFields); 
       if (result.error) {
-        setLoan(currentLoanState); // Revert to previous state on error
+        setLoan(currentLoanState); 
         toast({
           title: "Mock Update Error",
           description: result.error,
           variant: "destructive",
         });
       } else if (result.success && result.updatedLoan) {
-        // Use the updatedLoan from the service as it includes the new lastUpdatedDate
         setLoan(result.updatedLoan); 
         toast({
           title: "Mock Update Successful",
@@ -198,7 +192,7 @@ export default function LoanDetailPage() {
           variant: "default",
         });
       } else {
-         setLoan(currentLoanState); // Revert if no updated loan returned
+         setLoan(currentLoanState); 
          toast({
           title: "Mock Update Issue",
           description: "Update seemed to succeed but no updated data returned.",
@@ -256,7 +250,7 @@ export default function LoanDetailPage() {
     );
     updatedHistory.push({
         id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage, // Stays in current stage
+        stage: loan.currentStage, 
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
@@ -305,7 +299,6 @@ export default function LoanDetailPage() {
   const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
     if (!loan) return;
 
-    // Validation 1: Check for unfulfilled "Additional Info Required"
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
       if (activeInfoRequestEntry) {
         toast({
@@ -318,7 +311,6 @@ export default function LoanDetailPage() {
       }
     }
 
-    // Validation 2: Check for unverified required documents for the *current* stage
     const currentStageConfigFromSettings: StageConfig | undefined = initialStageConfigs.find(
       (config) => config.loanStageEnum === loan.currentStage
     );
@@ -340,8 +332,7 @@ export default function LoanDetailPage() {
       }
     }
 
-    // Determine new assignee based on next stage's target role
-    let newAssignedTo = loan.assignedTo; // Keep current assignee by default
+    let newAssignedTo = loan.assignedTo; 
     const nextStageConfig: StageConfig | undefined = initialStageConfigs.find(
         (config) => config.loanStageEnum === nextStage
     );
@@ -349,13 +340,23 @@ export default function LoanDetailPage() {
     if (nextStageConfig && nextStageConfig.targetRoleForStage) {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
-            newAssignedTo = potentialAssignees[0].id; // Assign to the first user found with that role (mock logic)
+            newAssignedTo = potentialAssignees[0].id; 
             console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}. Assigning to ${newAssignedTo} (${potentialAssignees[0].name}).`);
         } else {
             console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}, but no users found with this role. Keeping current assignee.`);
         }
     }
 
+    // Fallback: If still unassigned, assign to a default Relationship Manager
+    if (!newAssignedTo) {
+      const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
+      if (relationshipManagers.length > 0) {
+        newAssignedTo = relationshipManagers[0].id;
+        console.log(`Loan was unassigned. Fallback: Assigning to Relationship Manager ${newAssignedTo} (${relationshipManagers[0].name}).`);
+      } else {
+        console.log(`Loan was unassigned and no Relationship Manager found for fallback assignment.`);
+      }
+    }
 
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
@@ -363,13 +364,13 @@ export default function LoanDetailPage() {
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
-        notes: `Moved to stage: ${nextStage} (mock). ${newAssignedTo !== loan.assignedTo ? `Assigned to ${users.find(u=>u.id === newAssignedTo)?.name || 'Unknown'}.` : ''}`
+        notes: `Moved to stage: ${nextStage} (mock). ${newAssignedTo && newAssignedTo !== loan.assignedTo ? `Assigned to ${users.find(u=>u.id === newAssignedTo)?.name || 'Unknown'}.` : (newAssignedTo && !loan.assignedTo) ? `Assigned to ${users.find(u=>u.id === newAssignedTo)?.name || 'Unknown'}.` : ''}`
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         currentStage: nextStage,
         history: [...loan.history, newHistoryEntry],
-        assignedTo: newAssignedTo, // Update the assignee
+        assignedTo: newAssignedTo, 
     };
 
     await handleMockUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
@@ -464,8 +465,6 @@ export default function LoanDetailPage() {
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
   
   const assignedManager = users.find(u => u.id === loan.assignedTo);
-  const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
-
 
   return (
     <div className="space-y-8">
@@ -585,7 +584,7 @@ export default function LoanDetailPage() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="">Unassigned</SelectItem>
-                              {users.map(user => ( // Changed from relationshipManagers to all users
+                              {users.map(user => ( 
                                 <SelectItem key={user.id} value={user.id}>
                                   {user.name} ({user.role})
                                 </SelectItem>
