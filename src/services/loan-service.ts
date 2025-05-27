@@ -2,250 +2,100 @@
 'use server';
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
-import { db } from '@/lib/firebase'; // Firestore instance
-import {
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  getDoc,
-  updateDoc,
-  query,
-  orderBy,
-  Timestamp,
-} from 'firebase/firestore';
-import { formatISO } from 'date-fns';
+import { mockLoanRequests } from '@/lib/mock-data';
+import { formatISO, parseISO } from 'date-fns';
 
-const LOAN_REQUESTS_COLLECTION = 'loanRequests';
+// Helper to simulate async operations
+const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Consistent error object creation
-const createErrorResult = (message: string, originalError?: unknown, context?: string) => {
-  let detailedMessage = message;
-  if (originalError instanceof Error) {
-    const firebaseError = originalError as any; 
-    detailedMessage = `${message} (Firebase Error: Name: ${firebaseError.name || 'N/A'}, Code: ${firebaseError.code || 'N/A'}, Message: ${firebaseError.message})`;
-    if (firebaseError.details) {
-      detailedMessage += `, Details: ${firebaseError.details}`;
-    }
-  } else if (typeof originalError === 'string') {
-    detailedMessage = `${message} (Details: ${originalError})`;
-  } else if (originalError) {
-    try {
-      detailedMessage = `${message} (Unknown error type: ${JSON.stringify(originalError)})`;
-    } catch (e) {
-      detailedMessage = `${message} (Unknown error type and could not stringify error: ${String(originalError)})`;
-    }
-  }
-  
-  console.error(`Loan Service Error Encountered on Server (Context: ${context || 'General'}):`, detailedMessage, "\nFull Original Error Object (if any):", originalError);
-  
-  // For addLoanRequest, return a very simple error string to ensure serializability
-  if (context === 'addLoanRequest') {
-    return { error: `Failed to add loan request. Server Details: ${message} - See server logs for more.` };
-  }
-  return { error: detailedMessage }; 
-};
-
-
-const mapTimestampsInDoc = (data: any): any => {
-  if (!data) return data;
-  const mappedData = { ...data };
-  for (const key in mappedData) {
-    if (mappedData[key] instanceof Timestamp) {
-      mappedData[key] = mappedData[key].toDate().toISOString();
-    } else if (Array.isArray(mappedData[key])) {
-      mappedData[key] = mappedData[key].map(item => 
-        (item instanceof Timestamp) ? item.toDate().toISOString() :
-        (typeof item === 'object' && item !== null && !(item instanceof Date)) ? mapTimestampsInDoc(item) : item
-      );
-    } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null && !(mappedData[key] instanceof Date)) {
-      // Only recurse if it's a plain object, not other complex objects.
-      if (Object.prototype.toString.call(mappedData[key]) === '[object Object]') {
-        // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Avoid deep recursion for now on nested non-Timestamp objects
-      }
-    }
-  }
-  return mappedData;
-};
-
-const prepareDataForFirestoreWrite = (data: any): any => {
-    if (data === undefined || data === null) return data;
-
-    if (data instanceof Date) {
-        return formatISO(data); // Convert Date to ISO string
-    }
-     if (data instanceof Timestamp) { 
-        // This case should ideally not be hit if we are creating data from JS Dates
-        console.warn("Firestore Timestamp object found in data being prepared for write. Converting to ISO string.", data);
-        return data.toDate().toISOString(); 
-    }
-
-    if (Array.isArray(data)) {
-        return data.map(item => prepareDataForFirestoreWrite(item));
-    }
-
-    if (typeof data === 'object' && Object.prototype.toString.call(data) === '[object Object]') {
-        const res: { [key: string]: any } = {};
-        for (const key of Object.keys(data)) {
-            res[key] = prepareDataForFirestoreWrite(data[key]);
-        }
-        return res;
-    }
-    return data;
-};
-
-
-interface AddLoanRequestResult {
-  id?: string;
-  error?: string;
-}
+// Simulate an in-memory store for mock data for the duration of the server session
+// This won't persist across server restarts or for different users in a real scenario,
+// but helps for basic simulation.
+let sessionMockLoanRequests: LoanRequest[] = JSON.parse(JSON.stringify(mockLoanRequests)); // Deep copy
 
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>
-): Promise<AddLoanRequestResult> {
-  console.log("[Service:addLoanRequest] Initiated.");
-  if (!db) {
-    console.error("[Service:addLoanRequest] Firestore database (db) is not initialized.");
-    return createErrorResult("Firestore database is not initialized. Cannot add loan request.", undefined, 'addLoanRequest');
-  }
+): Promise<{ id?: string; error?: string }> {
+  await simulateDelay(200 + Math.random() * 300); // Simulate network delay
   try {
-    const currentDate = new Date(); 
-    const newLoanDataBase = {
+    const currentDate = new Date();
+    const newLoan: LoanRequest = {
+      id: `loan-mock-${Date.now()}`,
       ...loanData,
-      loanNumber: `LN-${String(Date.now()).slice(-6)}`,
-      customerNumber: `CUST-${String(Date.now()).slice(-5)}`,
+      loanNumber: `LN-MOCK-${String(Date.now()).slice(-5)}`,
+      customerNumber: `CUST-MOCK-${String(Date.now()).slice(-4)}`,
+      submittedDate: formatISO(currentDate),
+      lastUpdatedDate: formatISO(currentDate),
       currentStage: LoanStage.APPLICATION_SUBMITTED,
-      submittedDate: currentDate, 
-      lastUpdatedDate: currentDate, 
-      documents: [], 
       history: [
         {
-          id: `hist-${Date.now()}`,
+          id: `hist-mock-${Date.now()}`,
           stage: LoanStage.APPLICATION_SUBMITTED,
-          timestamp: currentDate, 
-          userId: 'system-entry',
-          userName: 'System',
-          notes: 'Loan application submitted.',
+          timestamp: formatISO(currentDate),
+          userId: 'mock-user',
+          userName: 'Mock System',
+          notes: 'Loan application submitted (mock).',
         },
       ],
+      documents: [],
       isOverdue: false,
-      stageDeadline: null, // Default to null or calculate based on settings
+      // stageDeadline can be calculated based on settings/current stage default timeline
     };
-
-    console.log("[Service:addLoanRequest] Data before preparing for Firestore:", JSON.stringify(newLoanDataBase, null, 2));
-    const preparedLoanData = prepareDataForFirestoreWrite(newLoanDataBase);
-    console.log("[Service:addLoanRequest] Data prepared for Firestore:", JSON.stringify(preparedLoanData, null, 2));
-
-    const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), preparedLoanData);
-    console.log("[Service:addLoanRequest] Document written with ID:", docRef.id);
-    return { id: docRef.id };
-  } catch (error) {
-    console.error("[Service:addLoanRequest] Raw error during Firestore addDoc:", error);
-    console.error("[Service:addLoanRequest] Error name:", (error as Error).name);
-    console.error("[Service:addLoanRequest] Error message:", (error as Error).message);
-    console.error("[Service:addLoanRequest] Error stack:", (error as Error).stack);
-    return createErrorResult("Failed to add loan request to Firestore.", error, 'addLoanRequest');
+    sessionMockLoanRequests.unshift(newLoan); // Add to the beginning of the array
+    return { id: newLoan.id };
+  } catch (e: any) {
+    console.error("Error in mock addLoanRequest:", e);
+    return { error: e.message || "Failed to add mock loan request." };
   }
 }
 
-interface GetLoanRequestsResult {
-  loans?: LoanRequest[];
-  error?: string;
-}
-
-export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
-  if (!db) {
-    return createErrorResult("Firestore database is not initialized. Cannot fetch loan requests.", undefined, 'getLoanRequests');
-  }
+export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string }> {
+  await simulateDelay(150 + Math.random() * 200);
   try {
-    const q = query(collection(db, LOAN_REQUESTS_COLLECTION), orderBy('submittedDate', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const loans = querySnapshot.docs.map(doc => {
-      const data = doc.data();
-      const mappedData = mapTimestampsInDoc(data);
-      const stageDeadline = mappedData.stageDeadline ? new Date(mappedData.stageDeadline) : null;
-      const currentStage = mappedData.currentStage || LoanStage.APPLICATION_SUBMITTED;
-      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(currentStage) : false;
-      
-      return { 
-        id: doc.id, 
-        ...mappedData,
-        isOverdue,
-      } as LoanRequest;
+    // Simulate isOverdue calculation as it was done before
+    const processedLoans = sessionMockLoanRequests.map(loan => {
+      const stageDeadline = loan.stageDeadline ? parseISO(loan.stageDeadline) : null;
+      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(loan.currentStage) : false;
+      return { ...loan, isOverdue };
     });
-    return { loans };
-  } catch (error) {
-    return createErrorResult("Failed to fetch loan requests.", error, 'getLoanRequests');
+    return { loans: processedLoans };
+  } catch (e: any) {
+    console.error("Error in mock getLoanRequests:", e);
+    return { error: e.message || "Failed to fetch mock loan requests." };
   }
 }
 
-interface GetLoanRequestByIdResult {
-  loan?: LoanRequest | null; // Allow null if not found but no error occurred
-  error?: string;
-}
-
-export async function getLoanRequestById(id: string): Promise<GetLoanRequestByIdResult> {
-  if (!db) {
-    return createErrorResult(`Firestore database is not initialized. Cannot fetch loan request by ID: ${id}.`, undefined, 'getLoanRequestById');
-  }
-   if (!id || typeof id !== 'string' || id.trim() === '') {
-    console.warn("[Service:getLoanRequestById] Called with invalid ID:", id);
-    return createErrorResult("Invalid or empty ID provided for fetching loan request.", undefined, 'getLoanRequestById');
-  }
+export async function getLoanRequestById(id: string): Promise<{ loan?: LoanRequest | null; error?: string }> {
+  await simulateDelay(100 + Math.random() * 150);
   try {
-    const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      const mappedData = mapTimestampsInDoc(data);
-      const stageDeadline = mappedData.stageDeadline ? new Date(mappedData.stageDeadline) : null;
-      const currentStage = mappedData.currentStage || LoanStage.APPLICATION_SUBMITTED;
-      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(currentStage) : false;
-      
-      return { 
-        loan: { 
-          id: docSnap.id, 
-          ...mappedData,
-          isOverdue,
-        } as LoanRequest 
-      };
-    } else {
-      console.log(`[Service:getLoanRequestById] No such document for ID: ${id}`);
-      // Explicitly return error here as per previous logic, or decide if loan: null with no error is preferred
-      return { loan: null, error: `Loan request with ID "${id}" not found.` }; 
+    const foundLoan = sessionMockLoanRequests.find(l => l.id === id) || null;
+    if (foundLoan) {
+      const stageDeadline = foundLoan.stageDeadline ? parseISO(foundLoan.stageDeadline) : null;
+      const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(foundLoan.currentStage) : false;
+      return { loan: { ...foundLoan, isOverdue } };
     }
-  } catch (error) {
-    return createErrorResult(`Failed to fetch loan request details for ID: ${id}.`, error, 'getLoanRequestById');
+    return { loan: null, error: `Mock loan with ID "${id}" not found.` };
+  } catch (e: any) {
+    console.error(`Error in mock getLoanRequestById for ID ${id}:`, e);
+    return { error: e.message || `Failed to fetch mock loan request for ID ${id}.`};
   }
 }
 
-interface UpdateLoanRequestResult {
-  success?: boolean;
-  error?: string;
-}
-
-export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<UpdateLoanRequestResult> {
-  if (!db) {
-    return createErrorResult(`Firestore database is not initialized. Cannot update loan request with ID: ${id}.`, undefined, 'updateLoanRequest');
-  }
-  if (!id || typeof id !== 'string' || id.trim() === '') {
-    console.warn("[Service:updateLoanRequest] Called with invalid ID:", id);
-    return createErrorResult("Invalid or empty ID provided for updating loan request.", undefined, 'updateLoanRequest');
-  }
+export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<{ success?: boolean; error?: string }> {
+  await simulateDelay(200 + Math.random() * 200);
   try {
-    const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
-    const updatePayload = {
-      ...dataToUpdate,
-      lastUpdatedDate: new Date(), 
-    };
-    console.log("[Service:updateLoanRequest] Data before preparing for Firestore:", JSON.stringify(updatePayload, null, 2));
-    const preparedUpdateData = prepareDataForFirestoreWrite(updatePayload);
-    console.log("[Service:updateLoanRequest] Data prepared for Firestore:", JSON.stringify(preparedUpdateData, null, 2));
-    
-    await updateDoc(docRef, preparedUpdateData);
-    return { success: true };
-  } catch (error) {
-     console.error("[Service:updateLoanRequest] Raw error during Firestore updateDoc:", error);
-    return createErrorResult(`Failed to update loan request with ID: ${id}.`, error, 'updateLoanRequest');
+    const loanIndex = sessionMockLoanRequests.findIndex(l => l.id === id);
+    if (loanIndex > -1) {
+      sessionMockLoanRequests[loanIndex] = {
+        ...sessionMockLoanRequests[loanIndex],
+        ...dataToUpdate,
+        lastUpdatedDate: formatISO(new Date()),
+      };
+      return { success: true };
+    }
+    return { error: `Mock loan with ID "${id}" not found for update.` };
+  } catch (e: any) {
+    console.error(`Error in mock updateLoanRequest for ID ${id}:`, e);
+    return { error: e.message || `Failed to update mock loan request for ID ${id}.`};
   }
 }

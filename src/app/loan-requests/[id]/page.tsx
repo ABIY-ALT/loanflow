@@ -41,8 +41,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service';
+import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; // Will use mock service
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
+
 
 const editLoanFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -119,35 +120,20 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const result = await getLoanRequestById(loanId);
+          const result = await getLoanRequestById(loanId); // Uses mock service
           if (result.error) {
-            console.error("Error from getLoanRequestById service in LoanDetailPage:", result.error, result);
+            console.error("Error from getLoanRequestById service (mock):", result.error);
             setError(result.error);
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
           } else {
-            // This case means loan is null but no specific error from service (e.g. not found without error flag)
-            const notFoundError = `Loan request with ID "${loanId}" not found.`;
-            console.error("LoanDetailPage fetch notice:", notFoundError);
-            setError(notFoundError);
+            setError(`Loan request with ID "${loanId}" not found (mock).`);
             setLoan(null);
           }
-        } catch (err: any) { // Catch errors from the fetchLoan async function itself
-          console.error("Detailed error fetching loan details in component:", err);
-          let displayError = "An unexpected error occurred while fetching loan data.";
-           if (err instanceof Error) {
-              displayError = `Error: ${err.name} - ${err.message}.`;
-              if (err.cause) {
-                 displayError += ` Cause: ${String(err.cause)}`;
-              }
-              if ('code' in err && typeof err.code === 'string') {
-                  displayError += ` (Code: ${err.code})`;
-              }
-          } else if (typeof err === 'string') {
-              displayError = err;
-          }
-          setError(displayError);
+        } catch (err: any) {
+          console.error("Error fetching loan details (mock):", err);
+          setError(err.message || "An unexpected error occurred while fetching loan data.");
         } finally {
           setIsLoading(false);
         }
@@ -170,49 +156,38 @@ export default function LoanDetailPage() {
     }
   }, [loan, isEditLoanDialogOpen, form]);
   
-  const handleDatabaseUpdate = async (
+  const handleMockUpdate = async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string
   ) => {
     if (!loan) return;
     setIsSaving(true);
 
-    const currentLoanState = loan; 
+    const currentLoanState = { ...loan }; // Keep a copy for potential revert
     const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
-    setLoan(newLoanState); // Optimistic update
+    setLoan(newLoanState); // Optimistic update for UI
 
     try {
-      const result = await updateLoanRequest(loan.id, updatedFields);
+      const result = await updateLoanRequest(loan.id, updatedFields); // Call mock service
       if (result.error) {
-        console.error("Failed to update loan:", result.error, result);
-        setLoan(currentLoanState); // Revert optimistic update
+        setLoan(currentLoanState); // Revert optimistic update on error
         toast({
-          title: "Update Error",
+          title: "Mock Update Error",
           description: result.error,
           variant: "destructive",
         });
       } else if (result.success) {
         toast({
-          title: "Update Successful",
+          title: "Mock Update Successful",
           description: successMessage,
           variant: "default",
         });
-         // Optionally re-fetch loan to ensure data consistency if optimistic update is not perfect
-         // const freshLoanData = await getLoanRequestById(loan.id);
-         // if (freshLoanData.loan) setLoan(freshLoanData.loan);
       }
-    } catch (err: any) { // Catch errors from the handleDatabaseUpdate async function itself
-      console.error("Critical error during database update:", err);
+    } catch (err: any) {
       setLoan(currentLoanState); // Revert optimistic update
-      let displayError = "A critical system error occurred during the update.";
-      if (err instanceof Error) {
-          displayError = `Error: ${err.name} - ${err.message}.`;
-      } else if (typeof err === 'string') {
-          displayError = err;
-      }
       toast({
-        title: "System Update Error",
-        description: displayError,
+        title: "Mock System Error",
+        description: err.message || "A critical error occurred during mock update.",
         variant: "destructive",
       });
     } finally {
@@ -229,11 +204,11 @@ export default function LoanDetailPage() {
     if (!loan) return;
 
     const newHistoryEntry: LoanHistoryEntry = {
-        id: `hist-${Date.now()}`,
+        id: `hist-mock-${Date.now()}`,
         stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         timestamp: formatISO(new Date()),
-        userId: 'current-user-id', 
-        userName: 'Bank User',
+        userId: 'mock-user-id', 
+        userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
         notes: `Requested additional info: ${additionalInfo}`
     };
@@ -243,7 +218,7 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
     
-    await handleDatabaseUpdate(updatedFields, "Information request saved and persisted.");
+    await handleMockUpdate(updatedFields, "Information request simulated.");
     
     setAdditionalInfo('');
     setIsAddInfoDialogOpen(false);
@@ -254,23 +229,23 @@ export default function LoanDetailPage() {
 
     const updatedHistory = loan.history.map(h =>
         h.id === entryId
-            ? { ...h, notes: `${h.notes || ''}\n[FULFILLED] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
+            ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` }
             : h
     );
     updatedHistory.push({
-        id: `hist-${Date.now()}`,
+        id: `hist-mock-${Date.now()}`,
         stage: loan.currentStage, 
         timestamp: formatISO(new Date()),
-        userId: 'current-user-id', 
-        userName: 'Bank User', 
-        notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
+        userId: 'mock-user-id', 
+        userName: 'Mock Bank User', 
+        notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation (mock).`
     });
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         history: updatedHistory,
     };
     
-    await handleDatabaseUpdate(updatedFields, "Information fulfillment status saved and persisted.");
+    await handleMockUpdate(updatedFields, "Information fulfillment status simulated.");
   };
 
 
@@ -280,20 +255,20 @@ export default function LoanDetailPage() {
         const hasOpenInfoRequest = loan.history.some(
           h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED &&
                h.requiredFulfilment &&
-               (!h.notes || !h.notes.includes("[FULFILLED]")) 
+               (!h.notes || !h.notes.includes("[FULFILLED MOCK]")) 
         );
         if (hasOpenInfoRequest) {
-            toast({title: "Action Pending", description: "Cannot approve. Outstanding information request that has not been marked as fulfilled.", variant: "destructive"});
+            toast({title: "Action Pending", description: "Cannot approve (mock). Outstanding information request.", variant: "destructive"});
             return;
         }
     }
     const newHistoryEntry: LoanHistoryEntry = {
-        id: `hist-${Date.now()}`,
+        id: `hist-mock-${Date.now()}`,
         stage: nextStage,
         timestamp: formatISO(new Date()),
-        userId: 'current-user-id',
-        userName: 'Bank User',
-        notes: `Moved to stage: ${nextStage}`
+        userId: 'mock-user-id',
+        userName: 'Mock Bank User',
+        notes: `Moved to stage: ${nextStage} (mock)`
     };
     
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
@@ -301,7 +276,7 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
 
-    await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage} and persisted.`);
+    await handleMockUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
   };
 
   const handleUploadDocument = async (docName: string) => {
@@ -312,12 +287,12 @@ export default function LoanDetailPage() {
     let updatedDocuments: LoanDocument[];
     if (existingDocIndex > -1) {
         updatedDocuments = loan.documents.map((doc, index) =>
-            index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded by user.' } : doc
+            index === existingDocIndex ? { ...doc, status: 'Submitted', notes: 'File re-uploaded (mock).' } : doc
         );
     } else {
         updatedDocuments = [
             ...loan.documents,
-            { id: `doc-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded by user.' }
+            { id: `doc-mock-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded (mock).' }
         ];
     }
     
@@ -325,7 +300,7 @@ export default function LoanDetailPage() {
         documents: updatedDocuments,
     };
 
-    await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' and persisted.`);
+    await handleMockUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' (mock).`);
     
     setIsUploadDocDialogOpen(false);
   };
@@ -333,14 +308,14 @@ export default function LoanDetailPage() {
   const handleVerifyDocument = async (docName: string) => {
     if (!loan) return;
     const updatedDocuments = loan.documents.map(doc =>
-        doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified by bank staff.' } : doc
+        doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified (mock).' } : doc
     );
     
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         documents: updatedDocuments,
     };
 
-    await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Verified' and persisted.`);
+    await handleMockUpdate(updatedFields, `Document ${docName} status updated to 'Verified' (mock).`);
   };
 
   async function onEditLoanSubmit(data: EditLoanFormValues) {
@@ -355,7 +330,7 @@ export default function LoanDetailPage() {
       loanPurpose: data.loanPurpose,
     };
     
-    await handleDatabaseUpdate(updatedFields, "Loan details updated and persisted.");
+    await handleMockUpdate(updatedFields, "Loan details updated (mock).");
     setIsEditLoanDialogOpen(false);
   }
 
@@ -374,9 +349,8 @@ export default function LoanDetailPage() {
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
         <p className="text-muted-foreground mb-6 break-words whitespace-pre-wrap">
-          {error || `The loan request with ID "${loanId}" could not be found.`}
+          {error || `The loan request with ID "${loanId}" could not be found (mock).`}
         </p>
-        <p className="text-sm text-muted-foreground mb-6">Please check your browser console for more details.</p>
         <Button onClick={() => router.push('/loan-process')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Loan Pipeline
         </Button>
@@ -395,7 +369,7 @@ export default function LoanDetailPage() {
   const activeInfoRequestEntry = loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
     .reverse()
-    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED]")))
+    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
   : undefined;
 
 
@@ -671,7 +645,7 @@ export default function LoanDetailPage() {
                       <DialogHeader>
                         <DialogTitle>Upload Document: {currentDocumentToUpload || "General Upload"}</DialogTitle>
                         <DialogDescription>
-                            {currentDocumentToUpload ? `Upload the file for "${currentDocumentToUpload}".` : "Select a file to upload."} (Note: Actual file upload not implemented)
+                            {currentDocumentToUpload ? `Upload the file for "${currentDocumentToUpload}".` : "Select a file to upload."} (Mock: Actual file upload not implemented)
                         </DialogDescription>
                       </DialogHeader>
                       <div className="py-4">

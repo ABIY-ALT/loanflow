@@ -11,14 +11,14 @@ import { PlusCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert'; // Aliased to avoid conflict
+import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 
 interface LoanCardProps {
   loan: LoanRequest;
@@ -108,33 +108,19 @@ export default function LoanProcessPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
+        const result = await getLoanRequests(); // Fetches from mock service
         if (result.error) {
-          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error, result);
+          console.error("Error from getLoanRequests service (mock) in LoanProcessPage:", result.error);
           setError(result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
         } else {
-          const noDataError = "No loans data received from service, and no explicit error provided.";
-          console.error("LoanProcessPage fetch notice:", noDataError);
-          setAllLoans([]); // Ensure allLoans is an empty array if no data
-          setError(noDataError);
+          setError("No loan data received from mock service.");
+          setAllLoans([]);
         }
-      } catch (err: any) { // Catch errors from the fetchLoans async function itself
-        console.error("Detailed error fetching loans in LoanProcessPage component:", err);
-        let displayError = "An unexpected error occurred fetching loans.";
-        if (err instanceof Error) {
-          displayError = `Error: ${err.name} - ${err.message}.`;
-          if (err.cause) {
-             displayError += ` Cause: ${String(err.cause)}`;
-          }
-          if ('code' in err && typeof err.code === 'string') {
-              displayError += ` (Code: ${err.code})`;
-          }
-        } else if (typeof err === 'string') {
-          displayError = err;
-        }
-        setError(displayError);
+      } catch (err: any) {
+        console.error("Error fetching loans (mock) in LoanProcessPage component:", err);
+        setError(err.message || "An unexpected error occurred fetching loans.");
       } finally {
         setIsLoading(false);
       }
@@ -160,7 +146,7 @@ export default function LoanProcessPage() {
         <AlertTriangle className="h-5 w-5" />
         <AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
         <AlertDescShadCN className="whitespace-pre-wrap">
-          {error} Please check your browser console for more details, or try refreshing the page.
+          {error} Please try refreshing the page.
         </AlertDescShadCN>
       </Alert>
     );

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
@@ -29,10 +29,10 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
+        const result = await getLoanRequests(); // Fetches from mock service
 
         if (result.error) {
-          console.error("Error from getLoanRequests service in Dashboard:", result.error, result); // Log full result for context
+          console.error("Error from getLoanRequests service in Dashboard:", result.error);
           setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
@@ -44,35 +44,22 @@ export default function DashboardPage() {
           const newApplications = loans.filter(
             loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
           ).length;
-
+          
+          // isOverdue is now calculated in the mock service if needed, or can be done here
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
           setStats({
             activeLoansCount: activeLoans,
             newApplicationsCount: newApplications,
-            approvalRate: "78.5%", // Still a placeholder
+            approvalRate: "78.5%", // Placeholder
             overdueTasksCount: overdueTasks,
           });
         } else {
-          const noDataError = "No loans data received from service for dashboard, and no explicit error provided.";
-          console.error("Dashboard fetch notice:", noDataError);
-          setError(noDataError);
+          setError("No loan data received from mock service.");
         }
-      } catch (err: any) { // Catch errors from the fetchDashboardData async function itself
-        console.error("Detailed error fetching dashboard data in component:", err);
-        let displayError = "An unexpected error occurred fetching dashboard data.";
-         if (err instanceof Error) {
-            displayError = `Error: ${err.name} - ${err.message}.`;
-            if (err.cause) {
-               displayError += ` Cause: ${String(err.cause)}`;
-            }
-            if ('code' in err && typeof err.code === 'string') {
-                displayError += ` (Code: ${err.code})`;
-            }
-        } else if (typeof err === 'string') {
-            displayError = err;
-        }
-        setError(displayError);
+      } catch (err: any) {
+        console.error("Error fetching dashboard data (mock):", err);
+        setError(err.message || "An unexpected error occurred fetching dashboard data.");
       } finally {
         setIsLoading(false);
       }
@@ -90,7 +77,7 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" /* Show error only on one card to avoid repetition for brevity */ ? (
+          ) : error && title === "Active Loans" ? (
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -135,7 +122,7 @@ export default function DashboardPage() {
               Could not load dashboard statistics. Details: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please check your browser console for more specific Firebase errors or network issues, and ensure your Firebase setup (API keys, Firestore enabled, security rules) is correct.
+                Please try refreshing the page. If the issue persists, contact support.
             </p>
           </CardContent>
         </Card>
@@ -247,7 +234,6 @@ export default function DashboardPage() {
             </Link>
         </CardContent>
       </Card>
-
     </div>
   );
 }

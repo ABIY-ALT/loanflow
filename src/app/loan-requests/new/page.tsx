@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User, Mail, Phone, Type, Info, Loader2 } from 'lucide-react';
 import React, { useState } from 'react';
-import { addLoanRequest } from '@/services/loan-service';
+import { addLoanRequest } from '@/services/loan-service'; // Will use mock service
 import type { LoanRequest } from '@/types/loan';
 
 const loanRequestFormSchema = z.object({
@@ -76,55 +76,34 @@ export default function NewLoanRequestPage() {
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
       };
-
-      console.log("[NewLoanRequestPage] Calling addLoanRequest with:", loanDataForService);
-      const result = await addLoanRequest(loanDataForService);
-      console.log("[NewLoanRequestPage] Result from addLoanRequest:", result);
+      
+      const result = await addLoanRequest(loanDataForService); // Calls mock service
 
       if (result.error) {
-        console.error("Full error result from addLoanRequest service on client:", result);
         toast({
           title: "Submission Error",
-          description: `Failed to save loan request: ${result.error}`,
+          description: `Failed to save loan request (mock): ${result.error}`,
           variant: "destructive",
         });
       } else if (result.id) {
         toast({
-          title: "Loan Request Submitted",
-          description: `Request for ${data.customerName} for $${data.loanAmount} has been saved with ID: ${result.id}.`,
+          title: "Loan Request Submitted (Mock)",
+          description: `Request for ${data.customerName} has been simulated with ID: ${result.id}.`,
         });
         form.reset();
         router.push('/loan-process');
       } else {
-         console.error("Unexpected result from addLoanRequest (no ID and no error):", result);
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred: No ID returned and no error specified. Please check server and client console logs for details.",
+          description: "An unexpected issue occurred with mock submission.",
           variant: "destructive",
         });
       }
     } catch (error: any) { 
-      console.error("Client-side error during loan request submission (outer catch):", error);
-      console.error("Error name:", error?.name);
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
-      console.error("Full error object (client):", error);
-
-      let displayError = "A critical client-side error occurred. Please try again.";
-       if (error instanceof Error) { // This will likely be true if the server action crashes.
-          displayError = `Client Error: ${error.name} - ${error.message || 'No specific message received from server.'}. This often indicates a server-side problem. Please check server terminal logs for detailed errors.`;
-      } else if (typeof error === 'string') {
-          displayError = error;
-      } else {
-        try {
-          displayError = `Unexpected client error: ${JSON.stringify(error)}. Check server terminal logs.`;
-        } catch {
-          displayError = "Unexpected and unstringifyable client error occurred. Check server terminal logs.";
-        }
-      }
+      console.error("Client-side error during mock loan request submission:", error);
       toast({
         title: "Submission System Error",
-        description: displayError,
+        description: "A client-side error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {

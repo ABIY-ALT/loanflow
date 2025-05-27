@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
 import type { LoanRequest } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
@@ -24,33 +24,19 @@ export default function OverdueTasksPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
+        const result = await getLoanRequests(); // Uses mock service
         if (result.error) {
-          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
+          console.error("Error from getLoanRequests service (mock) in OverdueTasksPage:", result.error);
           setError(result.error);
         } else if (result.loans) {
           setOverdueLoans(result.loans.filter(loan => loan.isOverdue));
         } else {
-           const noDataError = "No loans data received from service for overdue tasks, and no explicit error provided.";
-           console.error("OverdueTasksPage fetch notice:", noDataError);
+           setError("No loan data received from mock service for overdue tasks.");
            setOverdueLoans([]);
-           setError(noDataError);
         }
-      } catch (err: any) { // Catch errors from the fetchOverdueLoans async function itself
-        console.error("Detailed error fetching overdue loans in component:", err);
-        let displayError = "An unknown error occurred fetching overdue tasks.";
-        if (err instanceof Error) {
-            displayError = `Error: ${err.name} - ${err.message}.`;
-            if (err.cause) {
-               displayError += ` Cause: ${String(err.cause)}`;
-            }
-            if ('code' in err && typeof err.code === 'string') {
-                displayError += ` (Code: ${err.code})`;
-            }
-        } else if (typeof err === 'string') {
-            displayError = err;
-        }
-        setError(displayError);
+      } catch (err: any) {
+        console.error("Error fetching overdue loans (mock) in component:", err);
+        setError(err.message || "An unknown error occurred fetching overdue tasks.");
       } finally {
         setIsLoading(false);
       }
@@ -89,7 +75,7 @@ export default function OverdueTasksPage() {
             <AlertTriangle className="h-5 w-5" />
             <AlertTitleShadCN>Error Fetching Overdue Tasks</AlertTitleShadCN>
             <AlertDescShadCN className="whitespace-pre-wrap">
-            {error} Please check your browser console for more details, or try refreshing the page.
+            {error} Please try refreshing the page.
             </AlertDescShadCN>
         </Alert>
       </div>
