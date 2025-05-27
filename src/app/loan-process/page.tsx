@@ -34,6 +34,8 @@ import { useToast } from '@/hooks/use-toast';
 import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
 import { mockUsers } from '@/lib/mock-data';
 
+const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
+
 interface LoanCardProps {
   loan: LoanRequest;
   onPromoteClick: (loan: LoanRequest) => void;
@@ -131,7 +133,7 @@ export default function LoanProcessPage() {
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForPromotion, setSelectedLoanForPromotion] = useState<LoanRequest | null>(null);
   const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
-  const [selectedAssignee, setSelectedAssignee] = useState<string | ''>('');
+  const [selectedAssignee, setSelectedAssignee] = useState<string>(''); // Can be user ID or UNASSIGNED_DIALOG_OPTION_VALUE
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
   useEffect(() => {
@@ -162,7 +164,7 @@ export default function LoanProcessPage() {
   const handlePromoteClick = (loan: LoanRequest) => {
     setSelectedLoanForPromotion(loan);
     setSelectedNextStage(''); // Reset next stage
-    setSelectedAssignee(loan.assignedTo || ''); // Pre-fill current assignee or default
+    setSelectedAssignee(loan.assignedTo || ''); // Pre-fill current assignee or empty string for placeholder
     setIsPromoteDialogOpen(true);
   };
 
@@ -202,7 +204,7 @@ export default function LoanProcessPage() {
           suggestedAssigneeId = defaultRMs[0].id;
         }
       }
-      setSelectedAssignee(suggestedAssigneeId);
+      setSelectedAssignee(suggestedAssigneeId); // If suggestedAssigneeId is '', Select shows placeholder
     }
   }, [selectedNextStage, selectedLoanForPromotion, users]);
 
@@ -247,18 +249,27 @@ export default function LoanProcessPage() {
 
 
     setIsSavingPromotion(true);
+    const finalAssignedTo = selectedAssignee === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssignee;
+    const currentAssigneeName = users.find(u => u.id === selectedLoanForPromotion.assignedTo)?.name || 'Unassigned';
+    const newAssigneeName = finalAssignedTo ? (users.find(u => u.id === finalAssignedTo)?.name || 'Unknown') : 'Unassigned';
+
+    let notes = `Promoted to ${selectedNextStage}.`;
+    if (finalAssignedTo !== selectedLoanForPromotion.assignedTo) {
+        notes += ` Assignment changed from ${currentAssigneeName} to ${newAssigneeName}.`;
+    }
+    
     const newHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
       stage: selectedNextStage,
       timestamp: formatISO(new Date()),
       userId: 'mock-user-pipeline-promo', // Placeholder user
       userName: 'Pipeline User',
-      notes: `Promoted to ${selectedNextStage}. ${selectedAssignee && selectedAssignee !== selectedLoanForPromotion.assignedTo ? `Assigned to ${users.find(u=>u.id === selectedAssignee)?.name || 'Unknown'}.` : (selectedAssignee && !selectedLoanForPromotion.assignedTo) ? `Assigned to ${users.find(u=>u.id === selectedAssignee)?.name || 'Unknown'}.` : ''}`
+      notes: notes
     };
 
     const updatedFields = {
       currentStage: selectedNextStage,
-      assignedTo: selectedAssignee || undefined, // Keep undefined if empty string
+      assignedTo: finalAssignedTo,
       history: [...selectedLoanForPromotion.history, newHistoryEntry],
       // Update stageDeadline based on new stage's config (optional, advanced)
     };
@@ -363,14 +374,14 @@ export default function LoanProcessPage() {
               <div>
                 <Label htmlFor="assignee">Assign To</Label>
                 <Select 
-                  value={selectedAssignee} 
+                  value={selectedAssignee} // Can be user ID or '' if placeholder should show
                   onValueChange={setSelectedAssignee}
                 >
                   <SelectTrigger id="assignee" className="mt-1">
                     <SelectValue placeholder="Select assignee" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
+                    <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned</SelectItem>
                     {users.map(user => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name} ({user.role})
