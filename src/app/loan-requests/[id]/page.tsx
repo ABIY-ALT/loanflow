@@ -12,8 +12,8 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
-import { mockUsers } from '@/lib/mock-data'; // Import mockUsers
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; // Import settings config
+import { mockUsers } from '@/lib/mock-data'; 
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; 
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -54,7 +54,7 @@ const editLoanFormSchema = z.object({
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   loanType: z.string().min(2, { message: 'Loan type is required.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
-  assignedTo: z.string().optional(), // For assigning to a relationship manager
+  assignedTo: z.string().optional(), 
 });
 
 type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
@@ -102,7 +102,7 @@ export default function LoanDetailPage() {
   const loanId = params.id as string;
 
   const [loan, setLoan] = React.useState<LoanRequest | null>(null);
-  const [users, setUsers] = React.useState<UserType[]>(mockUsers); // Directly use mockUsers for now
+  const [users, setUsers] = React.useState<UserType[]>(mockUsers); 
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
 
@@ -126,6 +126,10 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
+          // Fetch users first or ensure they are available if needed for assignment logic on load
+          // For now, mockUsers is directly used, but a real app might fetch.
+          setUsers(mockUsers);
+
           const result = await getLoanRequestById(loanId); 
           if (result.error) {
             console.error("Error from getLoanRequestById service (mock):", result.error);
@@ -133,9 +137,7 @@ export default function LoanDetailPage() {
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
-            if (result.users) { // Users are now returned by mock service
-              setUsers(result.users);
-            }
+            // No need to set users from result here, as mockUsers is used directly
           } else {
             setError(`Loan request with ID "${loanId}" not found (mock).`);
             setLoan(null);
@@ -174,23 +176,33 @@ export default function LoanDetailPage() {
     setIsSaving(true);
 
     const currentLoanState = { ...loan };
-    const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
+    // Create a new loan state by merging current state with updated fields
+    // The 'lastUpdatedDate' is now handled by the mock service
+    const newLoanStateBasis = { ...loan, ...updatedFields };
     
     try {
       const result = await updateLoanRequest(loan.id, updatedFields); 
       if (result.error) {
-        setLoan(currentLoanState); 
+        setLoan(currentLoanState); // Revert to previous state on error
         toast({
           title: "Mock Update Error",
           description: result.error,
           variant: "destructive",
         });
-      } else if (result.success) {
-        setLoan(newLoanState); // Update local state only on successful mock update
+      } else if (result.success && result.updatedLoan) {
+        // Use the updatedLoan from the service as it includes the new lastUpdatedDate
+        setLoan(result.updatedLoan); 
         toast({
           title: "Mock Update Successful",
           description: successMessage,
           variant: "default",
+        });
+      } else {
+         setLoan(currentLoanState); // Revert if no updated loan returned
+         toast({
+          title: "Mock Update Issue",
+          description: "Update seemed to succeed but no updated data returned.",
+          variant: "destructive",
         });
       }
     } catch (err: any) {
@@ -217,7 +229,7 @@ export default function LoanDetailPage() {
         id: `hist-mock-${Date.now()}`,
         stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id', // Placeholder user
+        userId: 'mock-user-id', 
         userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
         notes: `Requested additional info: ${additionalInfo}`
@@ -244,7 +256,7 @@ export default function LoanDetailPage() {
     );
     updatedHistory.push({
         id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage,
+        stage: loan.currentStage, // Stays in current stage
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
@@ -293,6 +305,7 @@ export default function LoanDetailPage() {
   const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
     if (!loan) return;
 
+    // Validation 1: Check for unfulfilled "Additional Info Required"
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
       if (activeInfoRequestEntry) {
         toast({
@@ -305,12 +318,13 @@ export default function LoanDetailPage() {
       }
     }
 
-    const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
+    // Validation 2: Check for unverified required documents for the *current* stage
+    const currentStageConfigFromSettings: StageConfig | undefined = initialStageConfigs.find(
       (config) => config.loanStageEnum === loan.currentStage
     );
 
-    if (currentStageConfig && currentStageConfig.requiredDocuments.length > 0) {
-      const pendingDocuments = currentStageConfig.requiredDocuments.filter(reqDoc => {
+    if (currentStageConfigFromSettings && currentStageConfigFromSettings.requiredDocuments.length > 0) {
+      const pendingDocuments = currentStageConfigFromSettings.requiredDocuments.filter(reqDoc => {
         const uploadedDoc = loan.documents.find(d => d.name === reqDoc.name);
         return !uploadedDoc || uploadedDoc.status !== 'Verified';
       });
@@ -326,18 +340,36 @@ export default function LoanDetailPage() {
       }
     }
 
+    // Determine new assignee based on next stage's target role
+    let newAssignedTo = loan.assignedTo; // Keep current assignee by default
+    const nextStageConfig: StageConfig | undefined = initialStageConfigs.find(
+        (config) => config.loanStageEnum === nextStage
+    );
+
+    if (nextStageConfig && nextStageConfig.targetRoleForStage) {
+        const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
+        if (potentialAssignees.length > 0) {
+            newAssignedTo = potentialAssignees[0].id; // Assign to the first user found with that role (mock logic)
+            console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}. Assigning to ${newAssignedTo} (${potentialAssignees[0].name}).`);
+        } else {
+            console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}, but no users found with this role. Keeping current assignee.`);
+        }
+    }
+
+
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: nextStage,
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
-        notes: `Moved to stage: ${nextStage} (mock)`
+        notes: `Moved to stage: ${nextStage} (mock). ${newAssignedTo !== loan.assignedTo ? `Assigned to ${users.find(u=>u.id === newAssignedTo)?.name || 'Unknown'}.` : ''}`
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         currentStage: nextStage,
         history: [...loan.history, newHistoryEntry],
+        assignedTo: newAssignedTo, // Update the assignee
     };
 
     await handleMockUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
@@ -541,21 +573,21 @@ export default function LoanDetailPage() {
                       name="assignedTo"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Assign to Relationship Manager</FormLabel>
+                          <FormLabel>Assign to User</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSaving}>
                             <FormControl>
                                <div className="relative">
                                 <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <SelectTrigger className="pl-10">
-                                    <SelectValue placeholder="Select a manager" />
+                                    <SelectValue placeholder="Select a user" />
                                 </SelectTrigger>
                                </div>
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="">Unassigned</SelectItem>
-                              {relationshipManagers.map(manager => (
-                                <SelectItem key={manager.id} value={manager.id}>
-                                  {manager.name} ({manager.role})
+                              {users.map(user => ( // Changed from relationshipManagers to all users
+                                <SelectItem key={user.id} value={user.id}>
+                                  {user.name} ({user.role})
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -734,9 +766,9 @@ export default function LoanDetailPage() {
             <InfoItem icon={<User />} label="Customer Email" value={loan.customerEmail} />
             <InfoItem icon={<Phone />} label="Customer Phone" value={loan.customerPhone} />
             {assignedManager ? (
-              <InfoItem icon={<Landmark />} label="Assigned RM" value={`${assignedManager.name} (${assignedManager.role})`} />
+              <InfoItem icon={<Landmark />} label="Currently Assigned To" value={`${assignedManager.name} (${assignedManager.role})`} />
             ) : (
-              <InfoItem icon={<Landmark />} label="Assigned RM" value="N/A" />
+              <InfoItem icon={<Landmark />} label="Currently Assigned To" value="N/A" />
             )}
           </div>
 
@@ -856,7 +888,7 @@ export default function LoanDetailPage() {
         </CardContent>
          <CardFooter className="p-6 border-t">
             <p className="text-xs text-muted-foreground">
-                Last Updated: {format(parseISO(loan.lastUpdatedDate), 'PPpp')}
+                Last Updated: {loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'PPpp') : 'N/A'}
             </p>
         </CardFooter>
       </Card>
@@ -912,3 +944,5 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
+
+    

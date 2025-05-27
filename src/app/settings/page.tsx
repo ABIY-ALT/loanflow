@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users } from 'lucide-react';
 import React, { useState } from 'react';
 import {
   Accordion,
@@ -33,31 +33,31 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { LoanStage } from '@/types/loan'; // Changed from "import type"
+import { LoanStage, UserRole } from '@/types/loan';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface RequiredDocumentConfig {
   id: string;
   name: string;
 }
 
-// Renamed from WorkflowStage to StageConfig to avoid confusion with LoanStage enum
 export interface StageConfig {
-  id: string; // Should correspond to keys that can map to LoanStage enum values e.g. 'application_submitted'
-  name: string; // User-friendly name, e.g., "Application Submitted"
-  loanStageEnum: LoanStage; // Store the corresponding enum value
+  id: string; 
+  name: string; 
+  loanStageEnum: LoanStage; 
   defaultTimelineDays: number;
   requiredDocuments: RequiredDocumentConfig[];
+  targetRoleForStage?: UserRole; // Optional: Role to assign to when entering this stage
 }
 
-// This is exported so loan detail page can "access" it for prototype
 export const initialStageConfigs: StageConfig[] = [
-  { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}] },
-  { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}] },
-  { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [] },
-  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [] },
-  { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}] },
+  { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
+  { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
+  { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [], targetRoleForStage: UserRole.UNDERWRITER },
+  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [] }, // Often RM handles this
+  { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
   { id: 'rejected', name: 'Rejected', loanStageEnum: LoanStage.REJECTED, defaultTimelineDays: 1, requiredDocuments: [] },
-  { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [] },
+  { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [], targetRoleForStage: UserRole.STAFF },
 ];
 
 
@@ -116,40 +116,67 @@ const DraggableAccordionItem = ({
         className="hover:no-underline w-full data-[state=open]:border-b"
       >
         <div className="flex items-center justify-between w-full pr-4 py-2">
-          <div className="flex items-center" {...attributes} {...listeners} > {/* Moved dnd listeners here */}
+          <div className="flex items-center" {...attributes} {...listeners} >
             <GripVertical className="h-5 w-5 text-muted-foreground mr-3 cursor-grab" />
             <span>{stageConfig.name}</span>
           </div>
-          <span className="text-sm text-muted-foreground">
-            {stageConfig.defaultTimelineDays} days, {stageConfig.requiredDocuments.length} doc(s)
-          </span>
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
+            {stageConfig.targetRoleForStage && <Users className="h-4 w-4"/>}
+            {stageConfig.targetRoleForStage || 'Any Role'}
+            <span className="mx-1">|</span>
+            <Clock className="h-4 w-4"/> 
+            {stageConfig.defaultTimelineDays} days
+             <span className="mx-1">|</span>
+            <FileText className="h-4 w-4"/> 
+            {stageConfig.requiredDocuments.length} doc(s)
+          </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
-        <div>
-          <Label htmlFor={`stage-name-${stageConfig.id}`}>Stage Name</Label>
-          <Input
-            id={`stage-name-${stageConfig.id}`}
-            value={stageConfig.name}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onChange={(e) => handleStageConfigChange(stageConfig.id, 'name', e.target.value)}
-            className="mt-1"
-          />
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor={`stage-name-${stageConfig.id}`}>Stage Name</Label>
+            <Input
+              id={`stage-name-${stageConfig.id}`}
+              value={stageConfig.name}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => handleStageConfigChange(stageConfig.id, 'name', e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor={`stage-timeline-${stageConfig.id}`}>Default Timeline (days)</Label>
+            <Input
+              id={`stage-timeline-${stageConfig.id}`}
+              type="number"
+              value={stageConfig.defaultTimelineDays}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => handleStageConfigChange(stageConfig.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)}
+              className="mt-1"
+              min="1"
+            />
+          </div>
         </div>
-        <div>
-          <Label htmlFor={`stage-timeline-${stageConfig.id}`}>Default Timeline (days)</Label>
-          <Input
-            id={`stage-timeline-${stageConfig.id}`}
-            type="number"
-            value={stageConfig.defaultTimelineDays}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onChange={(e) => handleStageConfigChange(stageConfig.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)}
-            className="mt-1"
-            min="1"
-          />
-        </div>
+         <div>
+            <Label htmlFor={`target-role-${stageConfig.id}`}>Target Role for this Stage</Label>
+            <Select
+              value={stageConfig.targetRoleForStage || ""}
+              onValueChange={(value) => handleStageConfigChange(stageConfig.id, 'targetRoleForStage', value || undefined)}
+            >
+              <SelectTrigger id={`target-role-${stageConfig.id}`} className="mt-1">
+                <SelectValue placeholder="Select a target role (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">No specific role / Keep current</SelectItem>
+                {Object.values(UserRole).map(role => (
+                  <SelectItem key={role} value={role}>{role}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">If set, loans entering this stage will try to assign to a user with this role.</p>
+          </div>
         
         <Separator />
         <div>
@@ -204,11 +231,11 @@ const DraggableAccordionItem = ({
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const [stageConfigs, setStageConfigs] = useState<StageConfig[]>(initialStageConfigs); // Renamed from stages
+  const [stageConfigs, setStageConfigs] = useState<StageConfig[]>(initialStageConfigs); 
   const [newStageName, setNewStageName] = useState('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
-  // Find a default LoanStage enum value for new stages, e.g. APPLICATION_SUBMITTED or allow selection
   const [newStageEnum, setNewStageEnum] = useState<LoanStage>(LoanStage.APPLICATION_SUBMITTED);
+  const [newStageTargetRole, setNewStageTargetRole] = useState<UserRole | undefined>(undefined);
 
 
   const [enableNotifications, setEnableNotifications] = useState(true);
@@ -238,21 +265,26 @@ export default function SettingsPage() {
       toast({ title: "Error", description: "Stage name cannot be empty.", variant: "destructive" });
       return;
     }
-    // Ensure new stage ID is unique, simple example, might need more robust unique ID generation
     const newId = `custom-stage-${Date.now().toString()}`;
+    // For a truly new stage, it might not map directly to an existing LoanStage enum if it's custom.
+    // However, our system currently uses LoanStage enum for stage identification.
+    // This example adds it as if it's a new configurable step that still internally might map to a generic enum or needs careful handling.
+    // For simplicity, we'll use a provided LoanStage enum; a real app might need a "Custom" type.
     setStageConfigs([
       ...stageConfigs,
       { 
         id: newId, 
         name: newStageName, 
-        loanStageEnum: newStageEnum, // Default or selected enum
+        loanStageEnum: newStageEnum, 
         defaultTimelineDays: newStageTimeline, 
-        requiredDocuments: [] 
+        requiredDocuments: [],
+        targetRoleForStage: newStageTargetRole,
       }
     ]);
     setNewStageName('');
     setNewStageTimeline(3);
-    // Reset newStageEnum if you add a selector for it
+    setNewStageTargetRole(undefined);
+    // setNewStageEnum(LoanStage.APPLICATION_SUBMITTED); // Reset if adding enum selector
     toast({ title: "Success", description: "New workflow stage added." });
   };
 
@@ -303,9 +335,11 @@ export default function SettingsPage() {
   const handleSaveChanges = () => {
     // In a real app, send stageConfigs to the backend
     console.log("Settings saved:", { stageConfigs, enableNotifications, overdueThreshold });
+    // For now, we can update a global mock or localStorage if we want persistence in prototype
+    // For this example, it just logs. If using this for loan detail page, ensure it can access updated configs.
     toast({
-      title: "Settings Saved",
-      description: "Your workflow and notification settings have been updated.",
+      title: "Settings Saved (Mock)",
+      description: "Your workflow and notification settings have been updated in local state.",
       action: <Check className="h-5 w-5 text-green-500" />,
     });
   };
@@ -327,7 +361,7 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Workflow Configuration</CardTitle>
-            <CardDescription>Define and reorder stages, default timelines, and required documents. Drag to reorder stages.</CardDescription>
+            <CardDescription>Define and reorder stages, default timelines, required documents, and target roles. Drag to reorder stages.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <SortableContext
@@ -351,10 +385,10 @@ export default function SettingsPage() {
 
             <Separator />
             
-            <div className="space-y-2 p-4 border rounded-lg bg-muted/20">
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
               <h4 className="font-medium">Add New Stage</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                <div className="sm:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                <div>
                   <Label htmlFor="new-stage-name">Stage Name</Label>
                   <Input 
                     id="new-stage-name" 
@@ -364,22 +398,54 @@ export default function SettingsPage() {
                     className="mt-1" 
                   />
                 </div>
-                 {/* TODO: Add a select for LoanStage enum for newStageEnum */}
+                 <div>
+                  <Label htmlFor="new-stage-enum">Corresponds to (Loan Stage Type)</Label>
+                    <Select
+                        value={newStageEnum}
+                        onValueChange={(value) => setNewStageEnum(value as LoanStage)}
+                    >
+                        <SelectTrigger id="new-stage-enum" className="mt-1">
+                            <SelectValue placeholder="Select base stage type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {Object.values(LoanStage).map(stage => (
+                            <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
                 <div>
                   <Label htmlFor="new-stage-timeline">Timeline (days)</Label>
                   <Input 
                     id="new-stage-timeline" 
                     type="number" 
                     value={newStageTimeline} 
-                    onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10))} 
+                    onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10) || 1)} 
                     className="mt-1"
                     min="1"
                   />
                 </div>
-                <Button onClick={handleAddStageConfig} className="w-full sm:w-auto sm:col-span-3">
+                <div>
+                    <Label htmlFor="new-stage-target-role">Target Role for New Stage</Label>
+                    <Select
+                        value={newStageTargetRole || ""}
+                        onValueChange={(value) => setNewStageTargetRole(value as UserRole || undefined)}
+                    >
+                        <SelectTrigger id="new-stage-target-role" className="mt-1">
+                            <SelectValue placeholder="Select target role (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">No specific role</SelectItem>
+                            {Object.values(UserRole).map(role => (
+                            <SelectItem key={role} value={role}>{role}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                </div>
+                 <Button onClick={handleAddStageConfig} className="w-full sm:w-auto mt-4">
                   <PlusCircle className="mr-2 h-4 w-4" /> Add Stage
                 </Button>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -445,6 +511,5 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 
     
