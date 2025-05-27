@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
 import {
   Dialog,
   DialogContent,
@@ -35,7 +35,7 @@ import * as z from 'zod';
 import {
   Form,
   FormControl,
-  FormDescription as FormDesc, 
+  FormDescription as FormDesc,
   FormField,
   FormItem,
   FormLabel,
@@ -100,7 +100,7 @@ export default function LoanDetailPage() {
 
   const [loan, setLoan] = React.useState<LoanRequest | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isSaving, setIsSaving] = React.useState(false); 
+  const [isSaving, setIsSaving] = React.useState(false);
 
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
@@ -155,7 +155,7 @@ export default function LoanDetailPage() {
       });
     }
   }, [loan, isEditLoanDialogOpen, form]);
-  
+
   const handleMockUpdate = async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string
@@ -207,7 +207,7 @@ export default function LoanDetailPage() {
         id: `hist-mock-${Date.now()}`,
         stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id', 
+        userId: 'mock-user-id',
         userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
         notes: `Requested additional info: ${additionalInfo}`
@@ -217,9 +217,9 @@ export default function LoanDetailPage() {
         currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         history: [...loan.history, newHistoryEntry],
     };
-    
+
     await handleMockUpdate(updatedFields, "Information request simulated.");
-    
+
     setAdditionalInfo('');
     setIsAddInfoDialogOpen(false);
   };
@@ -234,34 +234,66 @@ export default function LoanDetailPage() {
     );
     updatedHistory.push({
         id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage, 
+        stage: loan.currentStage,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id', 
-        userName: 'Mock Bank User', 
+        userId: 'mock-user-id',
+        userName: 'Mock Bank User',
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation (mock).`
     });
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         history: updatedHistory,
     };
-    
+
     await handleMockUpdate(updatedFields, "Information fulfillment status simulated.");
   };
 
 
+  const activeInfoRequestEntry = loan?.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
+  ? [...loan.history]
+    .reverse()
+    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
+  : undefined;
+
   const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
     if (!loan) return;
-    if (nextStage === LoanStage.APPROVED && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-        const hasOpenInfoRequest = loan.history.some(
-          h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED &&
-               h.requiredFulfilment &&
-               (!h.notes || !h.notes.includes("[FULFILLED MOCK]")) 
-        );
-        if (hasOpenInfoRequest) {
-            toast({title: "Action Pending", description: "Cannot approve (mock). Outstanding information request.", variant: "destructive"});
-            return;
-        }
+
+    // 1. Check for unfulfilled "Additional Info Required" requests
+    if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
+      if (activeInfoRequestEntry) {
+        toast({
+          title: "Action Pending",
+          description: `Outstanding action: '${activeInfoRequestEntry.requiredFulfilment}' must be marked as received before advancing.`,
+          variant: "destructive",
+          duration: 5000,
+        });
+        return;
+      }
     }
+
+    // 2. Check for unverified required documents for the current stage
+    const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
+      (config) => config.loanStageEnum === loan.currentStage
+    );
+
+    if (currentStageConfig && currentStageConfig.requiredDocuments.length > 0) {
+      const pendingDocuments = currentStageConfig.requiredDocuments.filter(reqDoc => {
+        const uploadedDoc = loan.documents.find(d => d.name === reqDoc.name);
+        return !uploadedDoc || uploadedDoc.status !== 'Verified';
+      });
+
+      if (pendingDocuments.length > 0) {
+        toast({
+          title: "Documents Pending Verification",
+          description: `The following documents for stage '${loan.currentStage}' must be uploaded and verified: ${pendingDocuments.map(d => d.name).join(', ')}.`,
+          variant: "destructive",
+          duration: 7000,
+        });
+        return;
+      }
+    }
+
+    // If all checks pass, proceed with advancing
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: nextStage,
@@ -270,7 +302,7 @@ export default function LoanDetailPage() {
         userName: 'Mock Bank User',
         notes: `Moved to stage: ${nextStage} (mock)`
     };
-    
+
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         currentStage: nextStage,
         history: [...loan.history, newHistoryEntry],
@@ -281,7 +313,7 @@ export default function LoanDetailPage() {
 
   const handleUploadDocument = async (docName: string) => {
     if (!loan) return;
-    setCurrentDocumentToUpload(docName); 
+    setCurrentDocumentToUpload(docName);
 
     const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
     let updatedDocuments: LoanDocument[];
@@ -295,13 +327,13 @@ export default function LoanDetailPage() {
             { id: `doc-mock-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded (mock).' }
         ];
     }
-    
+
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         documents: updatedDocuments,
     };
 
     await handleMockUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' (mock).`);
-    
+
     setIsUploadDocDialogOpen(false);
   };
 
@@ -310,7 +342,7 @@ export default function LoanDetailPage() {
     const updatedDocuments = loan.documents.map(doc =>
         doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified (mock).' } : doc
     );
-    
+
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         documents: updatedDocuments,
     };
@@ -329,7 +361,7 @@ export default function LoanDetailPage() {
       loanType: data.loanType,
       loanPurpose: data.loanPurpose,
     };
-    
+
     await handleMockUpdate(updatedFields, "Loan details updated (mock).");
     setIsEditLoanDialogOpen(false);
   }
@@ -365,12 +397,6 @@ export default function LoanDetailPage() {
     (config) => config.loanStageEnum === loan.currentStage
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
-  
-  const activeInfoRequestEntry = loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
-  ? [...loan.history]
-    .reverse()
-    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
-  : undefined;
 
 
   return (
@@ -551,12 +577,28 @@ export default function LoanDetailPage() {
           {currentStageIndex < loanStages.length -1 &&
            loan.currentStage !== LoanStage.REJECTED &&
            loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
-           loan.currentStage !== LoanStage.APPROVED && (
+           loan.currentStage !== LoanStage.APPROVED && ( // Already handled if next is 'Approved'
             <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])} disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Advance to: {loanStages[currentStageIndex + 1]}
             </Button>
           )}
+           {/* Specific button for "Approve" if current stage allows it and isn't already a terminal stage */}
+           {loan.currentStage !== LoanStage.APPROVED && 
+            loan.currentStage !== LoanStage.REJECTED && 
+            loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
+            loanStages.includes(LoanStage.APPROVED) && 
+            currentStageIndex < loanStages.indexOf(LoanStage.APPROVED) && (
+              <Button 
+                variant="default" 
+                onClick={() => handleAdvanceWorkflow(LoanStage.APPROVED)} 
+                disabled={isSaving} 
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Approve Loan
+              </Button>
+           )}
         </div>
       </div>
 
@@ -761,7 +803,7 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
             onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!)}
             disabled={isSaving}
           >
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />} 
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
             Mark Information Received
           </Button>
         )}
@@ -769,3 +811,4 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
+
