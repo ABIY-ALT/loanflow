@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import type { LoanRequest } from '@/types/loan';
-import { loanStages, LoanStage } from '@/types/loan';
-import { PlusCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
+import type { LoanRequest, User } from '@/types/loan';
+import { loanStages, LoanStage, UserRole } from '@/types/loan';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequests, updateLoanRequest } from '@/services/loan-service'; // Will use mock service
 import {
   Tooltip,
   TooltipContent,
@@ -19,12 +19,28 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
+import { mockUsers } from '@/lib/mock-data';
 
 interface LoanCardProps {
   loan: LoanRequest;
+  onPromoteClick: (loan: LoanRequest) => void;
 }
 
-function LoanCard({ loan }: LoanCardProps) {
+function LoanCard({ loan, onPromoteClick }: LoanCardProps) {
+  const canPromote = ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage);
   return (
     <Card
       className="mb-3 shadow-md hover:shadow-lg transition-shadow"
@@ -65,6 +81,11 @@ function LoanCard({ loan }: LoanCardProps) {
             Action Needed: {loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED)?.requiredFulfilment}
           </Badge>
         )}
+         {canPromote && (
+          <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => onPromoteClick(loan)}>
+            <ArrowRight className="mr-2 h-4 w-4" /> Promote
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -73,9 +94,10 @@ function LoanCard({ loan }: LoanCardProps) {
 interface KanbanColumnProps {
   stage: LoanStage;
   loans: LoanRequest[];
+  onPromoteClick: (loan: LoanRequest) => void;
 }
 
-function KanbanColumn({ stage, loans }: KanbanColumnProps) {
+function KanbanColumn({ stage, loans, onPromoteClick }: KanbanColumnProps) {
   return (
     <div
       className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]"
@@ -91,7 +113,7 @@ function KanbanColumn({ stage, loans }: KanbanColumnProps) {
           </div>
         )}
         {loans.map((loan) => (
-          <LoanCard key={loan.id} loan={loan} />
+          <LoanCard key={loan.id} loan={loan} onPromoteClick={onPromoteClick} />
         ))}
       </ScrollArea>
     </div>
@@ -102,24 +124,33 @@ export default function LoanProcessPage() {
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [users, setUsers] = useState<User[]>(mockUsers); // Assuming mockUsers is fine for prototype
+
+  // Promotion Dialog State
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
+  const [selectedLoanForPromotion, setSelectedLoanForPromotion] = useState<LoanRequest | null>(null);
+  const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
+  const [selectedAssignee, setSelectedAssignee] = useState<string | ''>('');
+  const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
   useEffect(() => {
     async function fetchLoans() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // Fetches from mock service
+        const result = await getLoanRequests(); 
         if (result.error) {
-          console.error("Error from getLoanRequests service (mock) in LoanProcessPage:", result.error);
+          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error);
           setError(result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
         } else {
-          setError("No loan data received from mock service.");
+          setError("No loan data received.");
           setAllLoans([]);
         }
       } catch (err: any) {
-        console.error("Error fetching loans (mock) in LoanProcessPage component:", err);
+        console.error("Error fetching loans in LoanProcessPage component:", err);
         setError(err.message || "An unexpected error occurred fetching loans.");
       } finally {
         setIsLoading(false);
@@ -127,6 +158,127 @@ export default function LoanProcessPage() {
     }
     fetchLoans();
   }, []);
+  
+  const handlePromoteClick = (loan: LoanRequest) => {
+    setSelectedLoanForPromotion(loan);
+    setSelectedNextStage(''); // Reset next stage
+    setSelectedAssignee(loan.assignedTo || ''); // Pre-fill current assignee or default
+    setIsPromoteDialogOpen(true);
+  };
+
+  const availableNextStages = (currentStage: LoanStage | undefined): LoanStage[] => {
+    if (!currentStage) return [];
+    const currentIndex = loanStages.indexOf(currentStage);
+    if (currentIndex === -1) return [];
+    
+    const nextStages = loanStages.filter((stage, index) => index > currentIndex);
+    
+    // Always allow moving to Approved or Rejected, unless already there or past
+    if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED)) {
+        if (loanStages.indexOf(LoanStage.APPROVED) > currentIndex) nextStages.push(LoanStage.APPROVED);
+    }
+    if (currentStage !== LoanStage.REJECTED && !nextStages.includes(LoanStage.REJECTED)) {
+         if (loanStages.indexOf(LoanStage.REJECTED) > currentIndex) nextStages.push(LoanStage.REJECTED);
+    }
+    
+    // Ensure unique stages and proper order if Approved/Rejected were added out of natural flow
+    return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
+  };
+
+  useEffect(() => {
+    // Auto-suggest assignee when selectedNextStage changes
+    if (selectedLoanForPromotion && selectedNextStage) {
+      const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStage);
+      let suggestedAssigneeId = selectedLoanForPromotion.assignedTo || '';
+
+      if (nextStageConfig?.targetRoleForStage) {
+        const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
+        if (potentialAssignees.length > 0) {
+          suggestedAssigneeId = potentialAssignees[0].id;
+        }
+      } else if (!suggestedAssigneeId) { // If still unassigned, try default RM
+        const defaultRMs = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
+        if (defaultRMs.length > 0) {
+          suggestedAssigneeId = defaultRMs[0].id;
+        }
+      }
+      setSelectedAssignee(suggestedAssigneeId);
+    }
+  }, [selectedNextStage, selectedLoanForPromotion, users]);
+
+
+  const handleConfirmPromotion = async () => {
+    if (!selectedLoanForPromotion || !selectedNextStage) {
+      toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
+      return;
+    }
+
+    // Basic validation (similar to loan detail page)
+    if (selectedLoanForPromotion.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
+        const activeInfoRequest = [...selectedLoanForPromotion.history]
+            .reverse()
+            .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+        if (activeInfoRequest) {
+            toast({
+                title: "Action Pending",
+                description: `Outstanding action for ${selectedLoanForPromotion.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved before advancing.`,
+                variant: "destructive",
+                duration: 7000,
+            });
+            return;
+        }
+    }
+    const currentStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedLoanForPromotion.currentStage);
+    if (currentStageConfig?.requiredDocuments.length) {
+        const pendingDocs = currentStageConfig.requiredDocuments.filter(reqDoc => {
+            const uploadedDoc = selectedLoanForPromotion.documents.find(d => d.name === reqDoc.name);
+            return !uploadedDoc || uploadedDoc.status !== 'Verified';
+        });
+        if (pendingDocs.length > 0) {
+            toast({
+                title: "Documents Pending",
+                description: `Cannot advance ${selectedLoanForPromotion.customerName}. Documents for stage '${selectedLoanForPromotion.currentStage}' must be verified: ${pendingDocs.map(d => d.name).join(', ')}.`,
+                variant: "destructive",
+                duration: 7000,
+            });
+            return;
+        }
+    }
+
+
+    setIsSavingPromotion(true);
+    const newHistoryEntry = {
+      id: `hist-mock-${Date.now()}`,
+      stage: selectedNextStage,
+      timestamp: formatISO(new Date()),
+      userId: 'mock-user-pipeline-promo', // Placeholder user
+      userName: 'Pipeline User',
+      notes: `Promoted to ${selectedNextStage}. ${selectedAssignee && selectedAssignee !== selectedLoanForPromotion.assignedTo ? `Assigned to ${users.find(u=>u.id === selectedAssignee)?.name || 'Unknown'}.` : (selectedAssignee && !selectedLoanForPromotion.assignedTo) ? `Assigned to ${users.find(u=>u.id === selectedAssignee)?.name || 'Unknown'}.` : ''}`
+    };
+
+    const updatedFields = {
+      currentStage: selectedNextStage,
+      assignedTo: selectedAssignee || undefined, // Keep undefined if empty string
+      history: [...selectedLoanForPromotion.history, newHistoryEntry],
+      // Update stageDeadline based on new stage's config (optional, advanced)
+    };
+
+    const result = await updateLoanRequest(selectedLoanForPromotion.id, updatedFields);
+    setIsSavingPromotion(false);
+
+    if (result.error) {
+      toast({ title: "Promotion Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Promotion Successful", description: `${selectedLoanForPromotion.customerName} moved to ${selectedNextStage}.` });
+      // Refresh loans list
+      setAllLoans(prevLoans => prevLoans.map(l => 
+        l.id === selectedLoanForPromotion.id ? { ...l, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } : l
+      ));
+      setIsPromoteDialogOpen(false);
+      setSelectedLoanForPromotion(null);
+    }
+  };
+
 
   const loansByStage = (stage: LoanStage) =>
     allLoans.filter((loan) => loan.currentStage === stage);
@@ -175,11 +327,71 @@ export default function LoanProcessPage() {
               key={stage}
               stage={stage}
               loans={loansByStage(stage)}
+              onPromoteClick={handlePromoteClick}
             />
           ))}
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+
+      {selectedLoanForPromotion && (
+        <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Promote Loan: {selectedLoanForPromotion.customerName}</DialogTitle>
+              <DialogDescription>
+                Current Stage: {selectedLoanForPromotion.currentStage}. Select the next stage and assignee.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="next-stage">Next Stage</Label>
+                <Select 
+                  value={selectedNextStage} 
+                  onValueChange={(value) => setSelectedNextStage(value as LoanStage)}
+                >
+                  <SelectTrigger id="next-stage" className="mt-1">
+                    <SelectValue placeholder="Select next stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableNextStages(selectedLoanForPromotion.currentStage).map(stage => (
+                      <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="assignee">Assign To</Label>
+                <Select 
+                  value={selectedAssignee} 
+                  onValueChange={setSelectedAssignee}
+                >
+                  <SelectTrigger id="assignee" className="mt-1">
+                    <SelectValue placeholder="Select assignee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Unassigned</SelectItem>
+                    {users.map(user => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name} ({user.role})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" disabled={isSavingPromotion}>Cancel</Button>
+              </DialogClose>
+              <Button type="button" onClick={handleConfirmPromotion} disabled={isSavingPromotion || !selectedNextStage}>
+                {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Confirm & Promote
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
