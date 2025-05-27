@@ -12,41 +12,55 @@ import {
   updateDoc,
   query,
   orderBy,
-  serverTimestamp,
+  // serverTimestamp, // Not currently used, but good for future
   Timestamp,
-  where,
-  deleteDoc,
-  writeBatch,
+  // where, // Not currently used
+  // deleteDoc, // Not currently used
+  // writeBatch, // Not currently used
 } from 'firebase/firestore';
 import { formatISO } from 'date-fns';
 
 const LOAN_REQUESTS_COLLECTION = 'loanRequests';
 
+const getDetailedErrorMessage = (error: unknown, defaultMessage: string): string => {
+  let detailedErrorMessage = defaultMessage;
+  if (error instanceof Error) {
+      detailedErrorMessage = error.message; // Default to the message
+      if ((error as any).code && (error as any).name) { // Firebase errors often have code and name
+          detailedErrorMessage = `Firebase Error (${(error as any).name} - ${(error as any).code}): ${error.message}`;
+      }
+  } else if (typeof error === 'string') {
+      detailedErrorMessage = error;
+  }
+  console.error("Firestore Service Error Details: ", detailedErrorMessage, "\nOriginal Error Object:", error); // Log on the server
+  return detailedErrorMessage;
+};
+
 // Helper to convert Firestore Timestamps to ISO strings if they exist
-// and ensure other date strings are also in ISO format.
 const mapTimestamps = (data: any): any => {
   const mappedData = { ...data };
   for (const key in mappedData) {
     if (mappedData[key] instanceof Timestamp) {
       mappedData[key] = mappedData[key].toDate().toISOString();
-    } else if (key.endsWith('Date') && typeof mappedData[key] === 'string' && !isNaN(new Date(mappedData[key] as string).getTime())) {
-      // Ensure string dates are also valid ISO if possible, or handle as needed
-      // This part might need adjustment based on how dates are actually stored
     }
   }
   return mappedData;
 };
 
+interface AddLoanRequestResult {
+  id?: string;
+  error?: string;
+}
 
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>
-): Promise<string> {
+): Promise<AddLoanRequestResult> {
   try {
     const currentDate = new Date();
     const newLoanData = {
       ...loanData,
-      loanNumber: `LN-${String(Date.now()).slice(-6)}`, // Simple unique loan number
-      customerNumber: `CUST-${String(Date.now()).slice(-5)}`, // Simple unique customer number
+      loanNumber: `LN-${String(Date.now()).slice(-6)}`,
+      customerNumber: `CUST-${String(Date.now()).slice(-5)}`,
       currentStage: LoanStage.APPLICATION_SUBMITTED,
       submittedDate: formatISO(currentDate),
       lastUpdatedDate: formatISO(currentDate),
@@ -61,14 +75,12 @@ export async function addLoanRequest(
           notes: 'Loan application submitted.',
         },
       ],
-      isOverdue: false, 
-      // stageDeadline could be calculated based on settings here if needed
+      isOverdue: false,
     };
     const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), newLoanData);
-    return docRef.id;
+    return { id: docRef.id };
   } catch (error) {
-    console.error("Error adding loan request to Firestore: ", error);
-    throw new Error("Failed to add loan request.");
+    return { error: getDetailedErrorMessage(error, "Failed to add loan request.") };
   }
 }
 
@@ -83,24 +95,27 @@ export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
     const querySnapshot = await getDocs(q);
     const loans = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      // Calculate isOverdue dynamically
       const stageDeadline = data.stageDeadline ? new Date(data.stageDeadline) : null;
       const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && data.currentStage !== LoanStage.FUNDS_DISBURSED && data.currentStage !== LoanStage.REJECTED && data.currentStage !== LoanStage.APPROVED : false;
       
       return { 
         id: doc.id, 
         ...mapTimestamps(data),
-        isOverdue, // Add calculated isOverdue
+        isOverdue,
       } as LoanRequest;
     });
     return { loans };
   } catch (error) {
-    console.error("Error fetching loan requests from Firestore: ", error);
-    return { error: "Failed to fetch loan requests." };
+    return { error: getDetailedErrorMessage(error, "Failed to fetch loan requests.") };
   }
 }
 
-export async function getLoanRequestById(id: string): Promise<LoanRequest | null> {
+interface GetLoanRequestByIdResult {
+  loan?: LoanRequest | null; // Allow null if not found but no error
+  error?: string;
+}
+
+export async function getLoanRequestById(id: string): Promise<GetLoanRequestByIdResult> {
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
     const docSnap = await getDoc(docRef);
@@ -110,31 +125,36 @@ export async function getLoanRequestById(id: string): Promise<LoanRequest | null
       const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && data.currentStage !== LoanStage.FUNDS_DISBURSED && data.currentStage !== LoanStage.REJECTED && data.currentStage !== LoanStage.APPROVED : false;
       
       return { 
-        id: docSnap.id, 
-        ...mapTimestamps(data),
-        isOverdue,
-      } as LoanRequest;
+        loan: { 
+          id: docSnap.id, 
+          ...mapTimestamps(data),
+          isOverdue,
+        } as LoanRequest 
+      };
     } else {
-      console.log("No such document!");
-      return null;
+      console.log("No such document in getLoanRequestById service!");
+      return { loan: null, error: `Loan request with ID "${id}" not found.` }; // Specific message for not found
     }
   } catch (error) {
-    console.error("Error fetching loan request by ID from Firestore: ", error);
-    throw new Error("Failed to fetch loan request details.");
+    return { error: getDetailedErrorMessage(error, "Failed to fetch loan request details.") };
   }
 }
 
-export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<void> {
+interface UpdateLoanRequestResult {
+  success?: boolean;
+  error?: string;
+}
+
+export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<UpdateLoanRequestResult> {
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
-    // Ensure lastUpdatedDate is always updated
     const updateDataWithTimestamp = {
       ...dataToUpdate,
       lastUpdatedDate: formatISO(new Date()),
     };
     await updateDoc(docRef, updateDataWithTimestamp);
+    return { success: true };
   } catch (error) {
-    console.error("Error updating loan request in Firestore: ", error);
-    throw new Error("Failed to update loan request.");
+    return { error: getDetailedErrorMessage(error, "Failed to update loan request.") };
   }
 }

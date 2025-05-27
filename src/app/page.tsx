@@ -32,7 +32,7 @@ export default function DashboardPage() {
         const result = await getLoanRequests();
 
         if (result.error) {
-          console.error("Error from getLoanRequests service in Dashboard:", result.error);
+          console.error("Error from getLoanRequests service in Dashboard:", result.error, result); // Log full result for context
           setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
@@ -54,13 +54,14 @@ export default function DashboardPage() {
             overdueTasksCount: overdueTasks,
           });
         } else {
-          setError("No loans data received from service for dashboard.");
-          console.error("Error: No loans data received from getLoanRequests service for dashboard, and no explicit error provided.");
+          const noDataError = "No loans data received from service for dashboard, and no explicit error provided.";
+          console.error("Dashboard fetch notice:", noDataError);
+          setError(noDataError);
         }
-      } catch (err: any) {
-        console.error("Detailed error fetching dashboard data:", err);
-        let displayError = "An unexpected error occurred fetching dashboard data. Check browser console.";
-        if (err instanceof Error) {
+      } catch (err: any) { // Catch errors from the fetchDashboardData async function itself
+        console.error("Detailed error fetching dashboard data in component:", err);
+        let displayError = "An unexpected error occurred fetching dashboard data.";
+         if (err instanceof Error) {
             displayError = `Error: ${err.name} - ${err.message}.`;
             if (err.cause) {
                displayError += ` Cause: ${String(err.cause)}`;
@@ -130,11 +131,11 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-destructive">
-              Could not load dashboard statistics. Error: {error}
+            <p className="text-destructive whitespace-pre-wrap">
+              Could not load dashboard statistics. Details: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please check your browser console for more specific Firebase errors or network issues.
+                Please check your browser console for more specific Firebase errors or network issues, and ensure your Firebase setup (API keys, Firestore enabled, security rules) is correct.
             </p>
           </CardContent>
         </Card>

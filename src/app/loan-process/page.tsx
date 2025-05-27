@@ -110,24 +110,24 @@ export default function LoanProcessPage() {
       try {
         const result = await getLoanRequests();
         if (result.error) {
-          setError(result.error); // This might already be detailed from the service
-          console.error("Error message from getLoanRequests service:", result.error);
+          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error, result);
+          setError(result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
         } else {
-          setAllLoans([]);
-          setError("No loans data returned, and no error specified from service.");
-          console.error("Error: No loans data returned from getLoanRequests service, and no explicit error provided.");
+          const noDataError = "No loans data received from service, and no explicit error provided.";
+          console.error("LoanProcessPage fetch notice:", noDataError);
+          setAllLoans([]); // Ensure allLoans is an empty array if no data
+          setError(noDataError);
         }
-      } catch (err: any) {
+      } catch (err: any) { // Catch errors from the fetchLoans async function itself
         console.error("Detailed error fetching loans in LoanProcessPage component:", err);
-        let displayError = "An unknown error occurred fetching loans.";
+        let displayError = "An unexpected error occurred fetching loans.";
         if (err instanceof Error) {
           displayError = `Error: ${err.name} - ${err.message}.`;
           if (err.cause) {
              displayError += ` Cause: ${String(err.cause)}`;
           }
-          // Attempt to get more specific Firebase error details if present
           if ('code' in err && typeof err.code === 'string') {
               displayError += ` (Code: ${err.code})`;
           }
@@ -159,7 +159,7 @@ export default function LoanProcessPage() {
       <Alert variant="destructive" className="max-w-2xl mx-auto">
         <AlertTriangle className="h-5 w-5" />
         <AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
-        <AlertDescShadCN>
+        <AlertDescShadCN className="whitespace-pre-wrap">
           {error} Please check your browser console for more details, or try refreshing the page.
         </AlertDescShadCN>
       </Alert>

@@ -67,7 +67,6 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      // Prepare data for the service, omitting fields managed by the backend/service
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -77,18 +76,40 @@ export default function NewLoanRequestPage() {
         loanPurpose: data.loanPurpose,
       };
 
-      const newLoanId = await addLoanRequest(loanDataForService);
+      const result = await addLoanRequest(loanDataForService);
+
+      if (result.error) {
+        console.error("Failed to submit loan request:", result.error, result);
+        toast({
+          title: "Submission Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      } else if (result.id) {
+        toast({
+          title: "Loan Request Submitted",
+          description: `Request for ${data.customerName} for $${data.loanAmount} has been saved with ID: ${result.id}.`,
+        });
+        form.reset();
+        router.push('/loan-process');
+      } else {
+         toast({
+          title: "Submission Error",
+          description: "An unexpected issue occurred: No ID returned and no error specified.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) { // Catch errors from the onSubmit async function itself
+      console.error("Critical error during loan request submission:", error);
+      let displayError = "A critical error occurred. Please try again.";
+       if (error instanceof Error) {
+          displayError = `Error: ${error.name} - ${error.message}.`;
+      } else if (typeof error === 'string') {
+          displayError = error;
+      }
       toast({
-        title: "Loan Request Submitted",
-        description: `Request for ${data.customerName} for $${data.loanAmount} has been saved with ID: ${newLoanId}.`,
-      });
-      form.reset();
-      router.push('/loan-process'); // Navigate to pipeline to see the new loan
-    } catch (error) {
-      console.error("Failed to submit loan request:", error);
-      toast({
-        title: "Submission Error",
-        description: error instanceof Error ? error.message : "There was an error submitting the loan request. Please try again.",
+        title: "Submission System Error",
+        description: displayError,
         variant: "destructive",
       });
     } finally {

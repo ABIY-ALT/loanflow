@@ -26,17 +26,18 @@ export default function OverdueTasksPage() {
       try {
         const result = await getLoanRequests();
         if (result.error) {
-          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error);
+          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
           setOverdueLoans(result.loans.filter(loan => loan.isOverdue));
         } else {
-          setOverdueLoans([]);
-           setError("No loans data received from service for overdue tasks, and no explicit error provided.");
-           console.error("Error: No loans data received from getLoanRequests service for overdue tasks, and no explicit error provided.");
+           const noDataError = "No loans data received from service for overdue tasks, and no explicit error provided.";
+           console.error("OverdueTasksPage fetch notice:", noDataError);
+           setOverdueLoans([]);
+           setError(noDataError);
         }
-      } catch (err: any) {
-        console.error("Detailed error fetching overdue loans:", err);
+      } catch (err: any) { // Catch errors from the fetchOverdueLoans async function itself
+        console.error("Detailed error fetching overdue loans in component:", err);
         let displayError = "An unknown error occurred fetching overdue tasks.";
         if (err instanceof Error) {
             displayError = `Error: ${err.name} - ${err.message}.`;
@@ -87,7 +88,7 @@ export default function OverdueTasksPage() {
         <Alert variant="destructive" className="max-w-2xl mx-auto">
             <AlertTriangle className="h-5 w-5" />
             <AlertTitleShadCN>Error Fetching Overdue Tasks</AlertTitleShadCN>
-            <AlertDescShadCN>
+            <AlertDescShadCN className="whitespace-pre-wrap">
             {error} Please check your browser console for more details, or try refreshing the page.
             </AlertDescShadCN>
         </Alert>

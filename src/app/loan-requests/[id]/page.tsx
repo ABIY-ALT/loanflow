@@ -119,21 +119,28 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const fetchedLoan = await getLoanRequestById(loanId);
-          if (fetchedLoan) {
-            setLoan(fetchedLoan);
+          const result = await getLoanRequestById(loanId);
+          if (result.error) {
+            console.error("Error from getLoanRequestById service in LoanDetailPage:", result.error, result);
+            setError(result.error);
+            setLoan(null);
+          } else if (result.loan) {
+            setLoan(result.loan);
           } else {
-            setError(`Loan request with ID "${loanId}" not found.`);
+            // This case means loan is null but no specific error from service (e.g. not found without error flag)
+            const notFoundError = `Loan request with ID "${loanId}" not found.`;
+            console.error("LoanDetailPage fetch notice:", notFoundError);
+            setError(notFoundError);
+            setLoan(null);
           }
-        } catch (err: any) {
-          console.error("Detailed error fetching loan details:", err);
-          let displayError = "An unknown error occurred while fetching loan data.";
+        } catch (err: any) { // Catch errors from the fetchLoan async function itself
+          console.error("Detailed error fetching loan details in component:", err);
+          let displayError = "An unexpected error occurred while fetching loan data.";
            if (err instanceof Error) {
               displayError = `Error: ${err.name} - ${err.message}.`;
               if (err.cause) {
                  displayError += ` Cause: ${String(err.cause)}`;
               }
-              // Attempt to get more specific Firebase error details if present
               if ('code' in err && typeof err.code === 'string') {
                   displayError += ` (Code: ${err.code})`;
               }
@@ -170,33 +177,41 @@ export default function LoanDetailPage() {
     if (!loan) return;
     setIsSaving(true);
 
-    const currentLoanState = loan; // Save current state for potential revert
+    const currentLoanState = loan; 
     const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
     setLoan(newLoanState); // Optimistic update
 
     try {
-      await updateLoanRequest(loan.id, updatedFields);
-      toast({
-        title: "Update Successful",
-        description: successMessage,
-        variant: "default",
-      });
-    } catch (err: any) {
-      console.error("Failed to update loan:", err);
-      // Revert optimistic update on error
-      setLoan(currentLoanState);
-      
-      let displayError = "Could not save changes to the database.";
+      const result = await updateLoanRequest(loan.id, updatedFields);
+      if (result.error) {
+        console.error("Failed to update loan:", result.error, result);
+        setLoan(currentLoanState); // Revert optimistic update
+        toast({
+          title: "Update Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      } else if (result.success) {
+        toast({
+          title: "Update Successful",
+          description: successMessage,
+          variant: "default",
+        });
+         // Optionally re-fetch loan to ensure data consistency if optimistic update is not perfect
+         // const freshLoanData = await getLoanRequestById(loan.id);
+         // if (freshLoanData.loan) setLoan(freshLoanData.loan);
+      }
+    } catch (err: any) { // Catch errors from the handleDatabaseUpdate async function itself
+      console.error("Critical error during database update:", err);
+      setLoan(currentLoanState); // Revert optimistic update
+      let displayError = "A critical system error occurred during the update.";
       if (err instanceof Error) {
           displayError = `Error: ${err.name} - ${err.message}.`;
-          if ('code' in err && typeof err.code === 'string') {
-              displayError += ` (Code: ${err.code})`;
-          }
       } else if (typeof err === 'string') {
           displayError = err;
       }
       toast({
-        title: "Update Error",
+        title: "System Update Error",
         description: displayError,
         variant: "destructive",
       });
@@ -358,7 +373,7 @@ export default function LoanDetailPage() {
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
-        <p className="text-muted-foreground mb-6 break-words">
+        <p className="text-muted-foreground mb-6 break-words whitespace-pre-wrap">
           {error || `The loan request with ID "${loanId}" could not be found.`}
         </p>
         <p className="text-sm text-muted-foreground mb-6">Please check your browser console for more details.</p>
@@ -780,4 +795,3 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
-
