@@ -67,6 +67,7 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
+      // This mapping ensures only the necessary fields are passed to the service
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -96,22 +97,27 @@ export default function NewLoanRequestPage() {
          console.error("Unexpected result from addLoanRequest (no ID and no error):", result);
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred: No ID returned and no error specified. Check console for details.",
+          description: "An unexpected issue occurred: No ID returned and no error specified. Check server and client console for details.",
           variant: "destructive",
         });
       }
     } catch (error: any) { 
-      console.error("Client-side error during loan request submission:", error);
-      let displayError = "A critical error occurred. Please try again.";
+      console.error("Client-side error during loan request submission (outer catch):", error);
+      console.error("Error name:", error?.name);
+      console.error("Error message:", error?.message);
+      console.error("Error stack:", error?.stack);
+      console.error("Full error object (client):", error);
+
+      let displayError = "A critical client-side error occurred. Please try again.";
        if (error instanceof Error) {
-          displayError = `Error: ${error.name} - ${error.message}.`;
+          displayError = `Client Error: ${error.name} - ${error.message}. Check console for details.`;
       } else if (typeof error === 'string') {
           displayError = error;
       } else {
         try {
-          displayError = `Unexpected error: ${JSON.stringify(error)}`;
+          displayError = `Unexpected client error: ${JSON.stringify(error)}. Check console.`;
         } catch {
-          displayError = "Unexpected and unstringifyable error occurred.";
+          displayError = "Unexpected and unstringifyable client error occurred. Check console.";
         }
       }
       toast({

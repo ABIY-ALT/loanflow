@@ -19,7 +19,7 @@ import { formatISO } from 'date-fns';
 const LOAN_REQUESTS_COLLECTION = 'loanRequests';
 
 // Consistent error object creation
-const createErrorResult = (message: string, originalError?: unknown) => {
+const createErrorResult = (message: string, originalError?: unknown, context?: string) => {
   let detailedMessage = message;
   if (originalError instanceof Error) {
     const firebaseError = originalError as any; 
@@ -37,7 +37,12 @@ const createErrorResult = (message: string, originalError?: unknown) => {
     }
   }
   
-  console.error("Loan Service Error Encountered on Server:", detailedMessage, "\nOriginal Error Object (if any):", originalError);
+  console.error(`Loan Service Error Encountered on Server (Context: ${context || 'General'}):`, detailedMessage, "\nFull Original Error Object (if any):", originalError);
+  
+  // For addLoanRequest, return a very simple error string to ensure serializability
+  if (context === 'addLoanRequest') {
+    return { error: `Failed to add loan request. Server Details: ${message} - See server logs for more.` };
+  }
   return { error: detailedMessage }; 
 };
 
@@ -54,8 +59,9 @@ const mapTimestampsInDoc = (data: any): any => {
         (typeof item === 'object' && item !== null && !(item instanceof Date)) ? mapTimestampsInDoc(item) : item
       );
     } else if (typeof mappedData[key] === 'object' && mappedData[key] !== null && !(mappedData[key] instanceof Date)) {
+      // Only recurse if it's a plain object, not other complex objects.
       if (Object.prototype.toString.call(mappedData[key]) === '[object Object]') {
-        // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Avoid deep recursion for now
+        // mappedData[key] = mapTimestampsInDoc(mappedData[key]); // Avoid deep recursion for now on nested non-Timestamp objects
       }
     }
   }
@@ -69,7 +75,9 @@ const prepareDataForFirestoreWrite = (data: any): any => {
         return formatISO(data); // Convert Date to ISO string
     }
      if (data instanceof Timestamp) { 
-        return data.toDate().toISOString(); // Convert Timestamp to ISO string if somehow present
+        // This case should ideally not be hit if we are creating data from JS Dates
+        console.warn("Firestore Timestamp object found in data being prepared for write. Converting to ISO string.", data);
+        return data.toDate().toISOString(); 
     }
 
     if (Array.isArray(data)) {
@@ -95,11 +103,13 @@ interface AddLoanRequestResult {
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>
 ): Promise<AddLoanRequestResult> {
+  console.log("[Service:addLoanRequest] Initiated.");
   if (!db) {
-    return createErrorResult("Firestore database is not initialized. Cannot add loan request.");
+    console.error("[Service:addLoanRequest] Firestore database (db) is not initialized.");
+    return createErrorResult("Firestore database is not initialized. Cannot add loan request.", undefined, 'addLoanRequest');
   }
   try {
-    const currentDate = new Date(); // Use JS Date object directly
+    const currentDate = new Date(); 
     const newLoanDataBase = {
       ...loanData,
       loanNumber: `LN-${String(Date.now()).slice(-6)}`,
@@ -119,18 +129,22 @@ export async function addLoanRequest(
         },
       ],
       isOverdue: false,
-      // stageDeadline: null, // Explicitly set to null or calculate if needed
+      stageDeadline: null, // Default to null or calculate based on settings
     };
 
-    console.log("Data before preparing for Firestore (addLoanRequest):", JSON.stringify(newLoanDataBase, null, 2));
+    console.log("[Service:addLoanRequest] Data before preparing for Firestore:", JSON.stringify(newLoanDataBase, null, 2));
     const preparedLoanData = prepareDataForFirestoreWrite(newLoanDataBase);
-    console.log("Data prepared for Firestore (addLoanRequest):", JSON.stringify(preparedLoanData, null, 2));
+    console.log("[Service:addLoanRequest] Data prepared for Firestore:", JSON.stringify(preparedLoanData, null, 2));
 
     const docRef = await addDoc(collection(db, LOAN_REQUESTS_COLLECTION), preparedLoanData);
+    console.log("[Service:addLoanRequest] Document written with ID:", docRef.id);
     return { id: docRef.id };
   } catch (error) {
-    console.error("Raw error in addLoanRequest service:", error);
-    return createErrorResult("Failed to add loan request.", error);
+    console.error("[Service:addLoanRequest] Raw error during Firestore addDoc:", error);
+    console.error("[Service:addLoanRequest] Error name:", (error as Error).name);
+    console.error("[Service:addLoanRequest] Error message:", (error as Error).message);
+    console.error("[Service:addLoanRequest] Error stack:", (error as Error).stack);
+    return createErrorResult("Failed to add loan request to Firestore.", error, 'addLoanRequest');
   }
 }
 
@@ -141,7 +155,7 @@ interface GetLoanRequestsResult {
 
 export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
   if (!db) {
-    return createErrorResult("Firestore database is not initialized. Cannot fetch loan requests.");
+    return createErrorResult("Firestore database is not initialized. Cannot fetch loan requests.", undefined, 'getLoanRequests');
   }
   try {
     const q = query(collection(db, LOAN_REQUESTS_COLLECTION), orderBy('submittedDate', 'desc'));
@@ -161,22 +175,22 @@ export async function getLoanRequests(): Promise<GetLoanRequestsResult> {
     });
     return { loans };
   } catch (error) {
-    return createErrorResult("Failed to fetch loan requests.", error);
+    return createErrorResult("Failed to fetch loan requests.", error, 'getLoanRequests');
   }
 }
 
 interface GetLoanRequestByIdResult {
-  loan?: LoanRequest | null;
+  loan?: LoanRequest | null; // Allow null if not found but no error occurred
   error?: string;
 }
 
 export async function getLoanRequestById(id: string): Promise<GetLoanRequestByIdResult> {
   if (!db) {
-    return createErrorResult(`Firestore database is not initialized. Cannot fetch loan request by ID: ${id}.`);
+    return createErrorResult(`Firestore database is not initialized. Cannot fetch loan request by ID: ${id}.`, undefined, 'getLoanRequestById');
   }
    if (!id || typeof id !== 'string' || id.trim() === '') {
-    console.warn("getLoanRequestById called with invalid ID:", id);
-    return createErrorResult("Invalid or empty ID provided for fetching loan request.");
+    console.warn("[Service:getLoanRequestById] Called with invalid ID:", id);
+    return createErrorResult("Invalid or empty ID provided for fetching loan request.", undefined, 'getLoanRequestById');
   }
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
@@ -196,11 +210,12 @@ export async function getLoanRequestById(id: string): Promise<GetLoanRequestById
         } as LoanRequest 
       };
     } else {
-      console.log(`No such document in getLoanRequestById service for ID: ${id}`);
-      return { loan: null, error: `Loan request with ID "${id}" not found.` };
+      console.log(`[Service:getLoanRequestById] No such document for ID: ${id}`);
+      // Explicitly return error here as per previous logic, or decide if loan: null with no error is preferred
+      return { loan: null, error: `Loan request with ID "${id}" not found.` }; 
     }
   } catch (error) {
-    return createErrorResult(`Failed to fetch loan request details for ID: ${id}.`, error);
+    return createErrorResult(`Failed to fetch loan request details for ID: ${id}.`, error, 'getLoanRequestById');
   }
 }
 
@@ -211,26 +226,26 @@ interface UpdateLoanRequestResult {
 
 export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<UpdateLoanRequestResult> {
   if (!db) {
-    return createErrorResult(`Firestore database is not initialized. Cannot update loan request with ID: ${id}.`);
+    return createErrorResult(`Firestore database is not initialized. Cannot update loan request with ID: ${id}.`, undefined, 'updateLoanRequest');
   }
   if (!id || typeof id !== 'string' || id.trim() === '') {
-    console.warn("updateLoanRequest called with invalid ID:", id);
-    return createErrorResult("Invalid or empty ID provided for updating loan request.");
+    console.warn("[Service:updateLoanRequest] Called with invalid ID:", id);
+    return createErrorResult("Invalid or empty ID provided for updating loan request.", undefined, 'updateLoanRequest');
   }
   try {
     const docRef = doc(db, LOAN_REQUESTS_COLLECTION, id);
     const updatePayload = {
       ...dataToUpdate,
-      lastUpdatedDate: new Date(), // Use JS Date object directly
+      lastUpdatedDate: new Date(), 
     };
-    console.log("Data before preparing for Firestore (updateLoanRequest):", JSON.stringify(updatePayload, null, 2));
+    console.log("[Service:updateLoanRequest] Data before preparing for Firestore:", JSON.stringify(updatePayload, null, 2));
     const preparedUpdateData = prepareDataForFirestoreWrite(updatePayload);
-    console.log("Data prepared for Firestore (updateLoanRequest):", JSON.stringify(preparedUpdateData, null, 2));
+    console.log("[Service:updateLoanRequest] Data prepared for Firestore:", JSON.stringify(preparedUpdateData, null, 2));
     
     await updateDoc(docRef, preparedUpdateData);
     return { success: true };
   } catch (error) {
-     console.error("Raw error in updateLoanRequest service:", error);
-    return createErrorResult(`Failed to update loan request with ID: ${id}.`, error);
+     console.error("[Service:updateLoanRequest] Raw error during Firestore updateDoc:", error);
+    return createErrorResult(`Failed to update loan request with ID: ${id}.`, error, 'updateLoanRequest');
   }
 }
