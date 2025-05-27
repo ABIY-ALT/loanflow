@@ -19,10 +19,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User, Mail, Phone, Type, Info, Loader2 } from 'lucide-react';
-import React, { useState } from 'react';
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Landmark } from 'lucide-react'; // Renamed User to UserIcon to avoid conflict
+import React, { useState, useEffect } from 'react';
 import { addLoanRequest } from '@/services/loan-service'; // Will use mock service
-import type { LoanRequest } from '@/types/loan';
+import type { LoanRequest, User } from '@/types/loan'; // Added User import
+import { UserRole } from '@/types/loan'; // Added UserRole import
+import { mockUsers } from '@/lib/mock-data'; // Import mockUsers for now
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, {
@@ -43,6 +46,7 @@ const loanRequestFormSchema = z.object({
   loanPurpose: z.string().min(10, {
     message: 'Loan purpose must be at least 10 characters.',
   }),
+  assignedTo: z.string().optional(), // New field for assignment
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
@@ -51,6 +55,13 @@ export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [relationshipManagers, setRelationshipManagers] = useState<User[]>([]);
+
+  useEffect(() => {
+    // In a real app, fetch users from a service. For mock, filter mockUsers.
+    const rMs = mockUsers.filter(user => user.role === UserRole.RELATIONSHIP_MANAGER);
+    setRelationshipManagers(rMs);
+  }, []);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -61,23 +72,24 @@ export default function NewLoanRequestPage() {
       loanAmount: 0,
       loanType: '',
       loanPurpose: '',
+      assignedTo: '', // Default to unassigned
     },
   });
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      // This mapping ensures only the necessary fields are passed to the service
-      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'> = {
+      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline'> & { assignedTo?: string } = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
         customerPhone: data.customerPhone,
         loanAmount: data.loanAmount,
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
+        assignedTo: data.assignedTo || undefined, // Pass undefined if empty string
       };
       
-      const result = await addLoanRequest(loanDataForService); // Calls mock service
+      const result = await addLoanRequest(loanDataForService); 
 
       if (result.error) {
         toast({
@@ -88,7 +100,7 @@ export default function NewLoanRequestPage() {
       } else if (result.id) {
         toast({
           title: "Loan Request Submitted (Mock)",
-          description: `Request for ${data.customerName} has been simulated with ID: ${result.id}.`,
+          description: `Request for ${data.customerName} has been simulated with ID: ${result.id}. Assigned to: ${data.assignedTo ? relationshipManagers.find(rm => rm.id === data.assignedTo)?.name || 'Auto/Unassigned' : 'Auto/Unassigned'}`,
         });
         form.reset();
         router.push('/loan-process');
@@ -100,10 +112,14 @@ export default function NewLoanRequestPage() {
         });
       }
     } catch (error: any) { 
-      console.error("Client-side error during mock loan request submission:", error);
+      console.error("Client-side error during mock loan request submission (outer catch):", error);
+      console.error("Error name:", error?.name);
+      console.error("Error message:", error?.message);
+      console.error("Error stack:", error?.stack);
+      console.error("Full error object (client):", error);
       toast({
         title: "Submission System Error",
-        description: "A client-side error occurred. Please try again.",
+        description: `A client-side error occurred: ${error?.message || 'Please try again.'}. Check server terminal logs for more details if this persists.`,
         variant: "destructive",
       });
     } finally {
@@ -122,7 +138,7 @@ export default function NewLoanRequestPage() {
       <Card>
         <CardHeader>
           <CardTitle>Applicant & Loan Information</CardTitle>
-          <CardDescription>All fields are required.</CardDescription>
+          <CardDescription>All fields are required unless marked optional.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -136,7 +152,7 @@ export default function NewLoanRequestPage() {
                       <FormLabel>Customer Name</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
@@ -204,6 +220,34 @@ export default function NewLoanRequestPage() {
                           <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSubmitting} />
                         </div>
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="assignedTo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assign to Relationship Manager (Optional)</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                        <FormControl>
+                          <div className="relative">
+                            <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <SelectTrigger className="pl-10">
+                              <SelectValue placeholder="Select a manager or leave unassigned" />
+                            </SelectTrigger>
+                          </div>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">Unassigned / Auto-assign</SelectItem>
+                          {relationshipManagers.map(manager => (
+                            <SelectItem key={manager.id} value={manager.id}>
+                              {manager.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
