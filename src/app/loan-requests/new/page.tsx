@@ -77,7 +77,9 @@ export default function NewLoanRequestPage() {
         loanPurpose: data.loanPurpose,
       };
 
+      console.log("[NewLoanRequestPage] Calling addLoanRequest with:", loanDataForService);
       const result = await addLoanRequest(loanDataForService);
+      console.log("[NewLoanRequestPage] Result from addLoanRequest:", result);
 
       if (result.error) {
         console.error("Full error result from addLoanRequest service on client:", result);
@@ -97,7 +99,7 @@ export default function NewLoanRequestPage() {
          console.error("Unexpected result from addLoanRequest (no ID and no error):", result);
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred: No ID returned and no error specified. Check server and client console for details.",
+          description: "An unexpected issue occurred: No ID returned and no error specified. Please check server and client console logs for details.",
           variant: "destructive",
         });
       }
@@ -109,15 +111,15 @@ export default function NewLoanRequestPage() {
       console.error("Full error object (client):", error);
 
       let displayError = "A critical client-side error occurred. Please try again.";
-       if (error instanceof Error) {
-          displayError = `Client Error: ${error.name} - ${error.message}. Check console for details.`;
+       if (error instanceof Error) { // This will likely be true if the server action crashes.
+          displayError = `Client Error: ${error.name} - ${error.message || 'No specific message received from server.'}. This often indicates a server-side problem. Please check server terminal logs for detailed errors.`;
       } else if (typeof error === 'string') {
           displayError = error;
       } else {
         try {
-          displayError = `Unexpected client error: ${JSON.stringify(error)}. Check console.`;
+          displayError = `Unexpected client error: ${JSON.stringify(error)}. Check server terminal logs.`;
         } catch {
-          displayError = "Unexpected and unstringifyable client error occurred. Check console.";
+          displayError = "Unexpected and unstringifyable client error occurred. Check server terminal logs.";
         }
       }
       toast({
