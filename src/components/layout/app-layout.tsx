@@ -11,10 +11,11 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarTrigger,
+  SidebarRail, // Import SidebarRail
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, Landmark, LogIn, LogOut, UserCircle, Loader2 } from 'lucide-react';
+import { Bell, Landmark, LogIn, LogOut, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -26,7 +27,7 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, isLoading } = useAuth(); // Get user and loading state
+  const { user, isLoading: authIsLoading } = useAuth(); // Get user and loading state
   const router = useRouter();
   const { toast } = useToast();
 
@@ -45,17 +46,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
-  // If auth is still loading, you might want to show a global loading state
-  // or a simplified layout. For now, the AuthProvider shows its own loader.
-  // The AppLayout will render once AuthProvider resolves.
-
   return (
-    <SidebarProvider defaultOpen>
-      <Sidebar>
+    <SidebarProvider defaultOpen={false}> {/* Start collapsed on desktop */}
+      <Sidebar collapsible="icon"> {/* Desktop sidebar: icon-only collapse */}
+        <SidebarRail /> {/* Adds the rail to toggle sidebar on desktop */}
         <SidebarHeader className="p-4">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Landmark className="h-8 w-8 text-primary" />
-            <h1 className="text-xl font-semibold text-primary">LoanFlow</h1>
+            {/* Text only visible when expanded */}
+            <h1 className="text-xl font-semibold text-primary group-data-[state=expanded]:opacity-100 group-data-[state=collapsed]:opacity-0 group-data-[state=collapsed]:hidden transition-opacity duration-200">LoanFlow</h1>
           </Link>
         </SidebarHeader>
         <SidebarContent>
@@ -67,13 +66,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
-          <SidebarTrigger className="md:hidden" />
+          <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
           <div className="flex items-center gap-4 ml-auto">
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" />
               <span className="sr-only">Notifications</span>
             </Button>
-            {isLoading ? (
+            {authIsLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : user ? (
               <div className="flex items-center gap-2">
