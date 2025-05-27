@@ -21,11 +21,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Landmark } from 'lucide-react'; // Renamed User to UserIcon to avoid conflict
 import React, { useState, useEffect } from 'react';
-import { addLoanRequest } from '@/services/loan-service'; // Will use mock service
-import type { LoanRequest, User } from '@/types/loan'; // Added User import
-import { UserRole } from '@/types/loan'; // Added UserRole import
-import { mockUsers } from '@/lib/mock-data'; // Import mockUsers for now
+import { addLoanRequest } from '@/services/loan-service'; 
+import type { LoanRequest, User } from '@/types/loan'; 
+import { UserRole } from '@/types/loan'; 
+import { mockUsers } from '@/lib/mock-data'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const UNASSIGNED_MARKER = "---UNASSIGNED---";
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, {
@@ -46,7 +48,7 @@ const loanRequestFormSchema = z.object({
   loanPurpose: z.string().min(10, {
     message: 'Loan purpose must be at least 10 characters.',
   }),
-  assignedTo: z.string().optional(), // New field for assignment
+  assignedTo: z.string().optional(), 
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
@@ -72,13 +74,15 @@ export default function NewLoanRequestPage() {
       loanAmount: 0,
       loanType: '',
       loanPurpose: '',
-      assignedTo: '', // Default to unassigned
+      assignedTo: '', 
     },
   });
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
+      const assignedToValue = data.assignedTo === UNASSIGNED_MARKER ? undefined : data.assignedTo;
+
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline'> & { assignedTo?: string } = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -86,7 +90,7 @@ export default function NewLoanRequestPage() {
         loanAmount: data.loanAmount,
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
-        assignedTo: data.assignedTo || undefined, // Pass undefined if empty string
+        assignedTo: assignedToValue,
       };
       
       const result = await addLoanRequest(loanDataForService); 
@@ -94,25 +98,29 @@ export default function NewLoanRequestPage() {
       if (result.error) {
         toast({
           title: "Submission Error",
-          description: `Failed to save loan request (mock): ${result.error}`,
+          description: `Failed to save loan request: ${result.error}`,
           variant: "destructive",
         });
       } else if (result.id) {
+        const assignedManagerName = assignedToValue 
+          ? relationshipManagers.find(rm => rm.id === assignedToValue)?.name 
+          : null;
+        
         toast({
-          title: "Loan Request Submitted (Mock)",
-          description: `Request for ${data.customerName} has been simulated with ID: ${result.id}. Assigned to: ${data.assignedTo ? relationshipManagers.find(rm => rm.id === data.assignedTo)?.name || 'Auto/Unassigned' : 'Auto/Unassigned'}`,
+          title: "Loan Request Submitted",
+          description: `Request for ${data.customerName} has been submitted with ID: ${result.id}. Assigned to: ${assignedManagerName || 'Auto/Unassigned'}`,
         });
         form.reset();
         router.push('/loan-process');
       } else {
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred with mock submission.",
+          description: "An unexpected issue occurred with submission.",
           variant: "destructive",
         });
       }
     } catch (error: any) { 
-      console.error("Client-side error during mock loan request submission (outer catch):", error);
+      console.error("Client-side error during loan request submission (outer catch):", error);
       console.error("Error name:", error?.name);
       console.error("Error message:", error?.message);
       console.error("Error stack:", error?.stack);
@@ -240,7 +248,7 @@ export default function NewLoanRequestPage() {
                           </div>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Unassigned / Auto-assign</SelectItem>
+                          <SelectItem value={UNASSIGNED_MARKER}>Unassigned / Auto-assign</SelectItem>
                           {relationshipManagers.map(manager => (
                             <SelectItem key={manager.id} value={manager.id}>
                               {manager.name}
@@ -289,3 +297,4 @@ export default function NewLoanRequestPage() {
     </div>
   );
 }
+
