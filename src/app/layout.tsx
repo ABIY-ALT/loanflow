@@ -1,9 +1,11 @@
+
 import type { Metadata } from 'next';
 // import { GeistSans } from 'geist/font/sans'; // Removed problematic import
 // import { GeistMono } from 'geist/font/mono'; // Removed problematic import
 import './globals.css';
 import AppLayout from '@/components/layout/app-layout';
 import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
 
 // const geistSans = GeistSans; // Removed problematic import
 // const geistMono = GeistMono; // Removed problematic import
@@ -22,10 +24,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased"> {/* Removed geistSans.variable and font-sans */}
-        <AppLayout>
-          {children}
-        </AppLayout>
-        <Toaster />
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <AppLayout>
+            {children}
+          </AppLayout>
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );
