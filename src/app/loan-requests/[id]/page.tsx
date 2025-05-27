@@ -4,7 +4,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2 } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2, StickyNote } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { Badge } from '@/components/ui/badge';
@@ -108,6 +108,8 @@ export default function LoanDetailPage() {
   const [additionalInfo, setAdditionalInfo] = React.useState('');
   const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = React.useState(false);
+  const [noteContent, setNoteContent] = React.useState('');
 
 
   const form = useForm<EditLoanFormValues>({
@@ -163,14 +165,14 @@ export default function LoanDetailPage() {
     if (!loan) return;
     setIsSaving(true);
 
-    const currentLoanState = { ...loan }; // Keep a copy for potential revert
+    const currentLoanState = { ...loan }; 
     const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
-    setLoan(newLoanState); // Optimistic update for UI
+    setLoan(newLoanState); 
 
     try {
-      const result = await updateLoanRequest(loan.id, updatedFields); // Call mock service
+      const result = await updateLoanRequest(loan.id, updatedFields); 
       if (result.error) {
-        setLoan(currentLoanState); // Revert optimistic update on error
+        setLoan(currentLoanState); 
         toast({
           title: "Mock Update Error",
           description: result.error,
@@ -184,7 +186,7 @@ export default function LoanDetailPage() {
         });
       }
     } catch (err: any) {
-      setLoan(currentLoanState); // Revert optimistic update
+      setLoan(currentLoanState); 
       toast({
         title: "Mock System Error",
         description: err.message || "A critical error occurred during mock update.",
@@ -248,6 +250,31 @@ export default function LoanDetailPage() {
     await handleMockUpdate(updatedFields, "Information fulfillment status simulated.");
   };
 
+  const handleAddNoteSubmit = async () => {
+    if (!noteContent.trim()) {
+      toast({ title: "Note Required", description: "Please enter some content for the note.", variant: "destructive" });
+      return;
+    }
+    if (!loan) return;
+
+    const newHistoryEntry: LoanHistoryEntry = {
+      id: `hist-mock-${Date.now()}`,
+      stage: loan.currentStage, // Note is added against the current stage
+      timestamp: formatISO(new Date()),
+      userId: 'mock-user-id',
+      userName: 'Mock Bank User',
+      notes: noteContent,
+    };
+
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+      history: [...loan.history, newHistoryEntry],
+    };
+
+    await handleMockUpdate(updatedFields, "Note added to loan history (mock).");
+    setNoteContent('');
+    setIsAddNoteDialogOpen(false);
+  };
+
 
   const activeInfoRequestEntry = loan?.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
@@ -258,7 +285,6 @@ export default function LoanDetailPage() {
   const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
     if (!loan) return;
 
-    // 1. Check for unfulfilled "Additional Info Required" requests
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
       if (activeInfoRequestEntry) {
         toast({
@@ -271,7 +297,6 @@ export default function LoanDetailPage() {
       }
     }
 
-    // 2. Check for unverified required documents for the current stage
     const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
       (config) => config.loanStageEnum === loan.currentStage
     );
@@ -293,7 +318,6 @@ export default function LoanDetailPage() {
       }
     }
 
-    // If all checks pass, proceed with advancing
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: nextStage,
@@ -405,7 +429,7 @@ export default function LoanDetailPage() {
         <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Dialog open={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
@@ -541,6 +565,40 @@ export default function LoanDetailPage() {
             </DialogContent>
           </Dialog>
 
+          <Dialog open={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Note to Loan History</DialogTitle>
+                <DialogDescription>
+                  Enter any relevant notes or log activity for this loan. This will not change the current stage.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <Label htmlFor="note-content">Note</Label>
+                <Textarea
+                  id="note-content"
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="e.g., Spoke with customer, clarified income details. Follow up next week."
+                  rows={4}
+                  disabled={isSaving}
+                />
+              </div>
+              <DialogFooter>
+                 <DialogClose asChild>
+                    <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
+                  </DialogClose>
+                <Button type="submit" onClick={handleAddNoteSubmit} disabled={isSaving}>
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Note
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
@@ -577,13 +635,12 @@ export default function LoanDetailPage() {
           {currentStageIndex < loanStages.length -1 &&
            loan.currentStage !== LoanStage.REJECTED &&
            loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
-           loan.currentStage !== LoanStage.APPROVED && ( // Already handled if next is 'Approved'
+           loan.currentStage !== LoanStage.APPROVED && (
             <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])} disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Advance to: {loanStages[currentStageIndex + 1]}
             </Button>
           )}
-           {/* Specific button for "Approve" if current stage allows it and isn't already a terminal stage */}
            {loan.currentStage !== LoanStage.APPROVED && 
             loan.currentStage !== LoanStage.REJECTED && 
             loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
