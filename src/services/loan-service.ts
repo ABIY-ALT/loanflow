@@ -1,24 +1,28 @@
 
 'use server';
-import type { LoanRequest } from '@/types/loan';
-import { LoanStage } from '@/types/loan';
-import { mockLoanRequests } from '@/lib/mock-data';
+import type { LoanRequest, User } from '@/types/loan';
+import { LoanStage, UserRole } from '@/types/loan';
+import { mockLoanRequests, mockUsers } from '@/lib/mock-data';
 import { formatISO, parseISO } from 'date-fns';
 
 // Helper to simulate async operations
 const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Simulate an in-memory store for mock data for the duration of the server session
-// This won't persist across server restarts or for different users in a real scenario,
-// but helps for basic simulation.
 let sessionMockLoanRequests: LoanRequest[] = JSON.parse(JSON.stringify(mockLoanRequests)); // Deep copy
 
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'assignedTo' | 'stageDeadline'>
 ): Promise<{ id?: string; error?: string }> {
-  await simulateDelay(200 + Math.random() * 300); // Simulate network delay
+  await simulateDelay(200 + Math.random() * 300);
   try {
     const currentDate = new Date();
+    const relationshipManagers = mockUsers.filter(user => user.role === UserRole.RELATIONSHIP_MANAGER);
+    let assignedToId: string | undefined = undefined;
+    if (relationshipManagers.length > 0) {
+      assignedToId = relationshipManagers[Math.floor(Math.random() * relationshipManagers.length)].id;
+    }
+
     const newLoan: LoanRequest = {
       id: `loan-mock-${Date.now()}`,
       ...loanData,
@@ -27,21 +31,22 @@ export async function addLoanRequest(
       submittedDate: formatISO(currentDate),
       lastUpdatedDate: formatISO(currentDate),
       currentStage: LoanStage.APPLICATION_SUBMITTED,
+      assignedTo: assignedToId,
       history: [
         {
           id: `hist-mock-${Date.now()}`,
           stage: LoanStage.APPLICATION_SUBMITTED,
           timestamp: formatISO(currentDate),
-          userId: 'mock-user',
-          userName: 'Mock System',
+          userId: 'mock-system-user', // Represents system or initial user
+          userName: 'System/User',
           notes: 'Loan application submitted (mock).',
         },
       ],
       documents: [],
-      isOverdue: false,
-      // stageDeadline can be calculated based on settings/current stage default timeline
+      // isOverdue and stageDeadline would typically be set based on workflow rules
+      // For mock, isOverdue will be calculated on fetch, stageDeadline can be omitted or mocked based on stage
     };
-    sessionMockLoanRequests.unshift(newLoan); // Add to the beginning of the array
+    sessionMockLoanRequests.unshift(newLoan);
     return { id: newLoan.id };
   } catch (e: any) {
     console.error("Error in mock addLoanRequest:", e);
@@ -52,7 +57,6 @@ export async function addLoanRequest(
 export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string }> {
   await simulateDelay(150 + Math.random() * 200);
   try {
-    // Simulate isOverdue calculation as it was done before
     const processedLoans = sessionMockLoanRequests.map(loan => {
       const stageDeadline = loan.stageDeadline ? parseISO(loan.stageDeadline) : null;
       const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(loan.currentStage) : false;
@@ -65,21 +69,22 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
   }
 }
 
-export async function getLoanRequestById(id: string): Promise<{ loan?: LoanRequest | null; error?: string }> {
+export async function getLoanRequestById(id: string): Promise<{ loan?: LoanRequest | null; users?: User[]; error?: string }> {
   await simulateDelay(100 + Math.random() * 150);
   try {
     const foundLoan = sessionMockLoanRequests.find(l => l.id === id) || null;
     if (foundLoan) {
       const stageDeadline = foundLoan.stageDeadline ? parseISO(foundLoan.stageDeadline) : null;
       const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(foundLoan.currentStage) : false;
-      return { loan: { ...foundLoan, isOverdue } };
+      return { loan: { ...foundLoan, isOverdue }, users: mockUsers }; // Return mock users as well
     }
-    return { loan: null, error: `Mock loan with ID "${id}" not found.` };
+    return { loan: null, users: mockUsers, error: `Mock loan with ID "${id}" not found.` };
   } catch (e: any) {
     console.error(`Error in mock getLoanRequestById for ID ${id}:`, e);
     return { error: e.message || `Failed to fetch mock loan request for ID ${id}.`};
   }
 }
+
 
 export async function updateLoanRequest(id: string, dataToUpdate: Partial<Omit<LoanRequest, 'id'>>): Promise<{ success?: boolean; error?: string }> {
   await simulateDelay(200 + Math.random() * 200);

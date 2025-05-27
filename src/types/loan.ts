@@ -1,3 +1,4 @@
+
 export enum LoanStage {
   APPLICATION_SUBMITTED = "Application Submitted",
   DOCUMENT_COLLECTION = "Document Collection",
@@ -19,10 +20,24 @@ export interface LoanHistoryEntry {
   id: string;
   stage: LoanStage;
   timestamp: string; // ISO date string
-  userId: string; // ID of the bank user
+  userId: string; // ID of the bank user (could be system or a specific user)
   userName: string;
   notes?: string;
   requiredFulfilment?: string; // Description of what the customer needs to fulfill
+}
+
+export enum UserRole {
+  ADMIN = "Admin",
+  RELATIONSHIP_MANAGER = "Relationship Manager",
+  UNDERWRITER = "Underwriter",
+  STAFF = "Staff",
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
 }
 
 export interface LoanRequest {
@@ -38,7 +53,7 @@ export interface LoanRequest {
   currentStage: LoanStage;
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
-  assignedTo?: string; // Bank user ID
+  assignedTo?: string; // User ID of the assigned Relationship Manager
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
   stageDeadline?: string; // ISO date string, for current stage

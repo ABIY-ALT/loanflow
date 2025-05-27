@@ -1,8 +1,16 @@
-import type { LoanRequest } from '@/types/loan';
-import { LoanStage } from '@/types/loan';
+
+import type { LoanRequest, User } from '@/types/loan';
+import { LoanStage, UserRole } from '@/types/loan';
 
 // Define a fixed reference date for consistent mock data generation
 const MOCK_REFERENCE_DATE = new Date('2024-07-15T10:00:00.000Z').getTime();
+
+export const mockUsers: User[] = [
+  { id: 'user-jane-doe', name: 'Jane Doe', email: 'jane@example.com', role: UserRole.RELATIONSHIP_MANAGER },
+  { id: 'user-john-smith', name: 'John Smith', email: 'john@example.com', role: UserRole.RELATIONSHIP_MANAGER },
+  { id: 'user-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', role: UserRole.ADMIN },
+  { id: 'user-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', role: UserRole.UNDERWRITER },
+];
 
 export const mockLoanRequests: LoanRequest[] = [
   {
@@ -49,6 +57,7 @@ export const mockLoanRequests: LoanRequest[] = [
     currentStage: LoanStage.DOCUMENT_COLLECTION,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 10 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    assignedTo: 'user-john-smith',
     documents: [
       { id: 'doc-id-3', name: 'Payslips (3 months)', status: 'Submitted' },
       { id: 'doc-id-4', name: 'Bank Statements (6 months)', status: 'Pending' },
@@ -89,6 +98,7 @@ export const mockLoanRequests: LoanRequest[] = [
     currentStage: LoanStage.UNDER_REVIEW,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    assignedTo: 'user-jane-doe',
     documents: [
       { id: 'doc-id-6', name: 'Driver\'s License', status: 'Verified' },
       { id: 'doc-id-7', name: 'Vehicle Purchase Agreement', status: 'Verified' },
@@ -98,7 +108,7 @@ export const mockLoanRequests: LoanRequest[] = [
         id: 'hist-3',
         stage: LoanStage.UNDER_REVIEW,
         timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        userId: 'user-jane-doe',
+        userId: 'user-jane-doe', // Assuming Jane is the one who moved it
         userName: 'Jane Doe',
         notes: 'All documents received. Loan is now under review.',
       },
@@ -119,9 +129,19 @@ export const mockLoanRequests: LoanRequest[] = [
     currentStage: LoanStage.APPROVED,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 30 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    assignedTo: 'user-john-smith',
     documents: [],
-    history: [],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).toISOString(), 
+    history: [
+        {
+        id: 'hist-4',
+        stage: LoanStage.APPROVED,
+        timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        userId: 'user-underwriter-bob', // Assuming Bob approved it
+        userName: 'Bob Underwriter',
+        notes: 'Loan approved after final review.',
+      },
+    ],
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
   },
    {
@@ -137,6 +157,7 @@ export const mockLoanRequests: LoanRequest[] = [
     currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 7 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    assignedTo: 'user-jane-doe',
     documents: [ { id: 'doc-id-8', name: 'Proof of Address', status: 'Submitted' }],
     history: [
       {

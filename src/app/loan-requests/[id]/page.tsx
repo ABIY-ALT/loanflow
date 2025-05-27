@@ -5,14 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2, StickyNote } from 'lucide-react';
-import type { LoanRequest, LoanDocument, LoanHistoryEntry } from '@/types/loan';
-import { LoanStage } from '@/types/loan';
+import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType } from '@/types/loan';
+import { LoanStage, UserRole } from '@/types/loan';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
 import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
+import { mockUsers } from '@/lib/mock-data'; // Import mockUsers
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import {
 } from '@/components/ui/form';
 import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; // Will use mock service
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 const editLoanFormSchema = z.object({
@@ -52,6 +54,7 @@ const editLoanFormSchema = z.object({
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   loanType: z.string().min(2, { message: 'Loan type is required.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
+  assignedTo: z.string().optional(), // For assigning to a relationship manager
 });
 
 type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
@@ -99,6 +102,7 @@ export default function LoanDetailPage() {
   const loanId = params.id as string;
 
   const [loan, setLoan] = React.useState<LoanRequest | null>(null);
+  const [users, setUsers] = React.useState<UserType[]>(mockUsers); // Directly use mockUsers for now
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
 
@@ -122,13 +126,16 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const result = await getLoanRequestById(loanId); // Uses mock service
+          const result = await getLoanRequestById(loanId); 
           if (result.error) {
             console.error("Error from getLoanRequestById service (mock):", result.error);
             setError(result.error);
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
+            if (result.users) { // Users are now returned by mock service
+              setUsers(result.users);
+            }
           } else {
             setError(`Loan request with ID "${loanId}" not found (mock).`);
             setLoan(null);
@@ -154,6 +161,7 @@ export default function LoanDetailPage() {
         loanAmount: loan.loanAmount,
         loanType: loan.loanType,
         loanPurpose: loan.loanPurpose,
+        assignedTo: loan.assignedTo || '',
       });
     }
   }, [loan, isEditLoanDialogOpen, form]);
@@ -165,10 +173,9 @@ export default function LoanDetailPage() {
     if (!loan) return;
     setIsSaving(true);
 
-    const currentLoanState = { ...loan }; 
+    const currentLoanState = { ...loan };
     const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
-    setLoan(newLoanState); 
-
+    
     try {
       const result = await updateLoanRequest(loan.id, updatedFields); 
       if (result.error) {
@@ -179,6 +186,7 @@ export default function LoanDetailPage() {
           variant: "destructive",
         });
       } else if (result.success) {
+        setLoan(newLoanState); // Update local state only on successful mock update
         toast({
           title: "Mock Update Successful",
           description: successMessage,
@@ -209,7 +217,7 @@ export default function LoanDetailPage() {
         id: `hist-mock-${Date.now()}`,
         stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id',
+        userId: 'mock-user-id', // Placeholder user
         userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
         notes: `Requested additional info: ${additionalInfo}`
@@ -259,7 +267,7 @@ export default function LoanDetailPage() {
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
-      stage: loan.currentStage, // Note is added against the current stage
+      stage: loan.currentStage, 
       timestamp: formatISO(new Date()),
       userId: 'mock-user-id',
       userName: 'Mock Bank User',
@@ -384,6 +392,7 @@ export default function LoanDetailPage() {
       loanAmount: Number(data.loanAmount),
       loanType: data.loanType,
       loanPurpose: data.loanPurpose,
+      assignedTo: data.assignedTo || undefined,
     };
 
     await handleMockUpdate(updatedFields, "Loan details updated (mock).");
@@ -421,6 +430,9 @@ export default function LoanDetailPage() {
     (config) => config.loanStageEnum === loan.currentStage
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
+  
+  const assignedManager = users.find(u => u.id === loan.assignedTo);
+  const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
 
 
   return (
@@ -520,6 +532,34 @@ export default function LoanDetailPage() {
                               <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSaving} />
                             </div>
                           </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="assignedTo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Assign to Relationship Manager</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSaving}>
+                            <FormControl>
+                               <div className="relative">
+                                <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <SelectTrigger className="pl-10">
+                                    <SelectValue placeholder="Select a manager" />
+                                </SelectTrigger>
+                               </div>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="">Unassigned</SelectItem>
+                              {relationshipManagers.map(manager => (
+                                <SelectItem key={manager.id} value={manager.id}>
+                                  {manager.name} ({manager.role})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -693,7 +733,11 @@ export default function LoanDetailPage() {
             <InfoItem icon={<Info />} label="Loan Purpose" value={loan.loanPurpose} />
             <InfoItem icon={<User />} label="Customer Email" value={loan.customerEmail} />
             <InfoItem icon={<Phone />} label="Customer Phone" value={loan.customerPhone} />
-            {loan.assignedTo && <InfoItem icon={<Landmark />} label="Assigned To" value={loan.assignedTo} />}
+            {assignedManager ? (
+              <InfoItem icon={<Landmark />} label="Assigned RM" value={`${assignedManager.name} (${assignedManager.role})`} />
+            ) : (
+              <InfoItem icon={<Landmark />} label="Assigned RM" value="N/A" />
+            )}
           </div>
 
           <Separator className="my-8" />
@@ -868,4 +912,3 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
-
