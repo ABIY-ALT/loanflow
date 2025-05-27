@@ -47,19 +47,20 @@ export interface StageConfig {
   loanStageEnum: LoanStage; 
   defaultTimelineDays: number;
   requiredDocuments: RequiredDocumentConfig[];
-  targetRoleForStage?: UserRole; // Optional: Role to assign to when entering this stage
+  targetRoleForStage?: UserRole; 
 }
 
 export const initialStageConfigs: StageConfig[] = [
   { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
   { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
   { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [], targetRoleForStage: UserRole.UNDERWRITER },
-  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [] }, // Often RM handles this
+  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [] }, 
   { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
   { id: 'rejected', name: 'Rejected', loanStageEnum: LoanStage.REJECTED, defaultTimelineDays: 1, requiredDocuments: [] },
   { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [], targetRoleForStage: UserRole.STAFF },
 ];
 
+const NO_SPECIFIC_ROLE_VALUE = "---NO_SPECIFIC_ROLE---";
 
 interface DraggableAccordionItemProps {
   stageConfig: StageConfig;
@@ -162,14 +163,14 @@ const DraggableAccordionItem = ({
          <div>
             <Label htmlFor={`target-role-${stageConfig.id}`}>Target Role for this Stage</Label>
             <Select
-              value={stageConfig.targetRoleForStage || ""}
-              onValueChange={(value) => handleStageConfigChange(stageConfig.id, 'targetRoleForStage', value || undefined)}
+              value={stageConfig.targetRoleForStage || NO_SPECIFIC_ROLE_VALUE}
+              onValueChange={(value) => handleStageConfigChange(stageConfig.id, 'targetRoleForStage', value === NO_SPECIFIC_ROLE_VALUE ? undefined : value as UserRole)}
             >
               <SelectTrigger id={`target-role-${stageConfig.id}`} className="mt-1">
                 <SelectValue placeholder="Select a target role (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No specific role / Keep current</SelectItem>
+                <SelectItem value={NO_SPECIFIC_ROLE_VALUE}>No specific role / Keep current</SelectItem>
                 {Object.values(UserRole).map(role => (
                   <SelectItem key={role} value={role}>{role}</SelectItem>
                 ))}
@@ -266,10 +267,6 @@ export default function SettingsPage() {
       return;
     }
     const newId = `custom-stage-${Date.now().toString()}`;
-    // For a truly new stage, it might not map directly to an existing LoanStage enum if it's custom.
-    // However, our system currently uses LoanStage enum for stage identification.
-    // This example adds it as if it's a new configurable step that still internally might map to a generic enum or needs careful handling.
-    // For simplicity, we'll use a provided LoanStage enum; a real app might need a "Custom" type.
     setStageConfigs([
       ...stageConfigs,
       { 
@@ -284,7 +281,6 @@ export default function SettingsPage() {
     setNewStageName('');
     setNewStageTimeline(3);
     setNewStageTargetRole(undefined);
-    // setNewStageEnum(LoanStage.APPLICATION_SUBMITTED); // Reset if adding enum selector
     toast({ title: "Success", description: "New workflow stage added." });
   };
 
@@ -333,10 +329,7 @@ export default function SettingsPage() {
   };
   
   const handleSaveChanges = () => {
-    // In a real app, send stageConfigs to the backend
     console.log("Settings saved:", { stageConfigs, enableNotifications, overdueThreshold });
-    // For now, we can update a global mock or localStorage if we want persistence in prototype
-    // For this example, it just logs. If using this for loan detail page, ensure it can access updated configs.
     toast({
       title: "Settings Saved (Mock)",
       description: "Your workflow and notification settings have been updated in local state.",
@@ -428,14 +421,14 @@ export default function SettingsPage() {
                 <div>
                     <Label htmlFor="new-stage-target-role">Target Role for New Stage</Label>
                     <Select
-                        value={newStageTargetRole || ""}
-                        onValueChange={(value) => setNewStageTargetRole(value as UserRole || undefined)}
+                        value={newStageTargetRole || NO_SPECIFIC_ROLE_VALUE}
+                        onValueChange={(value) => setNewStageTargetRole(value === NO_SPECIFIC_ROLE_VALUE ? undefined : value as UserRole)}
                     >
                         <SelectTrigger id="new-stage-target-role" className="mt-1">
                             <SelectValue placeholder="Select target role (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">No specific role</SelectItem>
+                            <SelectItem value={NO_SPECIFIC_ROLE_VALUE}>No specific role</SelectItem>
                             {Object.values(UserRole).map(role => (
                             <SelectItem key={role} value={role}>{role}</SelectItem>
                             ))}
@@ -511,5 +504,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+    
 
     
