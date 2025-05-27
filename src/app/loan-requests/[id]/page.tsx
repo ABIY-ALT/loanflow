@@ -99,7 +99,7 @@ export default function LoanDetailPage() {
 
   const [loan, setLoan] = React.useState<LoanRequest | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isSaving, setIsSaving] = React.useState(false); // For database updates
+  const [isSaving, setIsSaving] = React.useState(false); 
 
   const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
@@ -125,9 +125,22 @@ export default function LoanDetailPage() {
           } else {
             setError(`Loan request with ID "${loanId}" not found.`);
           }
-        } catch (err) {
-          console.error("Failed to fetch loan:", err);
-          setError(err instanceof Error ? err.message : "An unknown error occurred while fetching loan data.");
+        } catch (err: any) {
+          console.error("Detailed error fetching loan details:", err);
+          let displayError = "An unknown error occurred while fetching loan data.";
+           if (err instanceof Error) {
+              displayError = `Error: ${err.name} - ${err.message}.`;
+              if (err.cause) {
+                 displayError += ` Cause: ${String(err.cause)}`;
+              }
+              // Attempt to get more specific Firebase error details if present
+              if ('code' in err && typeof err.code === 'string') {
+                  displayError += ` (Code: ${err.code})`;
+              }
+          } else if (typeof err === 'string') {
+              displayError = err;
+          }
+          setError(displayError);
         } finally {
           setIsLoading(false);
         }
@@ -157,9 +170,9 @@ export default function LoanDetailPage() {
     if (!loan) return;
     setIsSaving(true);
 
-    // Optimistically update local state
+    const currentLoanState = loan; // Save current state for potential revert
     const newLoanState = { ...loan, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } as LoanRequest;
-    setLoan(newLoanState);
+    setLoan(newLoanState); // Optimistic update
 
     try {
       await updateLoanRequest(loan.id, updatedFields);
@@ -168,16 +181,25 @@ export default function LoanDetailPage() {
         description: successMessage,
         variant: "default",
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update loan:", err);
+      // Revert optimistic update on error
+      setLoan(currentLoanState);
+      
+      let displayError = "Could not save changes to the database.";
+      if (err instanceof Error) {
+          displayError = `Error: ${err.name} - ${err.message}.`;
+          if ('code' in err && typeof err.code === 'string') {
+              displayError += ` (Code: ${err.code})`;
+          }
+      } else if (typeof err === 'string') {
+          displayError = err;
+      }
       toast({
         title: "Update Error",
-        description: err instanceof Error ? err.message : "Could not save changes to the database.",
+        description: displayError,
         variant: "destructive",
       });
-      // Revert to previous state if DB update fails (optional, or refetch)
-      // For now, optimistic update stays. Consider refetching or a more robust state management for production.
-      // setLoan(loan); // Example of simple revert
     } finally {
       setIsSaving(false);
     }
@@ -206,7 +228,7 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
     
-    await handleDatabaseUpdate(updatedFields, "Information request saved.");
+    await handleDatabaseUpdate(updatedFields, "Information request saved and persisted.");
     
     setAdditionalInfo('');
     setIsAddInfoDialogOpen(false);
@@ -233,7 +255,7 @@ export default function LoanDetailPage() {
         history: updatedHistory,
     };
     
-    await handleDatabaseUpdate(updatedFields, "Information fulfillment status saved.");
+    await handleDatabaseUpdate(updatedFields, "Information fulfillment status saved and persisted.");
   };
 
 
@@ -264,12 +286,12 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
 
-    await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage}.`);
+    await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage} and persisted.`);
   };
 
   const handleUploadDocument = async (docName: string) => {
     if (!loan) return;
-    setCurrentDocumentToUpload(docName); // For dialog title
+    setCurrentDocumentToUpload(docName); 
 
     const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
     let updatedDocuments: LoanDocument[];
@@ -288,7 +310,7 @@ export default function LoanDetailPage() {
         documents: updatedDocuments,
     };
 
-    await handleDatabaseUpdate(updatedFields, `Document ${docName} submitted.`);
+    await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' and persisted.`);
     
     setIsUploadDocDialogOpen(false);
   };
@@ -303,7 +325,7 @@ export default function LoanDetailPage() {
         documents: updatedDocuments,
     };
 
-    await handleDatabaseUpdate(updatedFields, `Document ${docName} verified.`);
+    await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Verified' and persisted.`);
   };
 
   async function onEditLoanSubmit(data: EditLoanFormValues) {
@@ -318,7 +340,7 @@ export default function LoanDetailPage() {
       loanPurpose: data.loanPurpose,
     };
     
-    await handleDatabaseUpdate(updatedFields, "Loan details updated.");
+    await handleDatabaseUpdate(updatedFields, "Loan details updated and persisted.");
     setIsEditLoanDialogOpen(false);
   }
 
@@ -333,12 +355,13 @@ export default function LoanDetailPage() {
 
   if (error || !loan) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center">
+      <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
-        <p className="text-muted-foreground mb-6">
+        <p className="text-muted-foreground mb-6 break-words">
           {error || `The loan request with ID "${loanId}" could not be found.`}
         </p>
+        <p className="text-sm text-muted-foreground mb-6">Please check your browser console for more details.</p>
         <Button onClick={() => router.push('/loan-process')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Loan Pipeline
         </Button>
@@ -757,3 +780,4 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
+

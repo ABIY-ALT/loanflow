@@ -110,16 +110,31 @@ export default function LoanProcessPage() {
       try {
         const result = await getLoanRequests();
         if (result.error) {
-          setError(result.error);
+          setError(result.error); // This might already be detailed from the service
+          console.error("Error message from getLoanRequests service:", result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
         } else {
           setAllLoans([]);
-          setError("No loans data returned from service.");
+          setError("No loans data returned, and no error specified from service.");
+          console.error("Error: No loans data returned from getLoanRequests service, and no explicit error provided.");
         }
-      } catch (err) {
-        console.error("Failed to fetch loans:", err);
-        setError(err instanceof Error ? `An error occurred: ${err.message}` : "An unknown error occurred fetching loans.");
+      } catch (err: any) {
+        console.error("Detailed error fetching loans in LoanProcessPage component:", err);
+        let displayError = "An unknown error occurred fetching loans.";
+        if (err instanceof Error) {
+          displayError = `Error: ${err.name} - ${err.message}.`;
+          if (err.cause) {
+             displayError += ` Cause: ${String(err.cause)}`;
+          }
+          // Attempt to get more specific Firebase error details if present
+          if ('code' in err && typeof err.code === 'string') {
+              displayError += ` (Code: ${err.code})`;
+          }
+        } else if (typeof err === 'string') {
+          displayError = err;
+        }
+        setError(displayError);
       } finally {
         setIsLoading(false);
       }
@@ -145,7 +160,7 @@ export default function LoanProcessPage() {
         <AlertTriangle className="h-5 w-5" />
         <AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
         <AlertDescShadCN>
-          {error} Please try refreshing the page or check your connection.
+          {error} Please check your browser console for more details, or try refreshing the page.
         </AlertDescShadCN>
       </Alert>
     );

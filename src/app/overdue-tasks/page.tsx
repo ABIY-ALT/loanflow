@@ -26,15 +26,30 @@ export default function OverdueTasksPage() {
       try {
         const result = await getLoanRequests();
         if (result.error) {
+          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error);
           setError(result.error);
         } else if (result.loans) {
           setOverdueLoans(result.loans.filter(loan => loan.isOverdue));
         } else {
           setOverdueLoans([]);
+           setError("No loans data received from service for overdue tasks, and no explicit error provided.");
+           console.error("Error: No loans data received from getLoanRequests service for overdue tasks, and no explicit error provided.");
         }
-      } catch (err) {
-        console.error("Failed to fetch overdue loans:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+      } catch (err: any) {
+        console.error("Detailed error fetching overdue loans:", err);
+        let displayError = "An unknown error occurred fetching overdue tasks.";
+        if (err instanceof Error) {
+            displayError = `Error: ${err.name} - ${err.message}.`;
+            if (err.cause) {
+               displayError += ` Cause: ${String(err.cause)}`;
+            }
+            if ('code' in err && typeof err.code === 'string') {
+                displayError += ` (Code: ${err.code})`;
+            }
+        } else if (typeof err === 'string') {
+            displayError = err;
+        }
+        setError(displayError);
       } finally {
         setIsLoading(false);
       }
@@ -73,7 +88,7 @@ export default function OverdueTasksPage() {
             <AlertTriangle className="h-5 w-5" />
             <AlertTitleShadCN>Error Fetching Overdue Tasks</AlertTitleShadCN>
             <AlertDescShadCN>
-            {error} Please try refreshing the page.
+            {error} Please check your browser console for more details, or try refreshing the page.
             </AlertDescShadCN>
         </Alert>
       </div>
@@ -162,4 +177,3 @@ export default function OverdueTasksPage() {
     </div>
   );
 }
-

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
-  approvalRate: string; // Placeholder for now
+  approvalRate: string; 
   overdueTasksCount: number;
 }
 
@@ -32,7 +32,7 @@ export default function DashboardPage() {
         const result = await getLoanRequests();
 
         if (result.error) {
-          console.error("Failed to fetch dashboard data:", result.error);
+          console.error("Error from getLoanRequests service in Dashboard:", result.error);
           setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
@@ -45,7 +45,6 @@ export default function DashboardPage() {
             loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
           ).length;
 
-          // Overdue tasks calculation relies on the isOverdue flag set by the service
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
           setStats({
@@ -55,11 +54,24 @@ export default function DashboardPage() {
             overdueTasksCount: overdueTasks,
           });
         } else {
-          setError("No loans data received from service.");
+          setError("No loans data received from service for dashboard.");
+          console.error("Error: No loans data received from getLoanRequests service for dashboard, and no explicit error provided.");
         }
-      } catch (err) {
-        console.error("Unexpected error fetching dashboard data:", err);
-        setError(err instanceof Error ? err.message : "An unexpected error occurred. Check console.");
+      } catch (err: any) {
+        console.error("Detailed error fetching dashboard data:", err);
+        let displayError = "An unexpected error occurred fetching dashboard data. Check browser console.";
+        if (err instanceof Error) {
+            displayError = `Error: ${err.name} - ${err.message}.`;
+            if (err.cause) {
+               displayError += ` Cause: ${String(err.cause)}`;
+            }
+            if ('code' in err && typeof err.code === 'string') {
+                displayError += ` (Code: ${err.code})`;
+            }
+        } else if (typeof err === 'string') {
+            displayError = err;
+        }
+        setError(displayError);
       } finally {
         setIsLoading(false);
       }
@@ -77,7 +89,7 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" /* Show error only on one card to avoid repetition */ ? (
+          ) : error && title === "Active Loans" /* Show error only on one card to avoid repetition for brevity */ ? (
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -98,7 +110,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !stats && !isLoading) { // Show a more prominent error if data fetching failed and no stats are available
+  if (error && !stats && !isLoading) { 
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -122,7 +134,7 @@ export default function DashboardPage() {
               Could not load dashboard statistics. Error: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please try refreshing the page. If the problem persists, check your Firebase setup and browser console for more details.
+                Please check your browser console for more specific Firebase errors or network issues.
             </p>
           </CardContent>
         </Card>
