@@ -11,9 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
-// Removed: import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
-import { mockUsers } from '@/lib/mock-data'; 
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
+import { mockUsers } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -42,7 +41,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; 
+import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -53,7 +52,7 @@ const editLoanFormSchema = z.object({
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   loanType: z.string().min(2, { message: 'Loan type is required.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
-  assignedTo: z.string().optional(), 
+  assignedTo: z.string().optional(),
 });
 
 type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
@@ -101,7 +100,7 @@ export default function LoanDetailPage() {
   const loanId = params.id as string;
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
-  const [users, setUsers] = useState<UserType[]>(mockUsers); 
+  const [users, setUsers] = useState<UserType[]>(mockUsers);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -124,15 +123,14 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const result = await getLoanRequestById(loanId); 
+          const result = await getLoanRequestById(loanId);
           if (result.error) {
             console.error("Error from getLoanRequestById service:", result.error, result);
             setError(result.error);
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
-            // Users are now part of the result from getLoanRequestById mock service
-            setUsers(result.users || mockUsers); // Fallback to direct mockUsers if service doesn't return them
+            setUsers(result.users || mockUsers);
           } else {
             setError(`Loan request with ID "${loanId}" not found.`);
             setLoan(null);
@@ -169,16 +167,15 @@ export default function LoanDetailPage() {
   ) => {
     if (!loan) return false;
     setIsSaving(true);
-    
-    const currentLoanState = { ...loan }; // Backup current state
 
-    // Optimistic UI update
+    const currentLoanState = { ...loan };
+
     setLoan(prev => prev ? { ...prev, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } : null);
 
     try {
-      const result = await updateLoanRequest(loan.id, updatedFields); 
+      const result = await updateLoanRequest(loan.id, updatedFields);
       if (result.error || !result.success) {
-        setLoan(currentLoanState); // Revert optimistic update on error
+        setLoan(currentLoanState);
         toast({
           title: "Update Error",
           description: result.error || "Failed to update loan.",
@@ -187,9 +184,8 @@ export default function LoanDetailPage() {
         setIsSaving(false);
         return false;
       }
-      // If success, the updatedLoan from service response will be set
       if (result.updatedLoan) {
-        setLoan(result.updatedLoan); 
+        setLoan(result.updatedLoan);
       }
       toast({
         title: "Update Successful",
@@ -199,7 +195,7 @@ export default function LoanDetailPage() {
       setIsSaving(false);
       return true;
     } catch (err: any) {
-      setLoan(currentLoanState); // Revert optimistic update on critical error
+      setLoan(currentLoanState);
       toast({
         title: "System Error",
         description: err.message || "A critical error occurred during update.",
@@ -220,20 +216,20 @@ export default function LoanDetailPage() {
 
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
-        stage: LoanStage.ADDITIONAL_INFO_REQUIRED,
+        stage: loan.currentStage, // Log against the current stage
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id', 
+        userId: 'mock-user-id',
         userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
-        notes: `Requested additional info: ${additionalInfo}`
+        notes: `Logged request for info: ${additionalInfo}`
     };
 
+    // Only update history, do not change currentStage
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-        currentStage: LoanStage.ADDITIONAL_INFO_REQUIRED,
         history: [...loan.history, newHistoryEntry],
     };
 
-    const success = await handleDatabaseUpdate(updatedFields, "Information request action recorded (mock).");
+    const success = await handleDatabaseUpdate(updatedFields, "Information request logged (mock).");
     if (success) {
         setAdditionalInfo('');
         setIsAddInfoDialogOpen(false);
@@ -250,7 +246,7 @@ export default function LoanDetailPage() {
     );
     updatedHistory.push({
         id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage, 
+        stage: loan.currentStage,
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
@@ -273,7 +269,7 @@ export default function LoanDetailPage() {
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
-      stage: loan.currentStage, 
+      stage: loan.currentStage,
       timestamp: formatISO(new Date()),
       userId: 'mock-user-id',
       userName: 'Mock Bank User',
@@ -304,7 +300,7 @@ export default function LoanDetailPage() {
       if (activeInfoRequestEntry) {
         toast({
           title: "Action Pending",
-          description: `Outstanding action: '${activeInfoRequestEntry.requiredFulfilment}' must be marked as received before advancing.`,
+          description: `Outstanding action: '${activeInfoRequestEntry.requiredFulfilment}' must be marked as received before advancing from 'Additional Info Required' stage.`,
           variant: "destructive",
           duration: 7000,
         });
@@ -333,7 +329,7 @@ export default function LoanDetailPage() {
       }
     }
 
-    let newAssignedTo = loan.assignedTo; 
+    let newAssignedTo = loan.assignedTo;
     const nextStageConfig: StageConfig | undefined = initialStageConfigs.find(
         (config) => config.loanStageEnum === nextStage
     );
@@ -341,9 +337,9 @@ export default function LoanDetailPage() {
     if (nextStageConfig && nextStageConfig.targetRoleForStage) {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
-            newAssignedTo = potentialAssignees[0].id; 
+            newAssignedTo = potentialAssignees[0].id;
         }
-    } else if (!newAssignedTo) { // Fallback if still unassigned
+    } else if (!newAssignedTo) { 
       const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
       if (relationshipManagers.length > 0) {
         newAssignedTo = relationshipManagers[0].id;
@@ -362,7 +358,7 @@ export default function LoanDetailPage() {
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         currentStage: nextStage,
         history: [...loan.history, newHistoryEntry],
-        assignedTo: newAssignedTo, 
+        assignedTo: newAssignedTo,
     };
 
     await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
@@ -370,7 +366,7 @@ export default function LoanDetailPage() {
 
   const handleUploadDocument = async (docName: string) => {
     if (!loan) return;
-    
+
     const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
     let updatedDocuments: LoanDocument[];
     if (existingDocIndex > -1) {
@@ -458,7 +454,7 @@ export default function LoanDetailPage() {
       let cumulativeWeight = 0;
       for (const stageCfg of initialStageConfigs) {
           if (stageCfg.loanStageEnum === LoanStage.REJECTED) {
-              break; 
+              break;
           }
           cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
       }
@@ -473,7 +469,7 @@ export default function LoanDetailPage() {
               break;
           }
       }
-      progressPercentage = stageFoundInConfig ? cumulativeWeight : 0; 
+      progressPercentage = stageFoundInConfig ? cumulativeWeight : 0;
   }
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
@@ -482,14 +478,12 @@ export default function LoanDetailPage() {
     (config) => config.loanStageEnum === loan.currentStage
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
-  
+
   const assignedManager = users.find(u => u.id === loan.assignedTo);
-  
-  // Determine next logical stage for "Advance to" button
+
   let nextLogicalStage: LoanStage | null = null;
   const currentConfigIndex = initialStageConfigs.findIndex(config => config.loanStageEnum === loan.currentStage);
   if (currentConfigIndex !== -1 && currentConfigIndex < initialStageConfigs.length - 1) {
-    // Find next non-rejected stage
     for (let i = currentConfigIndex + 1; i < initialStageConfigs.length; i++) {
         if (initialStageConfigs[i].loanStageEnum !== LoanStage.REJECTED) {
             nextLogicalStage = initialStageConfigs[i].loanStageEnum;
@@ -617,7 +611,7 @@ export default function LoanDetailPage() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="">Unassigned</SelectItem>
-                              {users.map(user => ( 
+                              {users.map(user => (
                                 <SelectItem key={user.id} value={user.id}>
                                   {user.name} ({user.role})
                                 </SelectItem>
@@ -709,13 +703,13 @@ export default function LoanDetailPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Request Additional Information</DialogTitle>
+                <DialogTitle>Log Information Request</DialogTitle>
                 <DialogDescription>
-                  Specify what the customer needs to provide. This will move the loan to 'Additional Info Required'.
+                  Specify what information needs to be requested from the customer. This will add a note to the loan's history to track this request. It will NOT change the loan's current stage.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <Label htmlFor="additional-info">Information to Fulfill</Label>
+                <Label htmlFor="additional-info">Information to Request</Label>
                 <Textarea
                   id="additional-info"
                   value={additionalInfo}
@@ -730,7 +724,7 @@ export default function LoanDetailPage() {
                   </DialogClose>
                 <Button type="submit" onClick={handleAddInfoSubmit} disabled={isSaving}>
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Confirm & Request
+                  Log Request
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -745,14 +739,14 @@ export default function LoanDetailPage() {
                 Advance to: {nextLogicalStage}
             </Button>
           )}
-           {loan.currentStage !== LoanStage.APPROVED && 
-            loan.currentStage !== LoanStage.REJECTED && 
-            loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
+           {loan.currentStage !== LoanStage.APPROVED &&
+            loan.currentStage !== LoanStage.REJECTED &&
+            loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
             initialStageConfigs.some(s => s.loanStageEnum === LoanStage.APPROVED) && (
-              <Button 
-                variant="default" 
-                onClick={() => handleAdvanceWorkflow(LoanStage.APPROVED)} 
-                disabled={isSaving} 
+              <Button
+                variant="default"
+                onClick={() => handleAdvanceWorkflow(LoanStage.APPROVED)}
+                disabled={isSaving}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
