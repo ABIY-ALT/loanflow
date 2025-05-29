@@ -8,15 +8,14 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType } from '@/types/loan';
 import { LoanStage, UserRole, loanStages } from '@/types/loan';
-import { mockUsers } from '@/lib/mock-data'; // Corrected import
+import { mockUsers } from '@/lib/mock-data'; 
 import { initialStageConfigs } from '@/app/settings/page';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 
-// Import new components
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
 import { LoanInfoDisplay } from '@/components/loan/detail/LoanInfoDisplay';
@@ -52,10 +51,9 @@ export default function LoanDetailPage() {
   const [loan, setLoan] = useState<LoanRequest | null>(null);
   const [users, setUsers] = useState<UserType[]>(mockUsers);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); // General saving state for multiple operations
+  const [isSaving, setIsSaving] = useState(false); 
   const [error, setError] = useState<string | null>(null);
 
-  // Dialog states
   const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = useState(false);
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
   const [isLogInfoDialogOpen, setIsLogInfoDialogOpen] = useState(false);
@@ -64,60 +62,75 @@ export default function LoanDetailPage() {
   const [isPromoteLoanDialogOpen, setIsPromoteLoanDialogOpen] = useState(false);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (loanId) {
-      const fetchLoan = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-          const result = await getLoanRequestById(loanId);
-          if (result.error) {
-            setError(result.error);
-            setLoan(null);
-          } else if (result.loan) {
-            setLoan(result.loan);
-            setUsers(result.users || mockUsers); // Fallback for mockUsers
-          } else {
-            setError(`Loan request with ID "${loanId}" not found.`);
-            setLoan(null);
-          }
-        } catch (err: any) {
-          const errorMessage = err.message || "An unexpected error occurred while fetching loan data.";
-          setError(errorMessage);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchLoan();
+  const fetchLoanData = useCallback(async () => {
+    if (!loanId) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await getLoanRequestById(loanId);
+      if (result.error) {
+        setError(result.error);
+        setLoan(null);
+      } else if (result.loan) {
+        setLoan(result.loan);
+        setUsers(result.users || mockUsers); 
+      } else {
+        setError(`Loan request with ID "${loanId}" not found.`);
+        setLoan(null);
+      }
+    } catch (err: any) {
+      const errorMessage = err.message || "An unexpected error occurred while fetching loan data.";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   }, [loanId]);
+
+  useEffect(() => {
+    fetchLoanData();
+  }, [fetchLoanData]);
   
-  const handleDatabaseUpdate = async (
+  const handleLocalAndUpdateService = useCallback(async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
   ): Promise<boolean> => {
     if (!loan) return false;
     setIsSaving(true);
+
+    const newHistory = updatedFields.history || loan.history;
+    const newLoanState: LoanRequest = {
+      ...loan,
+      ...updatedFields,
+      history: [...newHistory], // Ensure history is a new array
+      lastUpdatedDate: formatISO(new Date()),
+    };
+    setLoan(newLoanState); // Update local state immediately
+
     try {
-      const result = await updateLoanRequest(loan.id, updatedFields);
-      if (result.error || !result.success || !result.updatedLoan) {
-        toast({ title: "Update Error", description: result.error || "Failed to update loan.", variant: "destructive" });
+      const serviceResult = await updateLoanRequest(loan.id, newLoanState); // Send the whole updated state
+      if (serviceResult.error || !serviceResult.success) {
+        toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
+        // Optionally revert local state or refetch from service if critical
+        fetchLoanData(); // Refetch to ensure consistency if service update fails
         return false;
       }
-      setLoan(prevLoan => prevLoan ? { ...prevLoan, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : null);
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
+      // No need to setLoan again here if serviceResult.updatedLoan is the same as newLoanState
+      // or if we trust the local update.
       return true;
     } catch (err: any) {
       toast({ title: "System Error", description: err.message || "A critical error occurred during update.", variant: "destructive" });
+      fetchLoanData(); // Refetch on critical error
       return false;
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [loan, toast, fetchLoanData]);
 
-  const onEditLoanSubmit = async (data: any) => { // data type from EditLoanDetailsDialog form values
+
+  const onEditLoanSubmit = async (data: any) => { 
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
-    const success = await handleDatabaseUpdate({
+    const success = await handleLocalAndUpdateService({
       customerName: data.customerName,
       customerEmail: data.customerEmail,
       customerPhone: data.customerPhone,
@@ -139,7 +152,7 @@ export default function LoanDetailPage() {
       id: `hist-mock-${Date.now()}`, stage: loan.currentStage, timestamp: formatISO(new Date()),
       userId: 'mock-user-id', userName: 'Mock Bank User', notes: noteContent,
     };
-    const success = await handleDatabaseUpdate({ history: [...loan.history, newHistoryEntry] }, "Note added.");
+    const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
     if (success) setIsAddNoteDialogOpen(false);
   };
   
@@ -154,7 +167,7 @@ export default function LoanDetailPage() {
       userId: 'mock-user-id', userName: 'Mock Bank User', notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
     };
-    const success = await handleDatabaseUpdate({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
+    const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
     if (success) setIsLogInfoDialogOpen(false);
   };
 
@@ -168,10 +181,10 @@ export default function LoanDetailPage() {
         userId: 'mock-user-id', userName: 'Mock Bank User',
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
-    await handleDatabaseUpdate({ history: updatedHistory }, "Information fulfillment status updated.");
+    await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
   };
 
-  const validateCurrentStageRequirements = (): boolean => {
+  const validateCurrentStageRequirements = useCallback((): boolean => {
     if (!loan) return false;
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
       const activeInfoReq = [...loan.history].reverse().find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
@@ -192,7 +205,7 @@ export default function LoanDetailPage() {
       }
     }
     return true;
-  };
+  }, [loan, toast]);
 
   const handleMarkStageComplete = async () => {
     if (!loan || !validateCurrentStageRequirements()) return;
@@ -201,7 +214,7 @@ export default function LoanDetailPage() {
       userId: 'mock-officer-user', userName: 'Officer User (Mock)',
       notes: `Stage '${loan.currentStage}' marked complete. Submitted for manager review.`,
     };
-    await handleDatabaseUpdate({ isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] }, `Loan submitted for manager review.`);
+    await handleLocalAndUpdateService({ isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] }, `Loan submitted for manager review.`);
   };
 
   const handlePromoteLoan = async (nextStage: LoanStage) => {
@@ -215,8 +228,8 @@ export default function LoanDetailPage() {
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
       notes: `Manager promoted to ${nextStage}. Case is now unassigned.`
     };
-    const success = await handleDatabaseUpdate({
-      currentStage: nextStage, assignedTo: undefined, // Always unassign on promotion
+    const success = await handleLocalAndUpdateService({
+      currentStage: nextStage, assignedTo: undefined, 
       history: [...loan.history, newHistoryEntry], isReadyForManagerReview: false,
     }, `${loan.customerName} moved to ${nextStage} and is now unassigned.`);
     if (success) setIsPromoteLoanDialogOpen(false);
@@ -229,7 +242,7 @@ export default function LoanDetailPage() {
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
       notes: 'Loan directly approved by manager. Case unassigned.'
     };
-    await handleDatabaseUpdate({
+    await handleLocalAndUpdateService({
       currentStage: LoanStage.APPROVED, assignedTo: undefined,
       isReadyForManagerReview: false, history: [...loan.history, newHistoryEntry]
     }, 'Loan approved by manager.');
@@ -246,7 +259,7 @@ export default function LoanDetailPage() {
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
       notes: `Manager returned case for rework. Reason: ${reworkNote}`
     };
-    const success = await handleDatabaseUpdate({
+    const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false, assignedTo: reworkAssigneeId,
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
@@ -267,7 +280,7 @@ export default function LoanDetailPage() {
             { id: `doc-mock-${Date.now()}`, name: docName, status: 'Submitted', notes: 'File uploaded.' }
         ];
     }
-    const success = await handleDatabaseUpdate({ documents: updatedDocuments }, `Document ${docName} status updated to 'Submitted'.`);
+    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document ${docName} status updated to 'Submitted'.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
 
@@ -276,11 +289,11 @@ export default function LoanDetailPage() {
     const updatedDocuments = loan.documents.map(doc =>
         doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified.' } : doc
     );
-    await handleDatabaseUpdate({ documents: updatedDocuments }, `Document ${docName} status updated to 'Verified'.`);
+    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document ${docName} status updated to 'Verified'.`);
   };
 
 
-  if (isLoading) {
+  if (isLoading && !loan) { // Show loader only if loan data is not yet available
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -289,7 +302,7 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (error || !loan) {
+  if (error && !loan) { // Show error only if loan could not be loaded
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
@@ -303,11 +316,18 @@ export default function LoanDetailPage() {
       </div>
     );
   }
+
+  if (!loan) { // Fallback if loan is null after loading (e.g. not found but no error string)
+    return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <p className="text-lg text-muted-foreground">Loan not found.</p>
+      </div>
+    );
+  }
   
   const assignedUser = users.find(u => u.id === loan.assignedTo);
   const isActionableStage = ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED].includes(loan.currentStage);
 
-  // Calculate progressPercentage
   let progressPercentage = 0;
   if (loan.currentStage === LoanStage.FUNDS_DISBURSED) {
       progressPercentage = 100;
@@ -403,7 +423,6 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {/* Dialogs */}
       <EditLoanDetailsDialog
         isOpen={isEditLoanDialogOpen}
         onOpenChange={setIsEditLoanDialogOpen}
@@ -435,7 +454,6 @@ export default function LoanDetailPage() {
         isOpen={isPromoteLoanDialogOpen}
         onOpenChange={setIsPromoteLoanDialogOpen}
         loan={loan}
-        // users={users} // No longer needed for assignment here
         onSubmit={handlePromoteLoan}
         isSaving={isSaving}
         validateCurrentStageRequirements={validateCurrentStageRequirements}

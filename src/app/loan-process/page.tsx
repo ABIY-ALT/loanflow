@@ -34,6 +34,8 @@ import { useToast } from '@/hooks/use-toast';
 import { initialStageConfigs } from '@/app/settings/page';
 import { mockUsers } from '@/lib/mock-data';
 
+const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-PIPELINE---";
+
 
 interface LoanCardProps {
   loan: LoanRequest;
@@ -123,19 +125,17 @@ function KanbanColumn({ stage, loans, onCardActionClick }: KanbanColumnProps) {
   );
 }
 
-// Extracted Dialog (could be further moved to its own file in a larger refactor)
 interface PipelinePromoteDialogProps {
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
     selectedLoan: LoanRequest | null;
-    users: User[]; // Kept for potential future use, not for assignment in dialog
-    onConfirmPromotion: (nextStage: LoanStage) => Promise<void>;
+    onConfirmPromotion: (loanId: string, nextStage: LoanStage) => Promise<void>;
     isSavingPromotion: boolean;
     validateCurrentStageRequirements: (loan: LoanRequest) => boolean;
 }
 
 function PipelinePromoteDialog({
-    isOpen, onOpenChange, selectedLoan, users,
+    isOpen, onOpenChange, selectedLoan,
     onConfirmPromotion, isSavingPromotion, validateCurrentStageRequirements
 }: PipelinePromoteDialogProps) {
     const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
@@ -163,7 +163,7 @@ function PipelinePromoteDialog({
     const handleConfirm = async () => {
         if (!selectedLoan || !selectedNextStage) return;
         if (!validateCurrentStageRequirements(selectedLoan)) return;
-        await onConfirmPromotion(selectedNextStage);
+        await onConfirmPromotion(selectedLoan.id, selectedNextStage);
     };
 
     if (!selectedLoan) return null;
@@ -172,9 +172,9 @@ function PipelinePromoteDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Manager: Promote Loan for {selectedLoan.customerName}</DialogTitle>
+                    <DialogTitle>Promote Loan for {selectedLoan.customerName}</DialogTitle>
                     <DialogDescription>
-                        Current Stage: {selectedLoan.currentStage}. Select the next stage. The loan will be unassigned.
+                        Current Stage: {selectedLoan.currentStage}. Select the next stage. The loan will become unassigned.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
@@ -212,11 +212,10 @@ export default function LoanProcessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const users = mockUsers; // Keep mock users for now
 
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
-  const [isSavingPromotion, setIsSavingPromotion] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false); // Combined saving state
 
   const fetchLoans = useCallback(async () => {
     setIsLoading(true);
@@ -225,6 +224,7 @@ export default function LoanProcessPage() {
       const result = await getLoanRequests();
       if (result.error) {
         setError(result.error);
+        setAllLoans([]);
       } else if (result.loans) {
         setAllLoans(result.loans);
       } else {
@@ -234,6 +234,7 @@ export default function LoanProcessPage() {
     } catch (err: any) {
       const errorMessage = err.message || "An unexpected error occurred fetching loans.";
       setError(errorMessage);
+      setAllLoans([]);
     } finally {
       setIsLoading(false);
     }
@@ -271,52 +272,79 @@ export default function LoanProcessPage() {
       setIsPromoteDialogOpen(true);
     } else {
       if (!validateCurrentStageRequirements(loan)) return;
-      setIsSavingPromotion(true); // Using same saving flag for simplicity
+      setIsProcessingAction(true);
       const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`, stage: loan.currentStage, timestamp: formatISO(new Date()),
         userId: 'mock-officer-user', userName: 'Officer User (Mock)',
         notes: `Stage '${loan.currentStage}' marked complete by officer. Submitted for manager review.`,
       };
-      const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] };
-      const result = await updateLoanRequest(loan.id, updatedFields);
-      setIsSavingPromotion(false);
-      if (result.error || !result.success || !result.updatedLoan) {
-        toast({ title: "Error", description: result.error || "Failed to mark stage complete.", variant: "destructive" });
+      const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { 
+        isReadyForManagerReview: true, 
+        history: [...loan.history, newHistoryEntry],
+        lastUpdatedDate: formatISO(new Date()) 
+      };
+      
+      // Update local state immediately
+      setAllLoans(prevLoans => 
+        prevLoans.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l)
+      );
+
+      const serviceResult = await updateLoanRequest(loan.id, updatedFields);
+      setIsProcessingAction(false);
+
+      if (serviceResult.error || !serviceResult.success) {
+        toast({ title: "Error", description: serviceResult.error || "Failed to mark stage complete in service.", variant: "destructive" });
+        // Potentially revert local state if service fails, or fetch all loans again
+        fetchLoans(); 
       } else {
         toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
-        setAllLoans(prevLoans => prevLoans.map(l => l.id === loan.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l ));
       }
     }
-  }, [toast, validateCurrentStageRequirements]);
+  }, [toast, validateCurrentStageRequirements, fetchLoans]);
 
-  const handleConfirmPromotion = useCallback(async (nextStage: LoanStage) => {
-    if (!selectedLoanForDialog || !nextStage) return;
+  const handleConfirmPromotion = useCallback(async (loanId: string, nextStage: LoanStage) => {
+    const loanToPromote = allLoans.find(l => l.id === loanId);
+    if (!loanToPromote) {
+        toast({ title: "Error", description: "Loan not found for promotion.", variant: "destructive"});
+        return;
+    }
 
-    setIsSavingPromotion(true);
+    setIsProcessingAction(true);
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`, stage: nextStage, timestamp: formatISO(new Date()),
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
       notes: `Manager promoted to ${nextStage}. Case is now unassigned.`
     };
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-      currentStage: nextStage, assignedTo: undefined, // Always unassign
-      history: [...selectedLoanForDialog.history, newHistoryEntry], isReadyForManagerReview: false,
+      currentStage: nextStage, assignedTo: undefined, 
+      history: [...loanToPromote.history, newHistoryEntry], 
+      isReadyForManagerReview: false,
+      lastUpdatedDate: formatISO(new Date())
     };
-    const result = await updateLoanRequest(selectedLoanForDialog.id, updatedFields);
-    setIsSavingPromotion(false);
-    if (result.error || !result.success || !result.updatedLoan) {
-      toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
+
+    // Update local state immediately
+    setAllLoans(prevLoans => 
+        prevLoans.map(l => l.id === loanId ? { ...l, ...updatedFields } : l)
+    );
+    
+    setIsPromoteDialogOpen(false);
+    setSelectedLoanForDialog(null);
+
+    const serviceResult = await updateLoanRequest(loanId, updatedFields);
+    setIsProcessingAction(false);
+
+    if (serviceResult.error || !serviceResult.success) {
+      toast({ title: "Promotion Error", description: serviceResult.error || "Failed to promote loan in service.", variant: "destructive" });
+      // Potentially revert local state or refetch
+      fetchLoans();
     } else {
-      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${nextStage} and is now unassigned.` });
-      setAllLoans(prevLoans => prevLoans.map(l => l.id === selectedLoanForDialog!.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l ));
-      setIsPromoteDialogOpen(false);
-      setSelectedLoanForDialog(null);
+      toast({ title: "Promotion Successful", description: `${loanToPromote.customerName} moved to ${nextStage} and is now unassigned.` });
     }
-  }, [selectedLoanForDialog, toast]);
+  }, [allLoans, toast, fetchLoans]);
 
   const loansByStage = (stage: LoanStage) => allLoans.filter((loan) => loan.currentStage === stage);
 
-  if (isLoading) {
+  if (isLoading && allLoans.length === 0) { // Show loader only if no loans are displayed yet
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p>
@@ -324,7 +352,7 @@ export default function LoanProcessPage() {
     );
   }
 
-  if (error) {
+  if (error && allLoans.length === 0) { // Show error only if no loans could be displayed
     return (
       <Alert variant="destructive" className="max-w-2xl mx-auto">
         <AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
@@ -354,9 +382,8 @@ export default function LoanProcessPage() {
         isOpen={isPromoteDialogOpen}
         onOpenChange={(isOpen) => { setIsPromoteDialogOpen(isOpen); if (!isOpen) setSelectedLoanForDialog(null); }}
         selectedLoan={selectedLoanForDialog}
-        users={users}
         onConfirmPromotion={handleConfirmPromotion}
-        isSavingPromotion={isSavingPromotion}
+        isSavingPromotion={isProcessingAction}
         validateCurrentStageRequirements={validateCurrentStageRequirements}
       />
     </div>
