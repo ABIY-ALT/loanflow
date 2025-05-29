@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType } from '@/types/loan';
 import { LoanStage, UserRole, loanStages } from '@/types/loan';
-import { mockUsers } from '@/lib/mock-data'; 
+import { mockUsers } from '@/lib/mock-data';
 import { initialStageConfigs } from '@/app/settings/page';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -51,7 +51,7 @@ export default function LoanDetailPage() {
   const [loan, setLoan] = useState<LoanRequest | null>(null);
   const [users, setUsers] = useState<UserType[]>(mockUsers);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); 
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = useState(false);
@@ -73,7 +73,8 @@ export default function LoanDetailPage() {
         setLoan(null);
       } else if (result.loan) {
         setLoan(result.loan);
-        setUsers(result.users || mockUsers); 
+        // Assuming users are static for now, or fetch them if dynamic in future
+        setUsers(result.users || mockUsers);
       } else {
         setError(`Loan request with ID "${loanId}" not found.`);
         setLoan(null);
@@ -81,6 +82,7 @@ export default function LoanDetailPage() {
     } catch (err: any) {
       const errorMessage = err.message || "An unexpected error occurred while fetching loan data.";
       setError(errorMessage);
+      setLoan(null);
     } finally {
       setIsLoading(false);
     }
@@ -89,7 +91,7 @@ export default function LoanDetailPage() {
   useEffect(() => {
     fetchLoanData();
   }, [fetchLoanData]);
-  
+
   const handleLocalAndUpdateService = useCallback(async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
@@ -97,30 +99,36 @@ export default function LoanDetailPage() {
     if (!loan) return false;
     setIsSaving(true);
 
-    const newHistory = updatedFields.history || loan.history;
+    // Construct the new loan state by merging existing loan with updated fields
     const newLoanState: LoanRequest = {
       ...loan,
       ...updatedFields,
-      history: [...newHistory], // Ensure history is a new array
-      lastUpdatedDate: formatISO(new Date()),
+      history: updatedFields.history ? [...updatedFields.history] : [...loan.history], // Ensure history is a new array
+      documents: updatedFields.documents ? [...updatedFields.documents] : [...loan.documents], // Ensure documents is a new array
+      lastUpdatedDate: formatISO(new Date()), // Always update lastUpdatedDate
     };
-    setLoan(newLoanState); // Update local state immediately
+
+    console.log("[LoanDetailPage] Updating local component state with:", newLoanState);
+    setLoan(newLoanState); // Update local state immediately for UI responsiveness
 
     try {
-      const serviceResult = await updateLoanRequest(loan.id, newLoanState); // Send the whole updated state
+      // Simulate service call
+      const serviceResult = await updateLoanRequest(loan.id, newLoanState);
       if (serviceResult.error || !serviceResult.success) {
-        toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
-        // Optionally revert local state or refetch from service if critical
-        fetchLoanData(); // Refetch to ensure consistency if service update fails
+        toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in mock service.", variant: "destructive" });
+        // Re-fetch to revert optimistic update if service fails
+        // This ensures UI consistency with the "source of truth" (mock service)
+        await fetchLoanData();
         return false;
       }
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
-      // No need to setLoan again here if serviceResult.updatedLoan is the same as newLoanState
-      // or if we trust the local update.
+      // Optionally, if serviceResult.updatedLoan has more up-to-date info (e.g. server-generated fields)
+      // you could do: setLoan(serviceResult.updatedLoan);
+      // But for mock service, the newLoanState should be accurate.
       return true;
     } catch (err: any) {
-      toast({ title: "System Error", description: err.message || "A critical error occurred during update.", variant: "destructive" });
-      fetchLoanData(); // Refetch on critical error
+      toast({ title: "System Error", description: err.message || "A critical error occurred during mock update.", variant: "destructive" });
+      await fetchLoanData(); // Re-fetch on critical error
       return false;
     } finally {
       setIsSaving(false);
@@ -128,7 +136,8 @@ export default function LoanDetailPage() {
   }, [loan, toast, fetchLoanData]);
 
 
-  const onEditLoanSubmit = async (data: any) => { 
+  const onEditLoanSubmit = async (data: any) => {
+    if (!loan) return;
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
     const success = await handleLocalAndUpdateService({
       customerName: data.customerName,
@@ -155,7 +164,7 @@ export default function LoanDetailPage() {
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
     if (success) setIsAddNoteDialogOpen(false);
   };
-  
+
   const onLogInfoRequestSubmit = async (infoToRequest: string) => {
     if (!infoToRequest.trim()) {
       toast({ title: "Info Required", description: "Please specify information needed.", variant: "destructive" });
@@ -218,18 +227,18 @@ export default function LoanDetailPage() {
   };
 
   const handlePromoteLoan = async (nextStage: LoanStage) => {
-    if (!loan || !nextStage ) { 
+    if (!loan || !nextStage ) {
       toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
       return;
     }
-    
+
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`, stage: nextStage, timestamp: formatISO(new Date()),
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
       notes: `Manager promoted to ${nextStage}. Case is now unassigned.`
     };
     const success = await handleLocalAndUpdateService({
-      currentStage: nextStage, assignedTo: undefined, 
+      currentStage: nextStage, assignedTo: undefined,
       history: [...loan.history, newHistoryEntry], isReadyForManagerReview: false,
     }, `${loan.customerName} moved to ${nextStage} and is now unassigned.`);
     if (success) setIsPromoteLoanDialogOpen(false);
@@ -247,7 +256,7 @@ export default function LoanDetailPage() {
       isReadyForManagerReview: false, history: [...loan.history, newHistoryEntry]
     }, 'Loan approved by manager.');
   };
-  
+
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
     if (!loan) return;
     if (!reworkNote.trim()) {
@@ -293,7 +302,7 @@ export default function LoanDetailPage() {
   };
 
 
-  if (isLoading && !loan) { // Show loader only if loan data is not yet available
+  if (isLoading && !loan) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -302,7 +311,7 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (error && !loan) { // Show error only if loan could not be loaded
+  if (error && !loan) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
@@ -317,14 +326,14 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (!loan) { // Fallback if loan is null after loading (e.g. not found but no error string)
+  if (!loan) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <p className="text-lg text-muted-foreground">Loan not found.</p>
       </div>
     );
   }
-  
+
   const assignedUser = users.find(u => u.id === loan.assignedTo);
   const isActionableStage = ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED].includes(loan.currentStage);
 
