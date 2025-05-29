@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType } from '@/types/loan';
 import { LoanStage, UserRole, loanStages } from '@/types/loan';
-import { mockUsers }_from_ '@/lib/mock-data'; // Corrected import
+import { mockUsers } from '@/lib/mock-data'; // Corrected import
 import { initialStageConfigs } from '@/app/settings/page';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -205,13 +205,11 @@ export default function LoanDetailPage() {
   };
 
   const handlePromoteLoan = async (nextStage: LoanStage) => {
-    if (!loan || !nextStage ) { // Removed assignee check as it's handled by the dialog
+    if (!loan || !nextStage ) { 
       toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
       return;
     }
-    // Validation happens before dialog opens, but can be re-checked if complex
-    // if (!validateCurrentStageRequirements()) return;
-
+    
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`, stage: nextStage, timestamp: formatISO(new Date()),
       userId: 'mock-manager-user', userName: 'Manager User (Mock)',
@@ -309,6 +307,36 @@ export default function LoanDetailPage() {
   const assignedUser = users.find(u => u.id === loan.assignedTo);
   const isActionableStage = ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED].includes(loan.currentStage);
 
+  // Calculate progressPercentage
+  let progressPercentage = 0;
+  if (loan.currentStage === LoanStage.FUNDS_DISBURSED) {
+      progressPercentage = 100;
+  } else if (loan.currentStage === LoanStage.REJECTED) {
+      let cumulativeWeight = 0;
+      let rejectedFound = false;
+      for (const stageCfg of initialStageConfigs) {
+          if (stageCfg.loanStageEnum === LoanStage.REJECTED) {
+              rejectedFound = true;
+              break;
+          }
+          cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
+      }
+      progressPercentage = rejectedFound ? cumulativeWeight : 0;
+  } else {
+      let cumulativeWeight = 0;
+      let stageFoundInConfig = false;
+      for (const stageCfg of initialStageConfigs) {
+          cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
+          if (stageCfg.loanStageEnum === loan.currentStage) {
+              stageFoundInConfig = true;
+              break;
+          }
+      }
+      progressPercentage = stageFoundInConfig ? cumulativeWeight : 0;
+  }
+  progressPercentage = Math.min(100, Math.max(0, progressPercentage));
+
+
   return (
     <div className="space-y-6">
       <LoanDetailHeader
@@ -351,7 +379,7 @@ export default function LoanDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          <LoanProgressDisplay loan={loan} />
+          <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} />
           <LoanInfoDisplay loan={loan} assignedUser={assignedUser} />
           <Separator className="my-8" />
           <div className="grid md:grid-cols-2 gap-8">
@@ -407,7 +435,7 @@ export default function LoanDetailPage() {
         isOpen={isPromoteLoanDialogOpen}
         onOpenChange={setIsPromoteLoanDialogOpen}
         loan={loan}
-        users={users} // Kept for consistency, though not used for assignment in dialog anymore
+        // users={users} // No longer needed for assignment here
         onSubmit={handlePromoteLoan}
         isSaving={isSaving}
         validateCurrentStageRequirements={validateCurrentStageRequirements}
