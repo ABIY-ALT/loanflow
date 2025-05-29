@@ -1,7 +1,7 @@
 
 'use client';
 
-import type React from 'react';
+import type React from 'react'; // Changed to import type React from 'react';
 
 interface InfoItemProps {
   icon: React.ReactNode;
