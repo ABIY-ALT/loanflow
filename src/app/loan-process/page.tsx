@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User } from '@/types/loan';
 import { loanStages, LoanStage, UserRole } from '@/types/loan';
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, UserCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
@@ -38,11 +38,14 @@ const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
 
 interface LoanCardProps {
   loan: LoanRequest;
-  onPromoteClick: (loan: LoanRequest) => void;
+  onCardActionClick: (loan: LoanRequest) => void; // Renamed from onPromoteClick
 }
 
-function LoanCard({ loan, onPromoteClick }: LoanCardProps) {
-  const canPromote = ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage);
+function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
+  const canTakeAction = ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage);
+  const actionButtonText = loan.isReadyForManagerReview ? "Promote" : "Mark Complete";
+  const ActionIcon = loan.isReadyForManagerReview ? ArrowRight : CheckSquare;
+
   return (
     <Card
       className="mb-3 shadow-md hover:shadow-lg transition-shadow"
@@ -83,9 +86,14 @@ function LoanCard({ loan, onPromoteClick }: LoanCardProps) {
             Action Needed: {loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED)?.requiredFulfilment}
           </Badge>
         )}
-         {canPromote && (
-          <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => onPromoteClick(loan)}>
-            <ArrowRight className="mr-2 h-4 w-4" /> Promote
+        {loan.isReadyForManagerReview && (
+             <Badge variant="outline" className="mt-2 text-orange-600 border-orange-400 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
+                Awaiting Manager Review
+            </Badge>
+        )}
+         {canTakeAction && (
+          <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => onCardActionClick(loan)}>
+            <ActionIcon className="mr-2 h-4 w-4" /> {actionButtonText}
           </Button>
         )}
       </CardContent>
@@ -96,10 +104,10 @@ function LoanCard({ loan, onPromoteClick }: LoanCardProps) {
 interface KanbanColumnProps {
   stage: LoanStage;
   loans: LoanRequest[];
-  onPromoteClick: (loan: LoanRequest) => void;
+  onCardActionClick: (loan: LoanRequest) => void;
 }
 
-function KanbanColumn({ stage, loans, onPromoteClick }: KanbanColumnProps) {
+function KanbanColumn({ stage, loans, onCardActionClick }: KanbanColumnProps) {
   return (
     <div
       className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]"
@@ -115,7 +123,7 @@ function KanbanColumn({ stage, loans, onPromoteClick }: KanbanColumnProps) {
           </div>
         )}
         {loans.map((loan) => (
-          <LoanCard key={loan.id} loan={loan} onPromoteClick={onPromoteClick} />
+          <LoanCard key={loan.id} loan={loan} onCardActionClick={onCardActionClick} />
         ))}
       </ScrollArea>
     </div>
@@ -130,7 +138,7 @@ export default function LoanProcessPage() {
   const [users, setUsers] = useState<User[]>(mockUsers); 
 
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
-  const [selectedLoanForPromotion, setSelectedLoanForPromotion] = useState<LoanRequest | null>(null);
+  const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
   const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
   const [selectedAssignee, setSelectedAssignee] = useState<string>(''); 
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
@@ -161,11 +169,77 @@ export default function LoanProcessPage() {
     fetchLoans();
   }, []);
   
-  const handlePromoteClick = (loan: LoanRequest) => {
-    setSelectedLoanForPromotion(loan);
-    setSelectedNextStage(''); 
-    setSelectedAssignee(loan.assignedTo || ''); 
-    setIsPromoteDialogOpen(true);
+  const validateCurrentStageRequirements = (loan: LoanRequest): boolean => {
+    if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
+        const activeInfoRequest = [...loan.history]
+            .reverse()
+            .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+        if (activeInfoRequest) {
+            toast({
+                title: "Action Pending",
+                description: `Outstanding action for ${loan.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved.`,
+                variant: "destructive",
+                duration: 7000,
+            });
+            return false;
+        }
+    }
+    const currentStageConfig = initialStageConfigs.find(c => c.loanStageEnum === loan.currentStage);
+    if (currentStageConfig?.requiredDocuments.length) {
+        const pendingDocs = currentStageConfig.requiredDocuments.filter(reqDoc => {
+            const uploadedDoc = loan.documents.find(d => d.name === reqDoc.name);
+            return !uploadedDoc || uploadedDoc.status !== 'Verified';
+        });
+        if (pendingDocs.length > 0) {
+            toast({
+                title: "Documents Pending",
+                description: `Cannot proceed with ${loan.customerName}. Documents for stage '${loan.currentStage}' must be verified: ${pendingDocs.map(d => d.name).join(', ')}.`,
+                variant: "destructive",
+                duration: 7000,
+            });
+            return false;
+        }
+    }
+    return true;
+  };
+  
+  const handleCardActionClick = async (loan: LoanRequest) => {
+    setSelectedLoanForDialog(loan);
+    if (loan.isReadyForManagerReview) {
+      // Manager action: Open promotion dialog
+      setSelectedNextStage(''); 
+      setSelectedAssignee(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE); 
+      setIsPromoteDialogOpen(true);
+    } else {
+      // Officer action: Mark stage complete for review
+      if (!validateCurrentStageRequirements(loan)) return;
+
+      setIsSavingPromotion(true); // Use same saving flag for quick update
+      const newHistoryEntry: LoanHistoryEntry = {
+        id: `hist-mock-${Date.now()}`,
+        stage: loan.currentStage,
+        timestamp: formatISO(new Date()),
+        userId: 'mock-officer-user', 
+        userName: 'Officer User (Mock)',
+        notes: `Stage '${loan.currentStage}' marked complete by officer. Submitted for manager review.`,
+      };
+      const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
+          isReadyForManagerReview: true,
+          history: [...loan.history, newHistoryEntry],
+      };
+      
+      const result = await updateLoanRequest(loan.id, updatedFields);
+      setIsSavingPromotion(false);
+
+      if (result.error || !result.success) {
+        toast({ title: "Error", description: result.error || "Failed to mark stage complete.", variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
+        setAllLoans(prevLoans => prevLoans.map(l => 
+          l.id === loan.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
+        ));
+      }
+    }
   };
 
   const availableNextStages = (currentStage: LoanStage | undefined): LoanStage[] => {
@@ -186,100 +260,75 @@ export default function LoanProcessPage() {
   };
 
   useEffect(() => {
-    if (selectedLoanForPromotion && selectedNextStage) {
+    if (selectedLoanForDialog && selectedNextStage) {
       const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStage);
-      let suggestedAssigneeId = selectedLoanForPromotion.assignedTo || '';
+      let suggestedAssigneeId = selectedLoanForDialog.assignedTo || '';
 
       if (nextStageConfig?.targetRoleForStage) {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
           suggestedAssigneeId = potentialAssignees[0].id;
         }
-      } else if (!suggestedAssigneeId) { 
+      } else if (!suggestedAssigneeId && selectedNextStage !== LoanStage.REJECTED) { 
         const defaultRMs = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
         if (defaultRMs.length > 0) {
           suggestedAssigneeId = defaultRMs[0].id;
         }
       }
-      setSelectedAssignee(suggestedAssigneeId); 
+      setSelectedAssignee(suggestedAssigneeId || UNASSIGNED_DIALOG_OPTION_VALUE); 
     }
-  }, [selectedNextStage, selectedLoanForPromotion, users]);
+  }, [selectedNextStage, selectedLoanForDialog, users]);
 
 
   const handleConfirmPromotion = async () => {
-    if (!selectedLoanForPromotion || !selectedNextStage) {
+    if (!selectedLoanForDialog || !selectedNextStage) {
       toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
       return;
     }
 
-    if (selectedLoanForPromotion.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-        const activeInfoRequest = [...selectedLoanForPromotion.history]
-            .reverse()
-            .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
-        if (activeInfoRequest) {
-            toast({
-                title: "Action Pending",
-                description: `Outstanding action for ${selectedLoanForPromotion.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved before advancing.`,
-                variant: "destructive",
-                duration: 7000,
-            });
-            return;
-        }
-    }
-    const currentStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedLoanForPromotion.currentStage);
-    if (currentStageConfig?.requiredDocuments.length) {
-        const pendingDocs = currentStageConfig.requiredDocuments.filter(reqDoc => {
-            const uploadedDoc = selectedLoanForPromotion.documents.find(d => d.name === reqDoc.name);
-            return !uploadedDoc || uploadedDoc.status !== 'Verified';
-        });
-        if (pendingDocs.length > 0) {
-            toast({
-                title: "Documents Pending",
-                description: `Cannot advance ${selectedLoanForPromotion.customerName}. Documents for stage '${selectedLoanForPromotion.currentStage}' must be verified: ${pendingDocs.map(d => d.name).join(', ')}.`,
-                variant: "destructive",
-                duration: 7000,
-            });
-            return;
-        }
-    }
+    // Validation for current stage completeness should ideally happen before "Mark Complete" or before opening Manager dialog.
+    // Adding a safety check here.
+    if (!validateCurrentStageRequirements(selectedLoanForDialog)) return;
+
 
     setIsSavingPromotion(true);
     const finalAssignedTo = selectedAssignee === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssignee;
-    const currentAssigneeName = users.find(u => u.id === selectedLoanForPromotion.assignedTo)?.name || 'Unassigned';
+    const currentAssigneeName = users.find(u => u.id === selectedLoanForDialog.assignedTo)?.name || 'Unassigned';
     const newAssigneeName = finalAssignedTo ? (users.find(u => u.id === finalAssignedTo)?.name || 'Unknown') : 'Unassigned';
 
-    let notes = `Promoted to ${selectedNextStage}.`;
-    if (finalAssignedTo !== selectedLoanForPromotion.assignedTo) {
+    let notes = `Manager promoted to ${selectedNextStage}.`;
+    if (finalAssignedTo !== selectedLoanForDialog.assignedTo) {
         notes += ` Assignment changed from ${currentAssigneeName} to ${newAssigneeName}.`;
     }
     
-    const newHistoryEntry = {
+    const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
       stage: selectedNextStage,
       timestamp: formatISO(new Date()),
-      userId: 'mock-user-pipeline-promo', 
-      userName: 'Pipeline User (Mock)',
+      userId: 'mock-manager-user', 
+      userName: 'Manager User (Mock)',
       notes: notes
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
       currentStage: selectedNextStage,
       assignedTo: finalAssignedTo,
-      history: [...selectedLoanForPromotion.history, newHistoryEntry],
+      history: [...selectedLoanForDialog.history, newHistoryEntry],
+      isReadyForManagerReview: false, // Reset flag
     };
 
-    const result = await updateLoanRequest(selectedLoanForPromotion.id, updatedFields);
+    const result = await updateLoanRequest(selectedLoanForDialog.id, updatedFields);
     setIsSavingPromotion(false);
 
     if (result.error || !result.success) {
       toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
     } else {
-      toast({ title: "Promotion Successful", description: `${selectedLoanForPromotion.customerName} moved to ${selectedNextStage}.` });
+      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${selectedNextStage}.` });
       setAllLoans(prevLoans => prevLoans.map(l => 
-        l.id === selectedLoanForPromotion.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
+        l.id === selectedLoanForDialog.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
       ));
       setIsPromoteDialogOpen(false);
-      setSelectedLoanForPromotion(null);
+      setSelectedLoanForDialog(null);
     }
   };
 
@@ -330,20 +379,23 @@ export default function LoanProcessPage() {
               key={stage}
               stage={stage}
               loans={loansByStage(stage)}
-              onPromoteClick={handlePromoteClick}
+              onCardActionClick={handleCardActionClick}
             />
           ))}
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 
-      {selectedLoanForPromotion && (
-        <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
+      {selectedLoanForDialog && isPromoteDialogOpen && (
+        <Dialog open={isPromoteDialogOpen} onOpenChange={(isOpen) => {
+            setIsPromoteDialogOpen(isOpen);
+            if (!isOpen) setSelectedLoanForDialog(null);
+        }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Promote Loan: {selectedLoanForPromotion.customerName}</DialogTitle>
+              <DialogTitle>Manager: Promote Loan for {selectedLoanForDialog.customerName}</DialogTitle>
               <DialogDescription>
-                Current Stage: {selectedLoanForPromotion.currentStage}. Select the next stage and assignee.
+                Current Stage: {selectedLoanForDialog.currentStage}. Select the next stage and assignee.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -357,7 +409,7 @@ export default function LoanProcessPage() {
                     <SelectValue placeholder="Select next stage" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableNextStages(selectedLoanForPromotion.currentStage).map(stage => (
+                    {availableNextStages(selectedLoanForDialog.currentStage).map(stage => (
                       <SelectItem key={stage} value={stage}>{stage}</SelectItem>
                     ))}
                   </SelectContent>

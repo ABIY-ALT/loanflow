@@ -10,6 +10,7 @@ export const mockUsers: User[] = [
   { id: 'user-john-smith', name: 'John Smith', email: 'john@example.com', role: UserRole.RELATIONSHIP_MANAGER },
   { id: 'user-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', role: UserRole.ADMIN },
   { id: 'user-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', role: UserRole.UNDERWRITER },
+  { id: 'user-staff-carol', name: 'Carol Staff', email: 'carol.staff@example.com', role: UserRole.STAFF },
 ];
 
 export const mockLoanRequests: LoanRequest[] = [
@@ -43,6 +44,7 @@ export const mockLoanRequests: LoanRequest[] = [
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days after reference
     isOverdue: new Date(MOCK_REFERENCE_DATE + 2 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
+    isReadyForManagerReview: false,
   },
   {
     id: 'loan-002',
@@ -84,6 +86,7 @@ export const mockLoanRequests: LoanRequest[] = [
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + 5 * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: new Date(MOCK_REFERENCE_DATE + 5 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
+    isReadyForManagerReview: false,
   },
   {
     id: 'loan-003',
@@ -108,13 +111,14 @@ export const mockLoanRequests: LoanRequest[] = [
         id: 'hist-3',
         stage: LoanStage.UNDER_REVIEW,
         timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        userId: 'user-jane-doe', // Assuming Jane is the one who moved it
+        userId: 'user-jane-doe', 
         userName: 'Jane Doe',
         notes: 'All documents received. Loan is now under review.',
       },
     ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day before reference
+    stageDeadline: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), 
     isOverdue: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
+    isReadyForManagerReview: true, // Example of a loan awaiting manager review
   },
   {
     id: 'loan-004',
@@ -136,13 +140,14 @@ export const mockLoanRequests: LoanRequest[] = [
         id: 'hist-4',
         stage: LoanStage.APPROVED,
         timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        userId: 'user-underwriter-bob', // Assuming Bob approved it
+        userId: 'user-underwriter-bob', 
         userName: 'Bob Underwriter',
         notes: 'Loan approved after final review.',
       },
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: new Date(MOCK_REFERENCE_DATE + 7 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
+    isReadyForManagerReview: false,
   },
    {
     id: 'loan-005',
@@ -172,5 +177,6 @@ export const mockLoanRequests: LoanRequest[] = [
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + 3 * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: new Date(MOCK_REFERENCE_DATE + 3 * 24 * 60 * 60 * 1000).getTime() < MOCK_REFERENCE_DATE,
+    isReadyForManagerReview: false,
   },
 ];

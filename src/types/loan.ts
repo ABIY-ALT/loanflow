@@ -58,6 +58,7 @@ export interface LoanRequest {
   history: LoanHistoryEntry[];
   stageDeadline?: string; // ISO date string, for current stage
   isOverdue?: boolean;
+  isReadyForManagerReview?: boolean; // New field
 }
 
 export const loanStages: LoanStage[] = [
@@ -69,3 +70,4 @@ export const loanStages: LoanStage[] = [
   LoanStage.REJECTED,
   LoanStage.FUNDS_DISBURSED,
 ];
+
