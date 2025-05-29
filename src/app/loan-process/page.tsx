@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import type { LoanRequest, User, LoanHistoryEntry } from '@/types/loan'; // Added LoanHistoryEntry
+import type { LoanRequest, User, LoanHistoryEntry } from '@/types/loan';
 import { loanStages, LoanStage, UserRole } from '@/types/loan';
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, UserCheck } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO } from 'date-fns';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getLoanRequests, updateLoanRequest } from '@/services/loan-service';
 import {
   Tooltip,
@@ -31,10 +31,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
+import { initialStageConfigs } from '@/app/settings/page';
 import { mockUsers } from '@/lib/mock-data';
 
-// Removed UNASSIGNED_DIALOG_OPTION_VALUE as it's not needed in this dialog anymore
 
 interface LoanCardProps {
   loan: LoanRequest;
@@ -47,9 +46,7 @@ function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
   const ActionIcon = loan.isReadyForManagerReview ? ArrowRight : CheckSquare;
 
   return (
-    <Card
-      className="mb-3 shadow-md hover:shadow-lg transition-shadow"
-    >
+    <Card className="mb-3 shadow-md hover:shadow-lg transition-shadow">
       <CardHeader className="p-4">
         <div className="flex justify-between items-start">
           <CardTitle className="text-base font-semibold">
@@ -63,9 +60,7 @@ function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
                 <TooltipTrigger>
                   <AlertTriangle className="h-5 w-5 text-destructive" />
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>This loan process is overdue.</p>
-                </TooltipContent>
+                <TooltipContent><p>This loan process is overdue.</p></TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -109,9 +104,7 @@ interface KanbanColumnProps {
 
 function KanbanColumn({ stage, loans, onCardActionClick }: KanbanColumnProps) {
   return (
-    <div
-      className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]"
-    >
+    <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
       <div className="flex justify-between items-center p-2 mb-2">
         <h3 className="font-semibold text-foreground">{stage}</h3>
         <Badge variant="secondary">{loans.length}</Badge>
@@ -130,57 +123,131 @@ function KanbanColumn({ stage, loans, onCardActionClick }: KanbanColumnProps) {
   );
 }
 
+// Extracted Dialog (could be further moved to its own file in a larger refactor)
+interface PipelinePromoteDialogProps {
+    isOpen: boolean;
+    onOpenChange: (isOpen: boolean) => void;
+    selectedLoan: LoanRequest | null;
+    users: User[]; // Kept for potential future use, not for assignment in dialog
+    onConfirmPromotion: (nextStage: LoanStage) => Promise<void>;
+    isSavingPromotion: boolean;
+    validateCurrentStageRequirements: (loan: LoanRequest) => boolean;
+}
+
+function PipelinePromoteDialog({
+    isOpen, onOpenChange, selectedLoan, users,
+    onConfirmPromotion, isSavingPromotion, validateCurrentStageRequirements
+}: PipelinePromoteDialogProps) {
+    const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
+
+    useEffect(() => {
+        if (isOpen && selectedLoan) {
+            setSelectedNextStage('');
+        }
+    }, [isOpen, selectedLoan]);
+    
+    const availableNextStages = (currentStage: LoanStage | undefined): LoanStage[] => {
+        if (!currentStage) return [];
+        const currentIndex = loanStages.indexOf(currentStage);
+        if (currentIndex === -1) return [];
+        const nextStages = loanStages.filter((stage, index) => index > currentIndex);
+        if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED) && loanStages.indexOf(LoanStage.APPROVED) > currentIndex) {
+            nextStages.push(LoanStage.APPROVED);
+        }
+        if (currentStage !== LoanStage.REJECTED && !nextStages.includes(LoanStage.REJECTED) && loanStages.indexOf(LoanStage.REJECTED) > currentIndex) {
+             nextStages.push(LoanStage.REJECTED);
+        }
+        return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
+    };
+
+    const handleConfirm = async () => {
+        if (!selectedLoan || !selectedNextStage) return;
+        if (!validateCurrentStageRequirements(selectedLoan)) return;
+        await onConfirmPromotion(selectedNextStage);
+    };
+
+    if (!selectedLoan) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Manager: Promote Loan for {selectedLoan.customerName}</DialogTitle>
+                    <DialogDescription>
+                        Current Stage: {selectedLoan.currentStage}. Select the next stage. The loan will be unassigned.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div>
+                        <Label htmlFor="next-stage-pipeline">Next Stage</Label>
+                        <Select value={selectedNextStage} onValueChange={(value) => setSelectedNextStage(value as LoanStage)}>
+                            <SelectTrigger id="next-stage-pipeline" className="mt-1">
+                                <SelectValue placeholder="Select next stage" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableNextStages(selectedLoan.currentStage).map(stage => (
+                                    <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline" disabled={isSavingPromotion}>Cancel</Button>
+                    </DialogClose>
+                    <Button type="button" onClick={handleConfirm} disabled={isSavingPromotion || !selectedNextStage}>
+                        {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Confirm & Promote
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
 export default function LoanProcessPage() {
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const users = mockUsers; // Keep mock users for now
 
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
-  const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
-  // const [selectedAssignee, setSelectedAssignee] = useState<string>(''); // Assignee selection removed from this dialog
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
-  useEffect(() => {
-    async function fetchLoans() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const result = await getLoanRequests();
-        if (result.error) {
-          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error, result);
-          setError(result.error);
-        } else if (result.loans) {
-          setAllLoans(result.loans);
-        } else {
-          setError("No loan data received.");
-          setAllLoans([]);
-        }
-      } catch (err: any) {
-        console.error("Error fetching loans in LoanProcessPage component:", err);
-        const errorMessage = err.message || "An unexpected error occurred fetching loans.";
-        setError(errorMessage);
-      } finally {
-        setIsLoading(false);
+  const fetchLoans = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await getLoanRequests();
+      if (result.error) {
+        setError(result.error);
+      } else if (result.loans) {
+        setAllLoans(result.loans);
+      } else {
+        setError("No loan data received.");
+        setAllLoans([]);
       }
+    } catch (err: any) {
+      const errorMessage = err.message || "An unexpected error occurred fetching loans.";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-    fetchLoans();
   }, []);
 
-  const validateCurrentStageRequirements = (loan: LoanRequest): boolean => {
+  useEffect(() => {
+    fetchLoans();
+  }, [fetchLoans]);
+
+  const validateCurrentStageRequirements = useCallback((loan: LoanRequest): boolean => {
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
-        const activeInfoRequest = [...loan.history]
-            .reverse()
-            .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+        const activeInfoRequest = [...loan.history].reverse().find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
         if (activeInfoRequest) {
-            toast({
-                title: "Action Pending",
-                description: `Outstanding action for ${loan.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved.`,
-                variant: "destructive",
-                duration: 7000,
-            });
+            toast({ title: "Action Pending", description: `Outstanding action for ${loan.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
             return false;
         }
     }
@@ -191,130 +258,68 @@ export default function LoanProcessPage() {
             return !uploadedDoc || uploadedDoc.status !== 'Verified';
         });
         if (pendingDocs.length > 0) {
-            toast({
-                title: "Documents Pending",
-                description: `Cannot proceed with ${loan.customerName}. Documents for stage '${loan.currentStage}' must be verified: ${pendingDocs.map(d => d.name).join(', ')}.`,
-                variant: "destructive",
-                duration: 7000,
-            });
+            toast({ title: "Documents Pending", description: `Cannot proceed with ${loan.customerName}. Docs for stage '${loan.currentStage}' must be verified: ${pendingDocs.map(d => d.name).join(', ')}.`, variant: "destructive", duration: 7000 });
             return false;
         }
     }
     return true;
-  };
+  }, [toast]);
 
-  const handleCardActionClick = async (loan: LoanRequest) => {
+  const handleCardActionClick = useCallback(async (loan: LoanRequest) => {
     setSelectedLoanForDialog(loan);
     if (loan.isReadyForManagerReview) {
-      // Manager action: Open promotion dialog
-      setSelectedNextStage('');
-      // setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE); // Assignee selection removed
       setIsPromoteDialogOpen(true);
     } else {
-      // Officer action: Mark stage complete for review
       if (!validateCurrentStageRequirements(loan)) return;
-
-      setIsSavingPromotion(true);
+      setIsSavingPromotion(true); // Using same saving flag for simplicity
       const newHistoryEntry: LoanHistoryEntry = {
-        id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage,
-        timestamp: formatISO(new Date()),
-        userId: 'mock-officer-user',
-        userName: 'Officer User (Mock)',
+        id: `hist-mock-${Date.now()}`, stage: loan.currentStage, timestamp: formatISO(new Date()),
+        userId: 'mock-officer-user', userName: 'Officer User (Mock)',
         notes: `Stage '${loan.currentStage}' marked complete by officer. Submitted for manager review.`,
       };
-      const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-          isReadyForManagerReview: true,
-          history: [...loan.history, newHistoryEntry],
-      };
-
+      const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] };
       const result = await updateLoanRequest(loan.id, updatedFields);
       setIsSavingPromotion(false);
-
       if (result.error || !result.success || !result.updatedLoan) {
         toast({ title: "Error", description: result.error || "Failed to mark stage complete.", variant: "destructive" });
       } else {
         toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
-        setAllLoans(prevLoans => prevLoans.map(l =>
-          l.id === loan.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
-        ));
+        setAllLoans(prevLoans => prevLoans.map(l => l.id === loan.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l ));
       }
     }
-  };
+  }, [toast, validateCurrentStageRequirements]);
 
-  const availableNextStages = (currentStage: LoanStage | undefined): LoanStage[] => {
-    if (!currentStage) return [];
-    const currentIndex = loanStages.indexOf(currentStage);
-    if (currentIndex === -1) return [];
-
-    const nextStages = loanStages.filter((stage, index) => index > currentIndex);
-
-    if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED)) {
-        if (loanStages.indexOf(LoanStage.APPROVED) > currentIndex) nextStages.push(LoanStage.APPROVED);
-    }
-    if (currentStage !== LoanStage.REJECTED && !nextStages.includes(LoanStage.REJECTED)) {
-         if (loanStages.indexOf(LoanStage.REJECTED) > currentIndex) nextStages.push(LoanStage.REJECTED);
-    }
-
-    return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
-  };
-
-  // useEffect for suggesting assignee removed as assignee selection is removed from this dialog.
-
-  const handleConfirmPromotion = async () => {
-    if (!selectedLoanForDialog || !selectedNextStage) {
-      toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
-      return;
-    }
-
-    if (!validateCurrentStageRequirements(selectedLoanForDialog)) return;
-
+  const handleConfirmPromotion = useCallback(async (nextStage: LoanStage) => {
+    if (!selectedLoanForDialog || !nextStage) return;
 
     setIsSavingPromotion(true);
-    // Promotion always sets assignedTo to undefined for the next stage
-    const finalAssignedTo = undefined;
-    
-    let notes = `Manager promoted to ${selectedNextStage}. Case is now unassigned awaiting allocation in the new stage.`;
-
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-mock-${Date.now()}`,
-      stage: selectedNextStage,
-      timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user',
-      userName: 'Manager User (Mock)',
-      notes: notes
+      id: `hist-mock-${Date.now()}`, stage: nextStage, timestamp: formatISO(new Date()),
+      userId: 'mock-manager-user', userName: 'Manager User (Mock)',
+      notes: `Manager promoted to ${nextStage}. Case is now unassigned.`
     };
-
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-      currentStage: selectedNextStage,
-      assignedTo: finalAssignedTo, // Always unassigned
-      history: [...selectedLoanForDialog.history, newHistoryEntry],
-      isReadyForManagerReview: false,
+      currentStage: nextStage, assignedTo: undefined, // Always unassign
+      history: [...selectedLoanForDialog.history, newHistoryEntry], isReadyForManagerReview: false,
     };
-
     const result = await updateLoanRequest(selectedLoanForDialog.id, updatedFields);
     setIsSavingPromotion(false);
-
     if (result.error || !result.success || !result.updatedLoan) {
       toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
     } else {
-      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${selectedNextStage} and is now unassigned.` });
-      setAllLoans(prevLoans => prevLoans.map(l =>
-        l.id === selectedLoanForDialog.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
-      ));
+      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${nextStage} and is now unassigned.` });
+      setAllLoans(prevLoans => prevLoans.map(l => l.id === selectedLoanForDialog!.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l ));
       setIsPromoteDialogOpen(false);
       setSelectedLoanForDialog(null);
     }
-  };
+  }, [selectedLoanForDialog, toast]);
 
-  const loansByStage = (stage: LoanStage) =>
-    allLoans.filter((loan) => loan.currentStage === stage);
+  const loansByStage = (stage: LoanStage) => allLoans.filter((loan) => loan.currentStage === stage);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="ml-3 text-lg">Loading loan pipeline...</p>
+        <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p>
       </div>
     );
   }
@@ -322,11 +327,8 @@ export default function LoanProcessPage() {
   if (error) {
     return (
       <Alert variant="destructive" className="max-w-2xl mx-auto">
-        <AlertTriangle className="h-5 w-5" />
-        <AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
-        <AlertDescShadCN className="whitespace-pre-wrap">
-          {error} Please try refreshing the page.
-        </AlertDescShadCN>
+        <AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
+        <AlertDescShadCN className="whitespace-pre-wrap">{error} Please try refreshing the page.</AlertDescShadCN>
       </Alert>
     );
   }
@@ -336,74 +338,27 @@ export default function LoanProcessPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
-          <p className="text-muted-foreground">
-            Visualize and manage loan applications through various stages.
-          </p>
+          <p className="text-muted-foreground">Visualize and manage loan applications through various stages.</p>
         </div>
-        <Link href="/loan-requests/new" passHref>
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> New Loan Request
-          </Button>
-        </Link>
+        <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
       </div>
-
       <ScrollArea className="w-full whitespace-nowrap pb-4">
         <div className="flex gap-4">
           {loanStages.map((stage) => (
-            <KanbanColumn
-              key={stage}
-              stage={stage}
-              loans={loansByStage(stage)}
-              onCardActionClick={handleCardActionClick}
-            />
+            <KanbanColumn key={stage} stage={stage} loans={loansByStage(stage)} onCardActionClick={handleCardActionClick} />
           ))}
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
-
-      {selectedLoanForDialog && isPromoteDialogOpen && (
-        <Dialog open={isPromoteDialogOpen} onOpenChange={(isOpen) => {
-            setIsPromoteDialogOpen(isOpen);
-            if (!isOpen) setSelectedLoanForDialog(null);
-        }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Manager: Promote Loan for {selectedLoanForDialog.customerName}</DialogTitle>
-              <DialogDescription>
-                Current Stage: {selectedLoanForDialog.currentStage}. Select the next stage. The loan will be unassigned in the new stage.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label htmlFor="next-stage">Next Stage</Label>
-                <Select
-                  value={selectedNextStage}
-                  onValueChange={(value) => setSelectedNextStage(value as LoanStage)}
-                >
-                  <SelectTrigger id="next-stage" className="mt-1">
-                    <SelectValue placeholder="Select next stage" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableNextStages(selectedLoanForDialog.currentStage).map(stage => (
-                      <SelectItem key={stage} value={stage}>{stage}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Assignee selection removed from dialog */}
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isSavingPromotion}>Cancel</Button>
-              </DialogClose>
-              <Button type="button" onClick={handleConfirmPromotion} disabled={isSavingPromotion || !selectedNextStage}>
-                {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Confirm & Promote
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      <PipelinePromoteDialog
+        isOpen={isPromoteDialogOpen}
+        onOpenChange={(isOpen) => { setIsPromoteDialogOpen(isOpen); if (!isOpen) setSelectedLoanForDialog(null); }}
+        selectedLoan={selectedLoanForDialog}
+        users={users}
+        onConfirmPromotion={handleConfirmPromotion}
+        isSavingPromotion={isSavingPromotion}
+        validateCurrentStageRequirements={validateCurrentStageRequirements}
+      />
     </div>
   );
 }
