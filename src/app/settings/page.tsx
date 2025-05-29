@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users } from 'lucide-react';
-import React, { useState } from 'react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent } from 'lucide-react'; // Added Percent
+import React, { useState, useMemo } from 'react';
 import {
   Accordion,
   AccordionContent,
@@ -42,22 +42,23 @@ interface RequiredDocumentConfig {
 }
 
 export interface StageConfig {
-  id: string; 
-  name: string; 
-  loanStageEnum: LoanStage; 
+  id: string;
+  name: string;
+  loanStageEnum: LoanStage;
   defaultTimelineDays: number;
   requiredDocuments: RequiredDocumentConfig[];
-  targetRoleForStage?: UserRole; 
+  targetRoleForStage?: UserRole;
+  percentageWeight: number; // New field
 }
 
 export const initialStageConfigs: StageConfig[] = [
-  { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
-  { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
-  { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [], targetRoleForStage: UserRole.UNDERWRITER },
-  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [] }, 
-  { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER },
-  { id: 'rejected', name: 'Rejected', loanStageEnum: LoanStage.REJECTED, defaultTimelineDays: 1, requiredDocuments: [] },
-  { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [], targetRoleForStage: UserRole.STAFF },
+  { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 10 },
+  { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 20 },
+  { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [], targetRoleForStage: UserRole.UNDERWRITER, percentageWeight: 30 },
+  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [], percentageWeight: 5 },
+  { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 20 },
+  { id: 'rejected', name: 'Rejected', loanStageEnum: LoanStage.REJECTED, defaultTimelineDays: 1, requiredDocuments: [], percentageWeight: 0 }, // Rejected usually 0%
+  { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [], targetRoleForStage: UserRole.STAFF, percentageWeight: 15 }, // Or 100% if it implies completion
 ];
 
 const NO_SPECIFIC_ROLE_VALUE = "---NO_SPECIFIC_ROLE---";
@@ -71,9 +72,9 @@ interface DraggableAccordionItemProps {
   handleRequiredDocumentNameChange: (stageId: string, docId: string, newName: string) => void;
 }
 
-const DraggableAccordionItem = ({ 
-  stageConfig, 
-  handleStageConfigChange, 
+const DraggableAccordionItem = ({
+  stageConfig,
+  handleStageConfigChange,
   handleRemoveStageConfig,
   handleAddRequiredDocument,
   handleRemoveRequiredDocument,
@@ -125,16 +126,19 @@ const DraggableAccordionItem = ({
             {stageConfig.targetRoleForStage && <Users className="h-4 w-4"/>}
             {stageConfig.targetRoleForStage || 'Any Role'}
             <span className="mx-1">|</span>
-            <Clock className="h-4 w-4"/> 
+            <Clock className="h-4 w-4"/>
             {stageConfig.defaultTimelineDays} days
-             <span className="mx-1">|</span>
-            <FileText className="h-4 w-4"/> 
+            <span className="mx-1">|</span>
+            <Percent className="h-4 w-4" />
+            {stageConfig.percentageWeight || 0}%
+            <span className="mx-1">|</span>
+            <FileText className="h-4 w-4"/>
             {stageConfig.requiredDocuments.length} doc(s)
           </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <div>
             <Label htmlFor={`stage-name-${stageConfig.id}`}>Stage Name</Label>
             <Input
@@ -156,7 +160,21 @@ const DraggableAccordionItem = ({
               onPointerDown={(e) => e.stopPropagation()}
               onChange={(e) => handleStageConfigChange(stageConfig.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)}
               className="mt-1"
-              min="1"
+              min="0" // Timeline can be 0 if stage is immediate
+            />
+          </div>
+          <div>
+            <Label htmlFor={`stage-weight-${stageConfig.id}`}>Percentage Weight (%)</Label>
+            <Input
+              id={`stage-weight-${stageConfig.id}`}
+              type="number"
+              value={stageConfig.percentageWeight}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => handleStageConfigChange(stageConfig.id, 'percentageWeight', parseInt(e.target.value,10) || 0)}
+              className="mt-1"
+              min="0"
+              max="100"
             />
           </div>
         </div>
@@ -178,7 +196,7 @@ const DraggableAccordionItem = ({
             </Select>
             <p className="text-xs text-muted-foreground mt-1">If set, loans entering this stage will try to assign to a user with this role.</p>
           </div>
-        
+
         <Separator />
         <div>
           <h5 className="text-md font-medium mb-2">Required Documents for this Stage</h5>
@@ -189,7 +207,7 @@ const DraggableAccordionItem = ({
             {stageConfig.requiredDocuments.map(doc => (
               <li key={doc.id} className="flex items-center gap-2 p-2 border rounded-md">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <Input 
+                <Input
                   value={doc.name}
                   onChange={(e) => handleRequiredDocumentNameChange(stageConfig.id, doc.id, e.target.value)}
                   className="flex-grow text-sm"
@@ -205,7 +223,7 @@ const DraggableAccordionItem = ({
           <div className="flex items-end gap-2 mt-4">
             <div className="flex-grow">
               <Label htmlFor={`new-req-doc-${stageConfig.id}`}>New Document Name</Label>
-              <Input 
+              <Input
                 id={`new-req-doc-${stageConfig.id}`}
                 value={newReqDocName}
                 onChange={(e) => setNewReqDocName(e.target.value)}
@@ -232,9 +250,10 @@ const DraggableAccordionItem = ({
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const [stageConfigs, setStageConfigs] = useState<StageConfig[]>(initialStageConfigs); 
+  const [stageConfigs, setStageConfigs] = useState<StageConfig[]>(initialStageConfigs);
   const [newStageName, setNewStageName] = useState('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
+  const [newStagePercentageWeight, setNewStagePercentageWeight] = useState(0); // New state for new stage weight
   const [newStageEnum, setNewStageEnum] = useState<LoanStage>(LoanStage.APPLICATION_SUBMITTED);
   const [newStageTargetRole, setNewStageTargetRole] = useState<UserRole | undefined>(undefined);
 
@@ -248,6 +267,10 @@ export default function SettingsPage() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const currentTotalWeight = useMemo(() => {
+    return stageConfigs.reduce((sum, config) => sum + (Number(config.percentageWeight) || 0), 0);
+  }, [stageConfigs]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -269,17 +292,19 @@ export default function SettingsPage() {
     const newId = `custom-stage-${Date.now().toString()}`;
     setStageConfigs([
       ...stageConfigs,
-      { 
-        id: newId, 
-        name: newStageName, 
-        loanStageEnum: newStageEnum, 
-        defaultTimelineDays: newStageTimeline, 
+      {
+        id: newId,
+        name: newStageName,
+        loanStageEnum: newStageEnum,
+        defaultTimelineDays: newStageTimeline,
+        percentageWeight: newStagePercentageWeight, // Add new stage weight
         requiredDocuments: [],
         targetRoleForStage: newStageTargetRole,
       }
     ]);
     setNewStageName('');
     setNewStageTimeline(3);
+    setNewStagePercentageWeight(0); // Reset new stage weight
     setNewStageTargetRole(undefined);
     toast({ title: "Success", description: "New workflow stage added." });
   };
@@ -290,8 +315,19 @@ export default function SettingsPage() {
   };
 
   const handleStageConfigChange = (id: string, field: keyof StageConfig, value: any) => {
-    setStageConfigs(configs => configs.map(config => 
-      config.id === id ? { ...config, [field]: value } : config
+    let parsedValue = value;
+    if (field === 'defaultTimelineDays' || field === 'percentageWeight') {
+      parsedValue = parseInt(value, 10);
+      if (isNaN(parsedValue)) parsedValue = 0;
+      if (field === 'percentageWeight') {
+        if (parsedValue < 0) parsedValue = 0;
+        if (parsedValue > 100) parsedValue = 100;
+      }
+      if (field === 'defaultTimelineDays' && parsedValue < 0) parsedValue = 0;
+    }
+
+    setStageConfigs(configs => configs.map(config =>
+      config.id === id ? { ...config, [field]: parsedValue } : config
     ));
   };
 
@@ -313,7 +349,7 @@ export default function SettingsPage() {
       return config;
     }));
   };
-  
+
   const handleRequiredDocumentNameChange = (stageId: string, docId: string, newName: string) => {
     setStageConfigs(configs => configs.map(config => {
       if (config.id === stageId) {
@@ -327,9 +363,20 @@ export default function SettingsPage() {
       return config;
     }));
   };
-  
+
   const handleSaveChanges = () => {
-    console.log("Settings saved:", { stageConfigs, enableNotifications, overdueThreshold });
+    const totalWeight = stageConfigs.reduce((sum, config) => sum + (Number(config.percentageWeight) || 0), 0);
+    if (totalWeight > 100) {
+      toast({
+        title: "Validation Error",
+        description: `Total percentage weight of all stages (${totalWeight}%) exceeds 100%. Please adjust weights.`,
+        variant: "destructive",
+        duration: 5000,
+      });
+      return; // Prevent saving
+    }
+
+    console.log("Settings saved (mock):", { stageConfigs, enableNotifications, overdueThreshold });
     toast({
       title: "Settings Saved (Mock)",
       description: "Your workflow and notification settings have been updated in local state.",
@@ -345,7 +392,7 @@ export default function SettingsPage() {
           Configure loan workflows, timelines, required documents, and notification preferences.
         </p>
       </div>
-      
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -354,7 +401,10 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Workflow Configuration</CardTitle>
-            <CardDescription>Define and reorder stages, default timelines, required documents, and target roles. Drag to reorder stages.</CardDescription>
+            <CardDescription>
+              Define stages, timelines, weights, documents, and roles. Drag to reorder.
+              Current Total Weight: <span className={`font-semibold ${currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}`}>{currentTotalWeight}%</span>
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <SortableContext
@@ -377,18 +427,18 @@ export default function SettingsPage() {
             </SortableContext>
 
             <Separator />
-            
+
             <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
               <h4 className="font-medium">Add New Stage</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                 <div>
                   <Label htmlFor="new-stage-name">Stage Name</Label>
-                  <Input 
-                    id="new-stage-name" 
-                    value={newStageName} 
-                    onChange={(e) => setNewStageName(e.target.value)} 
+                  <Input
+                    id="new-stage-name"
+                    value={newStageName}
+                    onChange={(e) => setNewStageName(e.target.value)}
                     placeholder="e.g., Final Verification"
-                    className="mt-1" 
+                    className="mt-1"
                   />
                 </div>
                  <div>
@@ -409,13 +459,30 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <Label htmlFor="new-stage-timeline">Timeline (days)</Label>
-                  <Input 
-                    id="new-stage-timeline" 
-                    type="number" 
-                    value={newStageTimeline} 
-                    onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10) || 1)} 
+                  <Input
+                    id="new-stage-timeline"
+                    type="number"
+                    value={newStageTimeline}
+                    onChange={(e) => setNewStageTimeline(parseInt(e.target.value, 10) || 0)}
                     className="mt-1"
-                    min="1"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="new-stage-percentage-weight">Percentage Weight (%)</Label>
+                  <Input
+                    id="new-stage-percentage-weight"
+                    type="number"
+                    value={newStagePercentageWeight}
+                    onChange={(e) => {
+                        let val = parseInt(e.target.value, 10) || 0;
+                        if (val < 0) val = 0;
+                        if (val > 100) val = 100;
+                        setNewStagePercentageWeight(val);
+                    }}
+                    className="mt-1"
+                    min="0"
+                    max="100"
                   />
                 </div>
                 <div>
@@ -435,10 +502,11 @@ export default function SettingsPage() {
                         </SelectContent>
                     </Select>
                 </div>
-                </div>
-                 <Button onClick={handleAddStageConfig} className="w-full sm:w-auto mt-4">
+                 <Button onClick={handleAddStageConfig} className="w-full sm:w-auto mt-4 lg:col-span-1 self-end">
                   <PlusCircle className="mr-2 h-4 w-4" /> Add Stage
                 </Button>
+                </div>
+
             </div>
           </CardContent>
         </Card>
@@ -462,7 +530,7 @@ export default function SettingsPage() {
               aria-label="Enable overdue notifications"
             />
           </div>
-          
+
           {enableNotifications && (
             <div className="space-y-2 p-4 border rounded-lg bg-muted/20">
               <Label htmlFor="overdue-threshold">Notify if overdue by (days)</Label>
@@ -495,7 +563,7 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-      
+
       <div className="flex justify-end">
         <Button onClick={handleSaveChanges} size="lg">
           <Save className="mr-2 h-4 w-4" /> Save All Settings
@@ -504,6 +572,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-    
-
-    
