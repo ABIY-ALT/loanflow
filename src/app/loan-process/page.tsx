@@ -11,7 +11,7 @@ import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Use
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests, updateLoanRequest } from '@/services/loan-service'; 
+import { getLoanRequests, updateLoanRequest } from '@/services/loan-service';
 import {
   Tooltip,
   TooltipContent,
@@ -34,11 +34,11 @@ import { useToast } from '@/hooks/use-toast';
 import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
 import { mockUsers } from '@/lib/mock-data';
 
-const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
+// Removed UNASSIGNED_DIALOG_OPTION_VALUE as it's not needed in this dialog anymore
 
 interface LoanCardProps {
   loan: LoanRequest;
-  onCardActionClick: (loan: LoanRequest) => void; 
+  onCardActionClick: (loan: LoanRequest) => void;
 }
 
 function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
@@ -116,7 +116,7 @@ function KanbanColumn({ stage, loans, onCardActionClick }: KanbanColumnProps) {
         <h3 className="font-semibold text-foreground">{stage}</h3>
         <Badge variant="secondary">{loans.length}</Badge>
       </div>
-      <ScrollArea className="h-[calc(100vh-20rem)] pr-2"> 
+      <ScrollArea className="h-[calc(100vh-20rem)] pr-2">
         {loans.length === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-sm text-muted-foreground p-4 text-center">
             <p>No loan requests in this stage.</p>
@@ -135,12 +135,12 @@ export default function LoanProcessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>(mockUsers); 
+  const [users, setUsers] = useState<User[]>(mockUsers);
 
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
   const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
-  const [selectedAssignee, setSelectedAssignee] = useState<string>(''); 
+  // const [selectedAssignee, setSelectedAssignee] = useState<string>(''); // Assignee selection removed from this dialog
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
   useEffect(() => {
@@ -148,7 +148,7 @@ export default function LoanProcessPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); 
+        const result = await getLoanRequests();
         if (result.error) {
           console.error("Error from getLoanRequests service in LoanProcessPage:", result.error, result);
           setError(result.error);
@@ -168,7 +168,7 @@ export default function LoanProcessPage() {
     }
     fetchLoans();
   }, []);
-  
+
   const validateCurrentStageRequirements = (loan: LoanRequest): boolean => {
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
         const activeInfoRequest = [...loan.history]
@@ -202,24 +202,24 @@ export default function LoanProcessPage() {
     }
     return true;
   };
-  
+
   const handleCardActionClick = async (loan: LoanRequest) => {
     setSelectedLoanForDialog(loan);
     if (loan.isReadyForManagerReview) {
       // Manager action: Open promotion dialog
-      setSelectedNextStage(''); 
-      setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE); // Default to unassigned when dialog opens
+      setSelectedNextStage('');
+      // setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE); // Assignee selection removed
       setIsPromoteDialogOpen(true);
     } else {
       // Officer action: Mark stage complete for review
       if (!validateCurrentStageRequirements(loan)) return;
 
-      setIsSavingPromotion(true); 
+      setIsSavingPromotion(true);
       const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: loan.currentStage,
         timestamp: formatISO(new Date()),
-        userId: 'mock-officer-user', 
+        userId: 'mock-officer-user',
         userName: 'Officer User (Mock)',
         notes: `Stage '${loan.currentStage}' marked complete by officer. Submitted for manager review.`,
       };
@@ -227,7 +227,7 @@ export default function LoanProcessPage() {
           isReadyForManagerReview: true,
           history: [...loan.history, newHistoryEntry],
       };
-      
+
       const result = await updateLoanRequest(loan.id, updatedFields);
       setIsSavingPromotion(false);
 
@@ -235,7 +235,7 @@ export default function LoanProcessPage() {
         toast({ title: "Error", description: result.error || "Failed to mark stage complete.", variant: "destructive" });
       } else {
         toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
-        setAllLoans(prevLoans => prevLoans.map(l => 
+        setAllLoans(prevLoans => prevLoans.map(l =>
           l.id === loan.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
         ));
       }
@@ -246,38 +246,20 @@ export default function LoanProcessPage() {
     if (!currentStage) return [];
     const currentIndex = loanStages.indexOf(currentStage);
     if (currentIndex === -1) return [];
-    
+
     const nextStages = loanStages.filter((stage, index) => index > currentIndex);
-    
+
     if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED)) {
         if (loanStages.indexOf(LoanStage.APPROVED) > currentIndex) nextStages.push(LoanStage.APPROVED);
     }
     if (currentStage !== LoanStage.REJECTED && !nextStages.includes(LoanStage.REJECTED)) {
          if (loanStages.indexOf(LoanStage.REJECTED) > currentIndex) nextStages.push(LoanStage.REJECTED);
     }
-    
+
     return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
   };
 
-  useEffect(() => {
-    if (selectedLoanForDialog && selectedNextStage) {
-      const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStage);
-      let suggestedAssigneeId = UNASSIGNED_DIALOG_OPTION_VALUE; // Default to Unassigned
-
-      if (nextStageConfig?.targetRoleForStage) {
-        const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
-        if (potentialAssignees.length > 0) {
-          suggestedAssigneeId = potentialAssignees[0].id; // Suggest first user with target role
-        }
-      }
-      // If no target role, or no user found for that role, it remains UNASSIGNED_DIALOG_OPTION_VALUE
-      setSelectedAssignee(suggestedAssigneeId);
-    } else if (selectedLoanForDialog && !selectedNextStage) {
-        // When dialog opens for promotion but next stage not yet selected, default assignee to unassigned
-        setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE);
-    }
-  }, [selectedNextStage, selectedLoanForDialog, users]);
-
+  // useEffect for suggesting assignee removed as assignee selection is removed from this dialog.
 
   const handleConfirmPromotion = async () => {
     if (!selectedLoanForDialog || !selectedNextStage) {
@@ -289,31 +271,25 @@ export default function LoanProcessPage() {
 
 
     setIsSavingPromotion(true);
-    const finalAssignedTo = selectedAssignee === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssignee;
-    const currentAssigneeName = users.find(u => u.id === selectedLoanForDialog.assignedTo)?.name || 'Unassigned';
-    const newAssigneeName = finalAssignedTo ? (users.find(u => u.id === finalAssignedTo)?.name || 'Unknown') : 'Unassigned';
-
-    let notes = `Manager promoted to ${selectedNextStage}.`;
-    if (finalAssignedTo !== selectedLoanForDialog.assignedTo || (!selectedLoanForDialog.assignedTo && finalAssignedTo)) {
-        notes += ` Assignment changed from ${currentAssigneeName} to ${newAssigneeName}.`;
-    } else if (selectedLoanForDialog.assignedTo && !finalAssignedTo) {
-        notes += ` Assignment changed from ${currentAssigneeName} to Unassigned.`;
-    }
+    // Promotion always sets assignedTo to undefined for the next stage
+    const finalAssignedTo = undefined;
     
+    let notes = `Manager promoted to ${selectedNextStage}. Case is now unassigned awaiting allocation in the new stage.`;
+
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
       stage: selectedNextStage,
       timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', 
+      userId: 'mock-manager-user',
       userName: 'Manager User (Mock)',
       notes: notes
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
       currentStage: selectedNextStage,
-      assignedTo: finalAssignedTo,
+      assignedTo: finalAssignedTo, // Always unassigned
       history: [...selectedLoanForDialog.history, newHistoryEntry],
-      isReadyForManagerReview: false, 
+      isReadyForManagerReview: false,
     };
 
     const result = await updateLoanRequest(selectedLoanForDialog.id, updatedFields);
@@ -322,8 +298,8 @@ export default function LoanProcessPage() {
     if (result.error || !result.success || !result.updatedLoan) {
       toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
     } else {
-      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${selectedNextStage}.` });
-      setAllLoans(prevLoans => prevLoans.map(l => 
+      toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${selectedNextStage} and is now unassigned.` });
+      setAllLoans(prevLoans => prevLoans.map(l =>
         l.id === selectedLoanForDialog.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
       ));
       setIsPromoteDialogOpen(false);
@@ -333,7 +309,7 @@ export default function LoanProcessPage() {
 
   const loansByStage = (stage: LoanStage) =>
     allLoans.filter((loan) => loan.currentStage === stage);
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
@@ -370,7 +346,7 @@ export default function LoanProcessPage() {
           </Button>
         </Link>
       </div>
-      
+
       <ScrollArea className="w-full whitespace-nowrap pb-4">
         <div className="flex gap-4">
           {loanStages.map((stage) => (
@@ -394,14 +370,14 @@ export default function LoanProcessPage() {
             <DialogHeader>
               <DialogTitle>Manager: Promote Loan for {selectedLoanForDialog.customerName}</DialogTitle>
               <DialogDescription>
-                Current Stage: {selectedLoanForDialog.currentStage}. Select the next stage and assignee.
+                Current Stage: {selectedLoanForDialog.currentStage}. Select the next stage. The loan will be unassigned in the new stage.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
                 <Label htmlFor="next-stage">Next Stage</Label>
-                <Select 
-                  value={selectedNextStage} 
+                <Select
+                  value={selectedNextStage}
                   onValueChange={(value) => setSelectedNextStage(value as LoanStage)}
                 >
                   <SelectTrigger id="next-stage" className="mt-1">
@@ -414,26 +390,7 @@ export default function LoanProcessPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="assignee">Assign To</Label>
-                <Select 
-                  value={selectedAssignee} 
-                  onValueChange={setSelectedAssignee}
-                  disabled={!selectedNextStage} // Disable assignee if no next stage is selected
-                >
-                  <SelectTrigger id="assignee" className="mt-1">
-                    <SelectValue placeholder="Select assignee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned</SelectItem>
-                    {users.map(user => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name} ({user.role})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Assignee selection removed from dialog */}
             </div>
             <DialogFooter>
               <DialogClose asChild>
