@@ -216,15 +216,14 @@ export default function LoanDetailPage() {
 
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
-        stage: loan.currentStage, // Log against the current stage
+        stage: loan.currentStage, 
         timestamp: formatISO(new Date()),
         userId: 'mock-user-id',
         userName: 'Mock Bank User',
         requiredFulfilment: additionalInfo,
-        notes: `Logged request for info: ${additionalInfo}`
+        notes: `Logged information request: ${additionalInfo}`
     };
-
-    // Only update history, do not change currentStage
+    
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         history: [...loan.history, newHistoryEntry],
     };
@@ -289,9 +288,10 @@ export default function LoanDetailPage() {
 
   const activeInfoRequestEntry = loan?.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
-    .reverse()
-    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
+    .reverse() // Iterate from newest to oldest
+    .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
   : undefined;
+
 
   const handleAdvanceWorkflow = async (nextStage: LoanStage) => {
     if (!loan) return;
@@ -343,6 +343,7 @@ export default function LoanDetailPage() {
       const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
       if (relationshipManagers.length > 0) {
         newAssignedTo = relationshipManagers[0].id;
+        console.log("Fallback assignment to RM:", newAssignedTo);
       }
     }
 
@@ -452,13 +453,22 @@ export default function LoanDetailPage() {
       progressPercentage = 100;
   } else if (currentStageEnum === LoanStage.REJECTED) {
       let cumulativeWeight = 0;
+      // Find the 'Rejected' stage in the config. If not found, or if it's the first, progress is 0.
+      // Otherwise, sum weights of stages that *could* come before it.
+      // This assumes 'Rejected' isn't the *only* stage.
+      let rejectedFound = false;
       for (const stageCfg of initialStageConfigs) {
           if (stageCfg.loanStageEnum === LoanStage.REJECTED) {
-              break;
+              rejectedFound = true;
+              break; 
           }
           cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
       }
-      progressPercentage = cumulativeWeight;
+      // If 'Rejected' was never found (shouldn't happen if it's a valid stage type),
+      // or if it implies a stop without prior progress. Consider this as 0 or specific point.
+      // For simplicity, if it's in the config, sum weights up to it.
+      // If not, this needs more business logic. Let's assume it's in the config.
+      progressPercentage = rejectedFound ? cumulativeWeight : 0; // Default to 0 if rejected is first or not in config for some reason.
   } else {
       let cumulativeWeight = 0;
       let stageFoundInConfig = false;
@@ -485,7 +495,7 @@ export default function LoanDetailPage() {
   const currentConfigIndex = initialStageConfigs.findIndex(config => config.loanStageEnum === loan.currentStage);
   if (currentConfigIndex !== -1 && currentConfigIndex < initialStageConfigs.length - 1) {
     for (let i = currentConfigIndex + 1; i < initialStageConfigs.length; i++) {
-        if (initialStageConfigs[i].loanStageEnum !== LoanStage.REJECTED) {
+        if (initialStageConfigs[i].loanStageEnum !== LoanStage.REJECTED) { // Usually, we don't auto-advance to Rejected
             nextLogicalStage = initialStageConfigs[i].loanStageEnum;
             break;
         }
@@ -699,7 +709,7 @@ export default function LoanDetailPage() {
 
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={isSaving || loan.currentStage === LoanStage.FUNDS_DISBURSED || loan.currentStage === LoanStage.REJECTED}><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
+              <Button variant="outline" disabled={isSaving || loan.currentStage === LoanStage.FUNDS_DISBURSED || loan.currentStage === LoanStage.REJECTED}><Edit3 className="mr-2 h-4 w-4" /> Log Information Request</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -899,7 +909,7 @@ export default function LoanDetailPage() {
                     <HistoryEntryItem
                       key={entry.id}
                       entry={entry}
-                      isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
+                      isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED}
                       onFulfillInfoRequest={handleFulfillInfoRequest}
                       isSaving={isSaving}
                     />
