@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequests } from '@/services/loan-service'; 
 import type { LoanRequest } from '@/types/loan';
 import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
@@ -29,10 +29,10 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // Fetches from mock service
+        const result = await getLoanRequests(); 
 
         if (result.error) {
-          console.error("Error from getLoanRequests service in Dashboard:", result.error);
+          console.error("Error from getLoanRequests service in Dashboard:", result.error, result); 
           setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
@@ -45,7 +45,6 @@ export default function DashboardPage() {
             loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
           ).length;
           
-          // isOverdue is now calculated in the mock service if needed, or can be done here
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
           setStats({
@@ -55,11 +54,12 @@ export default function DashboardPage() {
             overdueTasksCount: overdueTasks,
           });
         } else {
-          setError("No loan data received from mock service.");
+          setError("No loan data received.");
         }
       } catch (err: any) {
-        console.error("Error fetching dashboard data (mock):", err);
-        setError(err.message || "An unexpected error occurred fetching dashboard data.");
+        console.error("Error fetching dashboard data:", err);
+        const errorMessage = err.message || "An unexpected error occurred fetching dashboard data.";
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" ? (
+          ) : error && title === "Active Loans" ? ( // Display error in one card as an example
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -122,7 +122,7 @@ export default function DashboardPage() {
               Could not load dashboard statistics. Details: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-                Please try refreshing the page. If the issue persists, contact support.
+                Please try refreshing the page. If the issue persists, check the browser console for more details.
             </p>
           </CardContent>
         </Card>
@@ -161,7 +161,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
 
   return (
     <div className="space-y-8">

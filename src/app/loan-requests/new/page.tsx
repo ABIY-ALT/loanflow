@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Landmark } from 'lucide-react'; // Renamed User to UserIcon to avoid conflict
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Landmark } from 'lucide-react'; 
 import React, { useState, useEffect } from 'react';
 import { addLoanRequest } from '@/services/loan-service'; 
 import type { LoanRequest, User } from '@/types/loan'; 
@@ -60,7 +60,6 @@ export default function NewLoanRequestPage() {
   const [relationshipManagers, setRelationshipManagers] = useState<User[]>([]);
 
   useEffect(() => {
-    // In a real app, fetch users from a service. For mock, filter mockUsers.
     const rMs = mockUsers.filter(user => user.role === UserRole.RELATIONSHIP_MANAGER);
     setRelationshipManagers(rMs);
   }, []);
@@ -74,7 +73,7 @@ export default function NewLoanRequestPage() {
       loanAmount: 0,
       loanType: '',
       loanPurpose: '',
-      assignedTo: '', 
+      assignedTo: UNASSIGNED_MARKER, // Default to unassigned marker
     },
   });
 
@@ -101,13 +100,14 @@ export default function NewLoanRequestPage() {
           description: `Failed to save loan request: ${result.error}`,
           variant: "destructive",
         });
+         console.error("Full error result from addLoanRequest service on client:", result);
       } else if (result.id) {
         const assignedManagerName = assignedToValue 
           ? relationshipManagers.find(rm => rm.id === assignedToValue)?.name 
           : null;
         
         toast({
-          title: "Loan Request Submitted",
+          title: "Loan Request Submitted (Mock)",
           description: `Request for ${data.customerName} has been submitted with ID: ${result.id}. Assigned to: ${assignedManagerName || 'Auto/Unassigned'}`,
         });
         form.reset();
@@ -115,7 +115,7 @@ export default function NewLoanRequestPage() {
       } else {
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred with submission.",
+          description: "An unexpected issue occurred with submission (Mock).",
           variant: "destructive",
         });
       }
@@ -126,7 +126,7 @@ export default function NewLoanRequestPage() {
       console.error("Error stack:", error?.stack);
       console.error("Full error object (client):", error);
       toast({
-        title: "Submission System Error",
+        title: "Submission System Error (Mock)",
         description: `A client-side error occurred: ${error?.message || 'Please try again.'}. Check server terminal logs for more details if this persists.`,
         variant: "destructive",
       });
@@ -238,7 +238,7 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Assign to Relationship Manager (Optional)</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                      <Select onValueChange={field.onChange} defaultValue={field.value || UNASSIGNED_MARKER} disabled={isSubmitting}>
                         <FormControl>
                           <div className="relative">
                             <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -297,4 +297,3 @@ export default function NewLoanRequestPage() {
     </div>
   );
 }
-

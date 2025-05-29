@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { loanStages } from '@/types/loan';
-import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; // Import settings config
+import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
 import { mockUsers } from '@/lib/mock-data'; 
 import {
   Dialog,
@@ -45,7 +45,6 @@ import {
 import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service'; 
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
 
 const editLoanFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -101,20 +100,19 @@ export default function LoanDetailPage() {
   const { toast } = useToast();
   const loanId = params.id as string;
 
-  const [loan, setLoan] = React.useState<LoanRequest | null>(null);
-  const [users, setUsers] = React.useState<UserType[]>(mockUsers); 
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [isSaving, setIsSaving] = React.useState(false);
+  const [loan, setLoan] = useState<LoanRequest | null>(null);
+  const [users, setUsers] = useState<UserType[]>([]); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = React.useState(false);
-  const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = React.useState(false);
-  const [currentDocumentToUpload, setCurrentDocumentToUpload] = React.useState<string | null>(null);
-  const [additionalInfo, setAdditionalInfo] = React.useState('');
-  const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = React.useState(false);
-  const [noteContent, setNoteContent] = React.useState('');
-
+  const [isAddInfoDialogOpen, setIsAddInfoDialogOpen] = useState(false);
+  const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = useState(false);
+  const [currentDocumentToUpload, setCurrentDocumentToUpload] = useState<string | null>(null);
+  const [additionalInfo, setAdditionalInfo] = useState('');
+  const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
+  const [noteContent, setNoteContent] = useState('');
 
   const form = useForm<EditLoanFormValues>({
     resolver: zodResolver(editLoanFormSchema),
@@ -126,21 +124,22 @@ export default function LoanDetailPage() {
         setIsLoading(true);
         setError(null);
         try {
-          setUsers(mockUsers); 
           const result = await getLoanRequestById(loanId); 
           if (result.error) {
-            console.error("Error from getLoanRequestById service (mock):", result.error);
+            console.error("Error from getLoanRequestById service:", result.error, result);
             setError(result.error);
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
+            setUsers(result.users || mockUsers); // Use users from service or fallback
           } else {
-            setError(`Loan request with ID "${loanId}" not found (mock).`);
+            setError(`Loan request with ID "${loanId}" not found.`);
             setLoan(null);
           }
         } catch (err: any) {
-          console.error("Error fetching loan details (mock):", err);
-          setError(err.message || "An unexpected error occurred while fetching loan data.");
+          console.error("Error fetching loan details:", err);
+          const errorMessage = err.message || "An unexpected error occurred while fetching loan data.";
+          setError(errorMessage);
         } finally {
           setIsLoading(false);
         }
@@ -149,8 +148,7 @@ export default function LoanDetailPage() {
     }
   }, [loanId]);
 
-
-  React.useEffect(() => {
+  useEffect(() => {
     if (loan && isEditLoanDialogOpen) {
       form.reset({
         customerName: loan.customerName,
@@ -164,50 +162,50 @@ export default function LoanDetailPage() {
     }
   }, [loan, isEditLoanDialogOpen, form]);
 
-  const handleMockUpdate = async (
+  const handleDatabaseUpdate = async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string
   ) => {
-    if (!loan) return;
+    if (!loan) return false;
     setIsSaving(true);
-
-    const currentLoanState = { ...loan };
-    const newLoanStateBasis = { ...loan, ...updatedFields };
     
+    const currentLoanState = { ...loan }; // Backup current state
+
+    // Optimistic UI update
+    setLoan(prev => prev ? { ...prev, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } : null);
+
     try {
-      // The updateLoanRequest function for mock data will handle setting lastUpdatedDate
       const result = await updateLoanRequest(loan.id, updatedFields); 
-      if (result.error) {
-        setLoan(currentLoanState); 
+      if (result.error || !result.success) {
+        setLoan(currentLoanState); // Revert optimistic update on error
         toast({
-          title: "Mock Update Error",
-          description: result.error,
+          title: "Update Error",
+          description: result.error || "Failed to update loan.",
           variant: "destructive",
         });
-      } else if (result.success && result.updatedLoan) {
-        setLoan(result.updatedLoan); 
-        toast({
-          title: "Mock Update Successful",
-          description: successMessage,
-          variant: "default",
-        });
-      } else {
-         setLoan(currentLoanState); 
-         toast({
-          title: "Mock Update Issue",
-          description: "Update seemed to succeed but no updated data returned.",
-          variant: "destructive",
-        });
+        setIsSaving(false);
+        return false;
       }
-    } catch (err: any) {
-      setLoan(currentLoanState); 
+      // If success, the updatedLoan from service response will be set
+      if (result.updatedLoan) {
+        setLoan(result.updatedLoan); 
+      }
       toast({
-        title: "Mock System Error",
-        description: err.message || "A critical error occurred during mock update.",
+        title: "Update Successful",
+        description: successMessage,
+        variant: "default",
+      });
+      setIsSaving(false);
+      return true;
+    } catch (err: any) {
+      setLoan(currentLoanState); // Revert optimistic update on critical error
+      toast({
+        title: "System Error",
+        description: err.message || "A critical error occurred during update.",
         variant: "destructive",
       });
-    } finally {
       setIsSaving(false);
+      return false;
     }
   };
 
@@ -234,10 +232,11 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
 
-    await handleMockUpdate(updatedFields, "Information request simulated.");
-
-    setAdditionalInfo('');
-    setIsAddInfoDialogOpen(false);
+    const success = await handleDatabaseUpdate(updatedFields, "Information request simulated.");
+    if (success) {
+        setAdditionalInfo('');
+        setIsAddInfoDialogOpen(false);
+    }
   };
 
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
@@ -261,7 +260,7 @@ export default function LoanDetailPage() {
         history: updatedHistory,
     };
 
-    await handleMockUpdate(updatedFields, "Information fulfillment status simulated.");
+    await handleDatabaseUpdate(updatedFields, "Information fulfillment status simulated.");
   };
 
   const handleAddNoteSubmit = async () => {
@@ -284,11 +283,12 @@ export default function LoanDetailPage() {
       history: [...loan.history, newHistoryEntry],
     };
 
-    await handleMockUpdate(updatedFields, "Note added to loan history (mock).");
-    setNoteContent('');
-    setIsAddNoteDialogOpen(false);
+    const success = await handleDatabaseUpdate(updatedFields, "Note added to loan history (mock).");
+    if (success) {
+        setNoteContent('');
+        setIsAddNoteDialogOpen(false);
+    }
   };
-
 
   const activeInfoRequestEntry = loan?.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
@@ -341,20 +341,11 @@ export default function LoanDetailPage() {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
             newAssignedTo = potentialAssignees[0].id; 
-            console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}. Assigning to ${newAssignedTo} (${potentialAssignees[0].name}).`);
-        } else {
-            console.log(`Stage ${nextStage} targets role ${nextStageConfig.targetRoleForStage}, but no users found with this role. Keeping current assignee.`);
         }
-    }
-
-    // Fallback: If still unassigned, assign to a default Relationship Manager
-    if (!newAssignedTo) {
+    } else if (!newAssignedTo) { // Fallback if still unassigned
       const relationshipManagers = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
       if (relationshipManagers.length > 0) {
         newAssignedTo = relationshipManagers[0].id;
-        console.log(`Loan was unassigned. Fallback: Assigning to Relationship Manager ${newAssignedTo} (${relationshipManagers[0].name}).`);
-      } else {
-        console.log(`Loan was unassigned and no Relationship Manager found for fallback assignment.`);
       }
     }
 
@@ -373,13 +364,12 @@ export default function LoanDetailPage() {
         assignedTo: newAssignedTo, 
     };
 
-    await handleMockUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
+    await handleDatabaseUpdate(updatedFields, `Workflow advanced to ${nextStage} (mock).`);
   };
 
   const handleUploadDocument = async (docName: string) => {
     if (!loan) return;
-    setCurrentDocumentToUpload(docName);
-
+    
     const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
     let updatedDocuments: LoanDocument[];
     if (existingDocIndex > -1) {
@@ -397,9 +387,11 @@ export default function LoanDetailPage() {
         documents: updatedDocuments,
     };
 
-    await handleMockUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' (mock).`);
-
-    setIsUploadDocDialogOpen(false);
+    const success = await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Submitted' (mock).`);
+    if (success) {
+        setIsUploadDocDialogOpen(false);
+        setCurrentDocumentToUpload(null);
+    }
   };
 
   const handleVerifyDocument = async (docName: string) => {
@@ -407,12 +399,10 @@ export default function LoanDetailPage() {
     const updatedDocuments = loan.documents.map(doc =>
         doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified (mock).' } : doc
     );
-
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
         documents: updatedDocuments,
     };
-
-    await handleMockUpdate(updatedFields, `Document ${docName} status updated to 'Verified' (mock).`);
+    await handleDatabaseUpdate(updatedFields, `Document ${docName} status updated to 'Verified' (mock).`);
   };
 
   async function onEditLoanSubmit(data: EditLoanFormValues) {
@@ -428,8 +418,10 @@ export default function LoanDetailPage() {
       assignedTo: data.assignedTo || undefined,
     };
 
-    await handleMockUpdate(updatedFields, "Loan details updated (mock).");
-    setIsEditLoanDialogOpen(false);
+    const success = await handleDatabaseUpdate(updatedFields, "Loan details updated (mock).");
+    if (success) {
+        setIsEditLoanDialogOpen(false);
+    }
   }
 
   if (isLoading) {
@@ -447,7 +439,7 @@ export default function LoanDetailPage() {
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
         <p className="text-muted-foreground mb-6 break-words whitespace-pre-wrap">
-          {error || `The loan request with ID "${loanId}" could not be found (mock).`}
+          {error || `The loan request with ID "${loanId}" could not be found.`}
         </p>
         <Button onClick={() => router.push('/loan-process')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Loan Pipeline
@@ -798,7 +790,7 @@ export default function LoanDetailPage() {
                           </Badge>
                           {status === 'Missing' || status === 'Pending' || status === 'Rejected' ? (
                             <Button variant="outline" size="sm" onClick={() => { setCurrentDocumentToUpload(reqDoc.name); setIsUploadDocDialogOpen(true); }} disabled={isSaving}>
-                              {isSaving && status !== 'Submitted' && status !== 'Verified' ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <UploadCloud className="mr-1 h-4 w-4" />} Upload
+                              {isSaving && currentDocumentToUpload === reqDoc.name ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <UploadCloud className="mr-1 h-4 w-4" />} Upload
                             </Button>
                           ) : status === 'Submitted' ? (
                              <Button variant="outline" size="sm" onClick={() => handleVerifyDocument(reqDoc.name)} disabled={isSaving}>
@@ -943,5 +935,3 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
-
-    

@@ -3,8 +3,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword, type AuthError } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+// Removed: import { signInWithEmailAndPassword, type AuthError } from 'firebase/auth';
+// Removed: import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,44 +26,20 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
 
-    if (!auth) {
-      setError("Authentication service is not available. Please try again later.");
-      setIsLoading(false);
-      toast({ title: "Login Error", description: "Authentication service unavailable.", variant: "destructive" });
-      return;
-    }
+    // Firebase login logic removed.
+    // Simulating login for prototype purposes:
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
 
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      toast({ title: "Login Successful", description: "Welcome back!" });
-      router.push('/'); // Redirect to dashboard or desired page
-    } catch (err) {
-      const firebaseError = err as AuthError;
-      let friendlyMessage = "An unexpected error occurred during login.";
-      if (firebaseError.code) {
-        switch (firebaseError.code) {
-          case 'auth/invalid-email':
-            friendlyMessage = "Invalid email address format.";
-            break;
-          case 'auth/user-disabled':
-            friendlyMessage = "This user account has been disabled.";
-            break;
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-          case 'auth/invalid-credential':
-            friendlyMessage = "Invalid email or password.";
-            break;
-          default:
-            friendlyMessage = firebaseError.message;
-            break;
-        }
-      }
-      console.error("Firebase login error:", firebaseError);
+    if (email === "user@example.com" && password === "password") { // Mock credentials
+      toast({ title: "Login Successful (Mock)", description: "Welcome back!" });
+      // In a real app with context, you might set a local mock user state or similar
+      router.push('/'); 
+    } else {
+      const friendlyMessage = "Invalid email or password (Mock).";
       setError(friendlyMessage);
-      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
+      toast({ title: "Login Failed (Mock)", description: friendlyMessage, variant: "destructive" });
+    } 
+    setIsLoading(false);
   };
 
   return (

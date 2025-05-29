@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequests } from '@/services/loan-service'; 
 import type { LoanRequest } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
@@ -24,19 +24,20 @@ export default function OverdueTasksPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // Uses mock service
+        const result = await getLoanRequests(); 
         if (result.error) {
-          console.error("Error from getLoanRequests service (mock) in OverdueTasksPage:", result.error);
+          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
           setOverdueLoans(result.loans.filter(loan => loan.isOverdue));
         } else {
-           setError("No loan data received from mock service for overdue tasks.");
+           setError("No loan data received for overdue tasks.");
            setOverdueLoans([]);
         }
       } catch (err: any) {
-        console.error("Error fetching overdue loans (mock) in component:", err);
-        setError(err.message || "An unknown error occurred fetching overdue tasks.");
+        console.error("Error fetching overdue loans in component:", err);
+        const errorMessage = err.message || "An unknown error occurred fetching overdue tasks.";
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -81,7 +82,6 @@ export default function OverdueTasksPage() {
       </div>
     );
   }
-
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 
-'use client'; // Make this a client component to use hooks
+'use client'; 
 
 import type React from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,14 +11,14 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarTrigger,
-  SidebarRail, // Import SidebarRail
+  SidebarRail, 
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, Landmark, LogIn, LogOut, Loader2 } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context'; // Import useAuth
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { Bell, Landmark } from 'lucide-react'; // Removed LogIn, LogOut, Loader2 for auth
+// Removed: import { useAuth } from '@/contexts/auth-context'; 
+// Removed: import { signOut } from 'firebase/auth';
+// Removed: import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
@@ -27,33 +27,19 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, isLoading: authIsLoading } = useAuth(); // Get user and loading state
+  // Removed: const { user, isLoading: authIsLoading } = useAuth(); 
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleSignOut = async () => {
-    if (!auth) {
-      toast({ title: "Error", description: "Auth service not available.", variant: "destructive" });
-      return;
-    }
-    try {
-      await signOut(auth);
-      toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      router.push('/login'); // Redirect to login page after sign out
-    } catch (error) {
-      console.error("Error signing out: ", error);
-      toast({ title: "Sign Out Error", description: "Could not sign you out. Please try again.", variant: "destructive" });
-    }
-  };
+  // Removed: handleSignOut function as Firebase auth is removed
 
   return (
-    <SidebarProvider defaultOpen={false}> {/* Start collapsed on desktop */}
-      <Sidebar collapsible="icon"> {/* Desktop sidebar: icon-only collapse */}
-        <SidebarRail /> {/* Adds the rail to toggle sidebar on desktop */}
+    <SidebarProvider defaultOpen={false}> 
+      <Sidebar collapsible="icon"> 
+        <SidebarRail /> 
         <SidebarHeader className="p-4">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Landmark className="h-8 w-8 text-primary" />
-            {/* Text only visible when expanded */}
             <h1 className="text-xl font-semibold text-primary group-data-[state=expanded]:opacity-100 group-data-[state=collapsed]:opacity-0 group-data-[state=collapsed]:hidden transition-opacity duration-200">LoanFlow</h1>
           </Link>
         </SidebarHeader>
@@ -66,28 +52,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
-          <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
+          <SidebarTrigger className="md:hidden" /> 
           <div className="flex items-center gap-4 ml-auto">
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" />
               <span className="sr-only">Notifications</span>
             </Button>
-            {authIsLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : user ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground hidden sm:inline">{user.email}</span>
-                <Button variant="outline" size="sm" onClick={handleSignOut}>
-                  <LogOut className="mr-0 sm:mr-2 h-4 w-4" />
-                  <span className="hidden sm:inline">Sign Out</span>
-                </Button>
-              </div>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => router.push('/login')}>
-                <LogIn className="mr-2 h-4 w-4" />
-                Login
-              </Button>
-            )}
+            {/* Authentication related UI (user email, login/logout buttons) removed */}
           </div>
         </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8">

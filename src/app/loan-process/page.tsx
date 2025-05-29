@@ -11,7 +11,7 @@ import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight } from 'lucide-re
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
-import { getLoanRequests, updateLoanRequest } from '@/services/loan-service'; // Will use mock service
+import { getLoanRequests, updateLoanRequest } from '@/services/loan-service'; 
 import {
   Tooltip,
   TooltipContent,
@@ -127,13 +127,12 @@ export default function LoanProcessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>(mockUsers); // Assuming mockUsers is fine for prototype
+  const [users, setUsers] = useState<User[]>(mockUsers); 
 
-  // Promotion Dialog State
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForPromotion, setSelectedLoanForPromotion] = useState<LoanRequest | null>(null);
   const [selectedNextStage, setSelectedNextStage] = useState<LoanStage | ''>('');
-  const [selectedAssignee, setSelectedAssignee] = useState<string>(''); // Can be user ID or UNASSIGNED_DIALOG_OPTION_VALUE
+  const [selectedAssignee, setSelectedAssignee] = useState<string>(''); 
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
   useEffect(() => {
@@ -143,7 +142,7 @@ export default function LoanProcessPage() {
       try {
         const result = await getLoanRequests(); 
         if (result.error) {
-          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error);
+          console.error("Error from getLoanRequests service in LoanProcessPage:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
           setAllLoans(result.loans);
@@ -153,7 +152,8 @@ export default function LoanProcessPage() {
         }
       } catch (err: any) {
         console.error("Error fetching loans in LoanProcessPage component:", err);
-        setError(err.message || "An unexpected error occurred fetching loans.");
+        const errorMessage = err.message || "An unexpected error occurred fetching loans.";
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -163,8 +163,8 @@ export default function LoanProcessPage() {
   
   const handlePromoteClick = (loan: LoanRequest) => {
     setSelectedLoanForPromotion(loan);
-    setSelectedNextStage(''); // Reset next stage
-    setSelectedAssignee(loan.assignedTo || ''); // Pre-fill current assignee or empty string for placeholder
+    setSelectedNextStage(''); 
+    setSelectedAssignee(loan.assignedTo || ''); 
     setIsPromoteDialogOpen(true);
   };
 
@@ -175,7 +175,6 @@ export default function LoanProcessPage() {
     
     const nextStages = loanStages.filter((stage, index) => index > currentIndex);
     
-    // Always allow moving to Approved or Rejected, unless already there or past
     if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED)) {
         if (loanStages.indexOf(LoanStage.APPROVED) > currentIndex) nextStages.push(LoanStage.APPROVED);
     }
@@ -183,12 +182,10 @@ export default function LoanProcessPage() {
          if (loanStages.indexOf(LoanStage.REJECTED) > currentIndex) nextStages.push(LoanStage.REJECTED);
     }
     
-    // Ensure unique stages and proper order if Approved/Rejected were added out of natural flow
     return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
   };
 
   useEffect(() => {
-    // Auto-suggest assignee when selectedNextStage changes
     if (selectedLoanForPromotion && selectedNextStage) {
       const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStage);
       let suggestedAssigneeId = selectedLoanForPromotion.assignedTo || '';
@@ -198,13 +195,13 @@ export default function LoanProcessPage() {
         if (potentialAssignees.length > 0) {
           suggestedAssigneeId = potentialAssignees[0].id;
         }
-      } else if (!suggestedAssigneeId) { // If still unassigned, try default RM
+      } else if (!suggestedAssigneeId) { 
         const defaultRMs = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
         if (defaultRMs.length > 0) {
           suggestedAssigneeId = defaultRMs[0].id;
         }
       }
-      setSelectedAssignee(suggestedAssigneeId); // If suggestedAssigneeId is '', Select shows placeholder
+      setSelectedAssignee(suggestedAssigneeId); 
     }
   }, [selectedNextStage, selectedLoanForPromotion, users]);
 
@@ -215,7 +212,6 @@ export default function LoanProcessPage() {
       return;
     }
 
-    // Basic validation (similar to loan detail page)
     if (selectedLoanForPromotion.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
         const activeInfoRequest = [...selectedLoanForPromotion.history]
             .reverse()
@@ -247,7 +243,6 @@ export default function LoanProcessPage() {
         }
     }
 
-
     setIsSavingPromotion(true);
     const finalAssignedTo = selectedAssignee === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssignee;
     const currentAssigneeName = users.find(u => u.id === selectedLoanForPromotion.assignedTo)?.name || 'Unassigned';
@@ -262,34 +257,31 @@ export default function LoanProcessPage() {
       id: `hist-mock-${Date.now()}`,
       stage: selectedNextStage,
       timestamp: formatISO(new Date()),
-      userId: 'mock-user-pipeline-promo', // Placeholder user
-      userName: 'Pipeline User',
+      userId: 'mock-user-pipeline-promo', 
+      userName: 'Pipeline User (Mock)',
       notes: notes
     };
 
-    const updatedFields = {
+    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
       currentStage: selectedNextStage,
       assignedTo: finalAssignedTo,
       history: [...selectedLoanForPromotion.history, newHistoryEntry],
-      // Update stageDeadline based on new stage's config (optional, advanced)
     };
 
     const result = await updateLoanRequest(selectedLoanForPromotion.id, updatedFields);
     setIsSavingPromotion(false);
 
-    if (result.error) {
-      toast({ title: "Promotion Error", description: result.error, variant: "destructive" });
+    if (result.error || !result.success) {
+      toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
     } else {
       toast({ title: "Promotion Successful", description: `${selectedLoanForPromotion.customerName} moved to ${selectedNextStage}.` });
-      // Refresh loans list
       setAllLoans(prevLoans => prevLoans.map(l => 
-        l.id === selectedLoanForPromotion.id ? { ...l, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } : l
+        l.id === selectedLoanForPromotion.id ? { ...l, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : l
       ));
       setIsPromoteDialogOpen(false);
       setSelectedLoanForPromotion(null);
     }
   };
-
 
   const loansByStage = (stage: LoanStage) =>
     allLoans.filter((loan) => loan.currentStage === stage);
@@ -374,7 +366,7 @@ export default function LoanProcessPage() {
               <div>
                 <Label htmlFor="assignee">Assign To</Label>
                 <Select 
-                  value={selectedAssignee} // Can be user ID or '' if placeholder should show
+                  value={selectedAssignee} 
                   onValueChange={setSelectedAssignee}
                 >
                   <SelectTrigger id="assignee" className="mt-1">
