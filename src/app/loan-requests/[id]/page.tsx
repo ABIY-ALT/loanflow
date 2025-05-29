@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
-import { loanStages } from '@/types/loan';
+// Removed: import { loanStages } from '@/types/loan';
 import { initialStageConfigs, type StageConfig } from '@/app/settings/page'; 
 import { mockUsers } from '@/lib/mock-data'; 
 import {
@@ -101,7 +101,7 @@ export default function LoanDetailPage() {
   const loanId = params.id as string;
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
-  const [users, setUsers] = useState<UserType[]>([]); 
+  const [users, setUsers] = useState<UserType[]>(mockUsers); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -131,7 +131,8 @@ export default function LoanDetailPage() {
             setLoan(null);
           } else if (result.loan) {
             setLoan(result.loan);
-            setUsers(result.users || mockUsers); // Use users from service or fallback
+            // Users are now part of the result from getLoanRequestById mock service
+            setUsers(result.users || mockUsers); // Fallback to direct mockUsers if service doesn't return them
           } else {
             setError(`Loan request with ID "${loanId}" not found.`);
             setLoan(null);
@@ -232,7 +233,7 @@ export default function LoanDetailPage() {
         history: [...loan.history, newHistoryEntry],
     };
 
-    const success = await handleDatabaseUpdate(updatedFields, "Information request simulated.");
+    const success = await handleDatabaseUpdate(updatedFields, "Information request action recorded (mock).");
     if (success) {
         setAdditionalInfo('');
         setIsAddInfoDialogOpen(false);
@@ -260,7 +261,7 @@ export default function LoanDetailPage() {
         history: updatedHistory,
     };
 
-    await handleDatabaseUpdate(updatedFields, "Information fulfillment status simulated.");
+    await handleDatabaseUpdate(updatedFields, "Information fulfillment status updated (mock).");
   };
 
   const handleAddNoteSubmit = async () => {
@@ -305,7 +306,7 @@ export default function LoanDetailPage() {
           title: "Action Pending",
           description: `Outstanding action: '${activeInfoRequestEntry.requiredFulfilment}' must be marked as received before advancing.`,
           variant: "destructive",
-          duration: 5000,
+          duration: 7000,
         });
         return;
       }
@@ -324,7 +325,7 @@ export default function LoanDetailPage() {
       if (pendingDocuments.length > 0) {
         toast({
           title: "Documents Pending Verification",
-          description: `The following documents for stage '${loan.currentStage}' must be uploaded and verified: ${pendingDocuments.map(d => d.name).join(', ')}.`,
+          description: `The following documents for stage '${loan.currentStage}' must be verified: ${pendingDocuments.map(d => d.name).join(', ')}.`,
           variant: "destructive",
           duration: 7000,
         });
@@ -448,8 +449,34 @@ export default function LoanDetailPage() {
     );
   }
 
-  const currentStageIndex = loanStages.indexOf(loan.currentStage);
-  const progressPercentage = ((currentStageIndex + 1) / loanStages.length) * 100;
+  const currentStageEnum = loan.currentStage;
+  let progressPercentage = 0;
+
+  if (currentStageEnum === LoanStage.FUNDS_DISBURSED) {
+      progressPercentage = 100;
+  } else if (currentStageEnum === LoanStage.REJECTED) {
+      let cumulativeWeight = 0;
+      for (const stageCfg of initialStageConfigs) {
+          if (stageCfg.loanStageEnum === LoanStage.REJECTED) {
+              break; 
+          }
+          cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
+      }
+      progressPercentage = cumulativeWeight;
+  } else {
+      let cumulativeWeight = 0;
+      let stageFoundInConfig = false;
+      for (const stageCfg of initialStageConfigs) {
+          cumulativeWeight += Number(stageCfg.percentageWeight) || 0;
+          if (stageCfg.loanStageEnum === currentStageEnum) {
+              stageFoundInConfig = true;
+              break;
+          }
+      }
+      progressPercentage = stageFoundInConfig ? cumulativeWeight : 0; 
+  }
+  progressPercentage = Math.min(100, Math.max(0, progressPercentage));
+
 
   const currentStageConfig: StageConfig | undefined = initialStageConfigs.find(
     (config) => config.loanStageEnum === loan.currentStage
@@ -457,6 +484,20 @@ export default function LoanDetailPage() {
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
   
   const assignedManager = users.find(u => u.id === loan.assignedTo);
+  
+  // Determine next logical stage for "Advance to" button
+  let nextLogicalStage: LoanStage | null = null;
+  const currentConfigIndex = initialStageConfigs.findIndex(config => config.loanStageEnum === loan.currentStage);
+  if (currentConfigIndex !== -1 && currentConfigIndex < initialStageConfigs.length - 1) {
+    // Find next non-rejected stage
+    for (let i = currentConfigIndex + 1; i < initialStageConfigs.length; i++) {
+        if (initialStageConfigs[i].loanStageEnum !== LoanStage.REJECTED) {
+            nextLogicalStage = initialStageConfigs[i].loanStageEnum;
+            break;
+        }
+    }
+  }
+
 
   return (
     <div className="space-y-8">
@@ -664,7 +705,7 @@ export default function LoanDetailPage() {
 
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
+              <Button variant="outline" disabled={isSaving || loan.currentStage === LoanStage.FUNDS_DISBURSED || loan.currentStage === LoanStage.REJECTED}><Edit3 className="mr-2 h-4 w-4" /> Request Info</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -695,20 +736,19 @@ export default function LoanDetailPage() {
             </DialogContent>
           </Dialog>
 
-          {currentStageIndex < loanStages.length -1 &&
+          {nextLogicalStage &&
            loan.currentStage !== LoanStage.REJECTED &&
            loan.currentStage !== LoanStage.FUNDS_DISBURSED &&
            loan.currentStage !== LoanStage.APPROVED && (
-            <Button onClick={() => handleAdvanceWorkflow(loanStages[currentStageIndex + 1])} disabled={isSaving}>
+            <Button onClick={() => handleAdvanceWorkflow(nextLogicalStage!)} disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Advance to: {loanStages[currentStageIndex + 1]}
+                Advance to: {nextLogicalStage}
             </Button>
           )}
            {loan.currentStage !== LoanStage.APPROVED && 
             loan.currentStage !== LoanStage.REJECTED && 
             loan.currentStage !== LoanStage.FUNDS_DISBURSED && 
-            loanStages.includes(LoanStage.APPROVED) && 
-            currentStageIndex < loanStages.indexOf(LoanStage.APPROVED) && (
+            initialStageConfigs.some(s => s.loanStageEnum === LoanStage.APPROVED) && (
               <Button 
                 variant="default" 
                 onClick={() => handleAdvanceWorkflow(LoanStage.APPROVED)} 
@@ -935,3 +975,4 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
+
