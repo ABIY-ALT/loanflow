@@ -11,7 +11,7 @@ let sessionMockLoanRequests: LoanRequest[] = JSON.parse(JSON.stringify(mockLoanR
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   let detailedMessage = `Loan Service Mock Error (Context: ${context || 'Unknown'}): ${message}.`;
   if (originalError) {
-    detailedMessage += ` Details: ${originalError.message || originalError.toString()}`;
+    detailedMessage += ` Raw: ${ (typeof originalError === 'object' && originalError !== null) ? JSON.stringify(originalError) : String(originalError)}. Name: ${originalError.name}. Message: ${originalError.message}. Code: ${originalError.code}`;
   }
   console.error(`[Mock Service:${context || 'Unknown'}] Error:`, detailedMessage, originalError);
   return { error: detailedMessage };
@@ -58,7 +58,11 @@ const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve,
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview'>
 ): Promise<{ id?: string; error?: string }> {
+  console.log('[Mock Service:addLoanRequest] Called.');
+  console.log('[Mock Service:addLoanRequest] sessionMockLoanRequests length BEFORE add:', sessionMockLoanRequests.length);
+  console.log('[Mock Service:addLoanRequest] First 3 IDs BEFORE add:', sessionMockLoanRequests.slice(0, 3).map(l => l.id));
   console.log('[Mock Service:addLoanRequest] Received data for new loan:', loanData);
+
   try {
     await simulateDelay(50 + Math.random() * 100);
     const currentDate = new Date();
@@ -91,28 +95,37 @@ export async function addLoanRequest(
       isOverdue: false,
       isReadyForManagerReview: false,
     };
+    console.log('[Mock Service:addLoanRequest] New loan object created:', JSON.stringify(newLoan, null, 2));
 
     const preparedLoanData = prepareDataForMockWrite(newLoan);
+    console.log('[Mock Service:addLoanRequest] Loan data prepared for unshift:', JSON.stringify(preparedLoanData, null, 2));
+    
     sessionMockLoanRequests.unshift(preparedLoanData);
+    
     console.log(`[Mock Service:addLoanRequest] Loan added. New count: ${sessionMockLoanRequests.length}. Added ID: ${newLoan.id}. First ID in array: ${sessionMockLoanRequests[0]?.id}`);
+    console.log('[Mock Service:addLoanRequest] First 3 IDs AFTER add:', sessionMockLoanRequests.slice(0, 3).map(l => l.id));
+    
     return { id: newLoan.id };
 
   } catch (e: any) {
+    console.error('[Mock Service:addLoanRequest] Raw error during operation:', e);
     return createErrorResult(`Failed to add mock loan request.`, "addLoanRequest", e);
   }
 }
 
 export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; users?: User[] }> {
+  console.log('[Mock Service:getLoanRequests] Called.');
+  console.log('[Mock Service:getLoanRequests] sessionMockLoanRequests length on fetch:', sessionMockLoanRequests.length);
+  console.log('[Mock Service:getLoanRequests] First 3 IDs on fetch:', sessionMockLoanRequests.slice(0, 3).map(l => l.id));
   try {
     await simulateDelay(50 + Math.random() * 100);
-    console.log(`[Mock Service:getLoanRequests] Returning ${sessionMockLoanRequests.length} loans. First few IDs: ${sessionMockLoanRequests.slice(0,3).map(l => l.id).join(', ')}`);
 
     const processedLoans = sessionMockLoanRequests.map(loan => {
       const stageDeadline = loan.stageDeadline ? parseISO(loan.stageDeadline) : null;
       const isOverdue = stageDeadline ? stageDeadline.getTime() < new Date().getTime() && ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED, LoanStage.APPROVED].includes(loan.currentStage) : false;
 
-      const history = Array.isArray(loan.history) ? loan.history : [];
-      const documents = Array.isArray(loan.documents) ? loan.documents : [];
+      const history = Array.isArray(loan.history) ? loan.history : []; // Ensure history is an array
+      const documents = Array.isArray(loan.documents) ? loan.documents : []; // Ensure documents is an array
 
       return { ...loan, isOverdue, history, documents };
     });
@@ -163,7 +176,7 @@ export async function updateLoanRequest(
       let newHistory = dataToUpdate.history;
       if (dataToUpdate.history && !Array.isArray(dataToUpdate.history)) {
           console.warn(`[Mock Service:updateLoanRequest] History in dataToUpdate for loan ${id} was not an array, correcting.`);
-          newHistory = currentHistory; // Keep existing if update history is malformed
+          newHistory = currentHistory; 
       } else if (!dataToUpdate.history) {
           newHistory = currentHistory;
       }
@@ -171,7 +184,7 @@ export async function updateLoanRequest(
       const updatedLoanData: LoanRequest = {
         ...sessionMockLoanRequests[loanIndex],
         ...dataToUpdate,
-        history: newHistory as LoanHistoryEntry[], // Ensure type assertion
+        history: newHistory as LoanHistoryEntry[], 
         lastUpdatedDate: formatISO(new Date()),
       };
 

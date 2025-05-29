@@ -78,7 +78,9 @@ function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
             Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}
           </div>
         )}
-        {loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED && loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && h.requiredFulfilment && (!h.notes || !h.notes.includes("[FULFILLED MOCK]")))?.requiredFulfilment && (
+        {loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED && 
+          loan.history && Array.isArray(loan.history) && // Ensure loan.history is an array
+          loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && h.requiredFulfilment && (!h.notes || !h.notes.includes("[FULFILLED MOCK]")))?.requiredFulfilment && (
           <Badge variant="outline" className="mt-2 text-amber-700 border-amber-500">
             Action Needed: {loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && h.requiredFulfilment && (!h.notes || !h.notes.includes("[FULFILLED MOCK]")))?.requiredFulfilment}
           </Badge>
@@ -215,13 +217,14 @@ export default function LoanProcessPage() {
 
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
-  const [isProcessingAction, setIsProcessingAction] = useState(false); // Combined saving state
+  const [isProcessingAction, setIsProcessingAction] = useState(false); 
 
   const fetchLoans = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const result = await getLoanRequests();
+      console.log('[LoanProcessPage] Fetched loans from service:', result); // Log received data
       if (result.error) {
         setError(result.error);
         setAllLoans([]);
@@ -245,13 +248,17 @@ export default function LoanProcessPage() {
   }, [fetchLoans]);
 
   const validateCurrentStageRequirements = useCallback((loan: LoanRequest): boolean => {
-    if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
+    if (!loan.history || !Array.isArray(loan.history)) { // Guard against undefined/non-array history
+      console.warn('[LoanProcessPage] validateCurrentStageRequirements: loan.history is not an array or undefined for loan:', loan.id);
+      // Decide if this should be a blocking error or not. For now, let's assume it means no history to validate.
+    } else if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
         const activeInfoRequest = [...loan.history].reverse().find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
         if (activeInfoRequest) {
             toast({ title: "Action Pending", description: `Outstanding action for ${loan.customerName}: '${activeInfoRequest.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
             return false;
         }
     }
+    
     const currentStageConfig = initialStageConfigs.find(c => c.loanStageEnum === loan.currentStage);
     if (currentStageConfig?.requiredDocuments.length) {
         const pendingDocs = currentStageConfig.requiredDocuments.filter(reqDoc => {
@@ -280,13 +287,12 @@ export default function LoanProcessPage() {
       };
       const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { 
         isReadyForManagerReview: true, 
-        history: [...loan.history, newHistoryEntry],
+        history: [...(loan.history || []), newHistoryEntry], // Ensure history is an array
         lastUpdatedDate: formatISO(new Date()) 
       };
       
-      // Update local state immediately
       setAllLoans(prevLoans => 
-        prevLoans.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l)
+        prevLoans.map(l => l.id === loan.id ? { ...l, ...updatedFields, history: [...(l.history || []), newHistoryEntry] } : l)
       );
 
       const serviceResult = await updateLoanRequest(loan.id, updatedFields);
@@ -294,7 +300,6 @@ export default function LoanProcessPage() {
 
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Error", description: serviceResult.error || "Failed to mark stage complete in service.", variant: "destructive" });
-        // Potentially revert local state if service fails, or fetch all loans again
         fetchLoans(); 
       } else {
         toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
@@ -317,14 +322,13 @@ export default function LoanProcessPage() {
     };
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
       currentStage: nextStage, assignedTo: undefined, 
-      history: [...loanToPromote.history, newHistoryEntry], 
+      history: [...(loanToPromote.history || []), newHistoryEntry], // Ensure history is an array
       isReadyForManagerReview: false,
       lastUpdatedDate: formatISO(new Date())
     };
 
-    // Update local state immediately
     setAllLoans(prevLoans => 
-        prevLoans.map(l => l.id === loanId ? { ...l, ...updatedFields } : l)
+        prevLoans.map(l => l.id === loanId ? { ...l, ...updatedFields, history: [...(l.history || []), newHistoryEntry] } : l)
     );
     
     setIsPromoteDialogOpen(false);
@@ -335,7 +339,6 @@ export default function LoanProcessPage() {
 
     if (serviceResult.error || !serviceResult.success) {
       toast({ title: "Promotion Error", description: serviceResult.error || "Failed to promote loan in service.", variant: "destructive" });
-      // Potentially revert local state or refetch
       fetchLoans();
     } else {
       toast({ title: "Promotion Successful", description: `${loanToPromote.customerName} moved to ${nextStage} and is now unassigned.` });
@@ -344,7 +347,7 @@ export default function LoanProcessPage() {
 
   const loansByStage = (stage: LoanStage) => allLoans.filter((loan) => loan.currentStage === stage);
 
-  if (isLoading && allLoans.length === 0) { // Show loader only if no loans are displayed yet
+  if (isLoading && allLoans.length === 0) { 
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p>
@@ -352,7 +355,7 @@ export default function LoanProcessPage() {
     );
   }
 
-  if (error && allLoans.length === 0) { // Show error only if no loans could be displayed
+  if (error && allLoans.length === 0) { 
     return (
       <Alert variant="destructive" className="max-w-2xl mx-auto">
         <AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Fetching Loans</AlertTitleShadCN>
