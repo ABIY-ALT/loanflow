@@ -1,13 +1,14 @@
 
 'use client';
 
+import React, { useState } from 'react'; // Added React and useState import
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import type { LoanRequest, LoanDocument } from '@/types/loan';
 import { initialStageConfigs, type StageConfig } from '@/app/settings/page';
 import { FileText, CheckCircle, XCircle, AlertCircle, FileSymlink, Paperclip, UploadCloud, BadgeCheck, Loader2 } from 'lucide-react';
-import type React from 'react';
+// Removed: type React from 'react'; - this was an incorrect import type
 
 const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
   // ... (same as in original page.tsx)
@@ -50,7 +51,7 @@ export function LoanDocumentsManager({
     (config) => config.loanStageEnum === loan.currentStage
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
-  const [isVerifyingDoc, setIsVerifyingDoc] = React.useState<string | null>(null);
+  const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);
 
 
   const handleVerify = async (docName: string) => {
@@ -120,4 +121,3 @@ export function LoanDocumentsManager({
     </div>
   );
 }
-
