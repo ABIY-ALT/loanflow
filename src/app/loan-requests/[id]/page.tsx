@@ -4,7 +4,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2, StickyNote, CheckSquare, UserCheck } from 'lucide-react';
+import { ArrowLeft, Edit3, PlusCircle, FileText, CheckCircle, XCircle, AlertCircle, Clock, Landmark, User, DollarSign, Type, Info, FileSymlink, Paperclip, Phone, UploadCloud, BadgeCheck, Edit, MessageSquare, Loader2, StickyNote, CheckSquare, UserCheck, ArrowRight } from 'lucide-react';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType } from '@/types/loan';
 import { LoanStage, UserRole, loanStages } from '@/types/loan';
 import { Badge } from '@/components/ui/badge';
@@ -115,10 +115,10 @@ export default function LoanDetailPage() {
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
   const [noteContent, setNoteContent] = useState('');
 
-  const [isManagerPromoteDialogOpen, setIsManagerPromoteDialogOpen] = useState(false);
-  const [selectedNextStageForManager, setSelectedNextStageForManager] = useState<LoanStage | ''>('');
-  const [selectedAssigneeForManager, setSelectedAssigneeForManager] = useState<string>('');
-  const [isSavingManagerPromotion, setIsSavingManagerPromotion] = useState(false);
+  const [isPromoteLoanDialogOpen, setIsPromoteLoanDialogOpen] = useState(false);
+  const [selectedNextStageForPromotion, setSelectedNextStageForPromotion] = useState<LoanStage | ''>('');
+  const [selectedAssigneeForPromotion, setSelectedAssigneeForPromotion] = useState<string>('');
+  const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
 
   const form = useForm<EditLoanFormValues>({
@@ -172,49 +172,48 @@ export default function LoanDetailPage() {
   const handleDatabaseUpdate = async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
-    operationType: "update" | "promotion" = "update"
+    operationType: "update" | "promotion" = "update" // 'promotion' used for promotion dialog saving state
   ) => {
     if (!loan) return false;
-    if (operationType === "promotion") setIsSavingManagerPromotion(true);
+    if (operationType === "promotion") setIsSavingPromotion(true);
     else setIsSaving(true);
 
     const currentLoanState = { ...loan };
 
-    // Optimistic update
     setLoan(prev => prev ? { ...prev, ...updatedFields, lastUpdatedDate: formatISO(new Date()) } : null);
 
     try {
       const result = await updateLoanRequest(loan.id, updatedFields);
-      if (result.error || !result.success) {
-        setLoan(currentLoanState); // Revert optimistic update
+      if (result.error || !result.success || !result.updatedLoan) {
+        setLoan(currentLoanState); 
         toast({
           title: "Update Error",
           description: result.error || "Failed to update loan.",
           variant: "destructive",
         });
-        if (operationType === "promotion") setIsSavingManagerPromotion(false);
+        if (operationType === "promotion") setIsSavingPromotion(false);
         else setIsSaving(false);
         return false;
       }
       if (result.updatedLoan) {
-        setLoan(result.updatedLoan); // Set the actual updated loan from service
+        setLoan(result.updatedLoan); 
       }
       toast({
         title: "Update Successful",
         description: successMessage,
         variant: "default",
       });
-      if (operationType === "promotion") setIsSavingManagerPromotion(false);
+      if (operationType === "promotion") setIsSavingPromotion(false);
       else setIsSaving(false);
       return true;
     } catch (err: any) {
-      setLoan(currentLoanState); // Revert optimistic update
+      setLoan(currentLoanState); 
       toast({
         title: "System Error",
         description: err.message || "A critical error occurred during update.",
         variant: "destructive",
       });
-      if (operationType === "promotion") setIsSavingManagerPromotion(false);
+      if (operationType === "promotion") setIsSavingPromotion(false);
       else setIsSaving(false);
       return false;
     }
@@ -299,22 +298,21 @@ export default function LoanDetailPage() {
         setIsAddNoteDialogOpen(false);
     }
   };
-
+  
   const activeInfoRequestEntry = loan?.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
   ? [...loan.history]
     .reverse() 
-    .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
+    .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
   : undefined;
 
 
   const validateCurrentStageRequirements = (): boolean => {
     if (!loan) return false;
-
-    // Check for unfulfilled "Additional Info Required" if currently in that stage
+    
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
       const activeInfoReq = [...loan.history]
         .reverse()
-        .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+        .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
       if (activeInfoReq) {
         toast({
           title: "Action Pending",
@@ -326,7 +324,6 @@ export default function LoanDetailPage() {
       }
     }
     
-    // Check for unverified required documents for the current stage
     const currentStageConfig = initialStageConfigs.find(c => c.loanStageEnum === loan.currentStage);
     if (currentStageConfig?.requiredDocuments.length) {
       const pendingDocs = currentStageConfig.requiredDocuments.filter(reqDoc => {
@@ -346,14 +343,14 @@ export default function LoanDetailPage() {
     return true;
   };
 
-  const handleMarkReadyForReview = async () => {
+  const handleMarkStageComplete = async () => {
     if (!loan || !validateCurrentStageRequirements()) return;
 
     const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: loan.currentStage,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id',
+        userId: 'mock-user-id', // Replace with actual user later
         userName: 'Mock Bank User (Officer)',
         notes: `Stage '${loan.currentStage}' marked complete. Submitted for manager review.`,
     };
@@ -364,21 +361,21 @@ export default function LoanDetailPage() {
     await handleDatabaseUpdate(updatedFields, `Loan submitted for manager review.`);
   };
   
-  const handleOpenManagerPromotionDialog = () => {
+  const handleOpenPromotionDialog = () => {
     if (!loan) return;
-    setSelectedNextStageForManager('');
-    setSelectedAssigneeForManager(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE);
-    setIsManagerPromoteDialogOpen(true);
+    if (!validateCurrentStageRequirements()) return; // Validate before opening dialog for promotion
+    setSelectedNextStageForPromotion('');
+    setSelectedAssigneeForPromotion(UNASSIGNED_DIALOG_OPTION_VALUE);
+    setIsPromoteLoanDialogOpen(true);
   };
   
-  const availableNextStagesForManager = (currentStage: LoanStage | undefined): LoanStage[] => {
+  const availableNextStagesForPromotion = (currentStage: LoanStage | undefined): LoanStage[] => {
     if (!currentStage) return [];
     const currentIndex = loanStages.indexOf(currentStage);
     if (currentIndex === -1) return [];
     
     const nextStages = loanStages.filter((stage, index) => index > currentIndex);
     
-    // Ensure "Approved" and "Rejected" are always options if not already past them
     if (currentStage !== LoanStage.APPROVED && !nextStages.includes(LoanStage.APPROVED)) {
         if (loanStages.indexOf(LoanStage.APPROVED) > currentIndex) nextStages.push(LoanStage.APPROVED);
     }
@@ -390,49 +387,50 @@ export default function LoanDetailPage() {
   };
 
   useEffect(() => {
-    if (loan && selectedNextStageForManager) {
-      const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStageForManager);
-      let suggestedAssigneeId = loan.assignedTo || '';
+    // Logic to suggest assignee when selectedNextStageForPromotion changes
+    if (loan && selectedNextStageForPromotion) {
+      const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStageForPromotion);
+      let suggestedAssigneeId = UNASSIGNED_DIALOG_OPTION_VALUE; // Default to Unassigned
 
       if (nextStageConfig?.targetRoleForStage) {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
-          suggestedAssigneeId = potentialAssignees[0].id;
-        }
-      } else if (!suggestedAssigneeId && selectedNextStageForManager !== LoanStage.REJECTED) { 
-        // Default to an RM if no target role and not rejected
-        const defaultRMs = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
-        if (defaultRMs.length > 0) {
-          suggestedAssigneeId = defaultRMs[0].id;
+          suggestedAssigneeId = potentialAssignees[0].id; // Suggest first user with target role
         }
       }
-      setSelectedAssigneeForManager(suggestedAssigneeId || UNASSIGNED_DIALOG_OPTION_VALUE);
+      setSelectedAssigneeForPromotion(suggestedAssigneeId);
+    } else if (loan && !selectedNextStageForPromotion) {
+      // When dialog opens but no next stage is selected yet, default to unassigned
+      setSelectedAssigneeForPromotion(UNASSIGNED_DIALOG_OPTION_VALUE);
     }
-  }, [selectedNextStageForManager, loan, users]);
+  }, [selectedNextStageForPromotion, loan, users]);
 
-  const handleConfirmManagerPromotion = async () => {
-    if (!loan || !selectedNextStageForManager) {
+
+  const handleConfirmPromotion = async () => {
+    if (!loan || !selectedNextStageForPromotion) {
       toast({ title: "Error", description: "Next stage must be selected.", variant: "destructive" });
       return;
     }
     
-    // This validation is for current stage, should be done before opening this dialog.
-    // Re-validating here for safety, but ideally the "Manager: Promote/Assign Loan" button is only enabled if current stage is truly complete.
+    // Current stage requirements should have been validated before opening this dialog
+    // Re-validating as a safeguard, but the "Promote Loan" button should be disabled if not valid.
     if (!validateCurrentStageRequirements()) return;
 
 
-    const finalAssignedTo = selectedAssigneeForManager === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssigneeForManager;
+    const finalAssignedTo = selectedAssigneeForPromotion === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : selectedAssigneeForPromotion;
     const currentAssigneeName = users.find(u => u.id === loan.assignedTo)?.name || 'Unassigned';
     const newAssigneeName = finalAssignedTo ? (users.find(u => u.id === finalAssignedTo)?.name || 'Unknown') : 'Unassigned';
 
-    let notes = `Manager promoted to ${selectedNextStageForManager}.`;
-    if (finalAssignedTo !== loan.assignedTo) {
+    let notes = `Manager promoted to ${selectedNextStageForPromotion}.`;
+    if (finalAssignedTo !== loan.assignedTo || (!loan.assignedTo && finalAssignedTo)) {
         notes += ` Assignment changed from ${currentAssigneeName} to ${newAssigneeName}.`;
+    } else if (loan.assignedTo && !finalAssignedTo) {
+        notes += ` Assignment changed from ${currentAssigneeName} to Unassigned.`;
     }
     
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
-      stage: selectedNextStageForManager,
+      stage: selectedNextStageForPromotion,
       timestamp: formatISO(new Date()),
       userId: 'mock-manager-user', 
       userName: 'Manager User (Mock)',
@@ -440,15 +438,15 @@ export default function LoanDetailPage() {
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-      currentStage: selectedNextStageForManager,
+      currentStage: selectedNextStageForPromotion,
       assignedTo: finalAssignedTo,
       history: [...loan.history, newHistoryEntry],
-      isReadyForManagerReview: false, // Reset flag after promotion
+      isReadyForManagerReview: false, 
     };
 
-    const success = await handleDatabaseUpdate(updatedFields, `${loan.customerName} moved to ${selectedNextStageForManager}.`, "promotion");
+    const success = await handleDatabaseUpdate(updatedFields, `${loan.customerName} moved to ${selectedNextStageForPromotion}.`, "promotion");
     if (success) {
-      setIsManagerPromoteDialogOpen(false);
+      setIsPromoteLoanDialogOpen(false);
     }
   };
 
@@ -569,20 +567,22 @@ export default function LoanDetailPage() {
   );
   const requiredDocumentsForCurrentStage = currentStageConfig?.requiredDocuments || [];
 
-  const assignedManager = users.find(u => u.id === loan.assignedTo);
+  const assignedUser = users.find(u => u.id === loan.assignedTo);
   const isActionableStage = ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED].includes(loan.currentStage);
+  const canOfficerMarkComplete = isActionableStage && !loan.isReadyForManagerReview;
+  const canManagerPromote = isActionableStage && loan.isReadyForManagerReview;
 
 
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => router.back()} disabled={isSaving || isSavingManagerPromotion}>
+        <Button variant="outline" onClick={() => router.back()} disabled={isSaving || isSavingPromotion}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <div className="flex flex-wrap gap-2">
           <Dialog open={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={isSaving || isSavingManagerPromotion}><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
+              <Button variant="outline" disabled={isSaving || isSavingPromotion}><Edit className="mr-2 h-4 w-4" /> Edit Details</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
@@ -745,7 +745,7 @@ export default function LoanDetailPage() {
 
           <Dialog open={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={isSaving || isSavingManagerPromotion}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
+              <Button variant="outline" disabled={isSaving || isSavingPromotion}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -779,7 +779,7 @@ export default function LoanDetailPage() {
 
           <Dialog open={isAddInfoDialogOpen} onOpenChange={setIsAddInfoDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={isSaving || isSavingManagerPromotion || !isActionableStage}><Edit3 className="mr-2 h-4 w-4" /> Log Information Request</Button>
+              <Button variant="outline" disabled={isSaving || isSavingPromotion || !isActionableStage}><Edit3 className="mr-2 h-4 w-4" /> Log Information Request</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -810,32 +810,32 @@ export default function LoanDetailPage() {
             </DialogContent>
           </Dialog>
 
-          {isActionableStage && !loan.isReadyForManagerReview && (
-            <Button onClick={handleMarkReadyForReview} disabled={isSaving || isSavingManagerPromotion}>
+          {canOfficerMarkComplete && (
+            <Button onClick={handleMarkStageComplete} disabled={isSaving || isSavingPromotion}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <CheckSquare className="mr-2 h-4 w-4" /> Mark Stage Complete & Submit for Review
             </Button>
           )}
 
-          {loan.isReadyForManagerReview && isActionableStage && (
-            <>
-              <Button onClick={handleOpenManagerPromotionDialog} disabled={isSavingManagerPromotion || isSaving}>
-                {isSavingManagerPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                 <UserCheck className="mr-2 h-4 w-4" /> Manager: Promote/Assign Loan
+          {canManagerPromote && (
+             <>
+              <Button onClick={handleOpenPromotionDialog} disabled={isSavingPromotion || isSaving}>
+                {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 <ArrowRight className="mr-2 h-4 w-4" /> Manager: Promote Loan
               </Button>
-              {loan.currentStage !== LoanStage.APPROVED && (
+               {loan.currentStage !== LoanStage.APPROVED && (
                   <Button
                     variant="default"
                     onClick={async () => {
-                        if(!validateCurrentStageRequirements()) return; // Still validate current stage before direct approval
+                        if(!validateCurrentStageRequirements()) return;
                         const success = await handleDatabaseUpdate({ currentStage: LoanStage.APPROVED, isReadyForManagerReview: false, history: [...loan.history, {id: `hist-mock-${Date.now()}`, stage: LoanStage.APPROVED, timestamp: formatISO(new Date()), userId: 'mock-manager-user', userName: 'Manager User (Mock)', notes: 'Loan directly approved by manager.'}] }, 'Loan approved by manager.', "promotion");
-                        if (success) setIsManagerPromoteDialogOpen(false); // Close dialog if it was open for some reason
+                        if (success) setIsPromoteLoanDialogOpen(false); 
                     }}
-                    disabled={isSavingManagerPromotion || isSaving}
+                    disabled={isSavingPromotion || isSaving}
                     className="bg-green-600 hover:bg-green-700 text-white"
                   >
-                    {(isSavingManagerPromotion || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Manager: Approve Loan
+                    {(isSavingPromotion || isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <UserCheck className="mr-2 h-4 w-4" /> Manager: Approve Loan
                   </Button>
               )}
             </>
@@ -884,8 +884,8 @@ export default function LoanDetailPage() {
             <InfoItem icon={<Info />} label="Loan Purpose" value={loan.loanPurpose} />
             <InfoItem icon={<User />} label="Customer Email" value={loan.customerEmail} />
             <InfoItem icon={<Phone />} label="Customer Phone" value={loan.customerPhone} />
-            {assignedManager ? (
-              <InfoItem icon={<Landmark />} label="Currently Assigned To" value={`${assignedManager.name} (${assignedManager.role})`} />
+            {assignedUser ? (
+              <InfoItem icon={<Landmark />} label="Currently Assigned To" value={`${assignedUser.name} (${assignedUser.role})`} />
             ) : (
               <InfoItem icon={<Landmark />} label="Currently Assigned To" value="N/A" />
             )}
@@ -917,11 +917,11 @@ export default function LoanDetailPage() {
                             {status}
                           </Badge>
                           {status === 'Missing' || status === 'Pending' || status === 'Rejected' ? (
-                            <Button variant="outline" size="sm" onClick={() => { setCurrentDocumentToUpload(reqDoc.name); setIsUploadDocDialogOpen(true); }} disabled={isSaving || isSavingManagerPromotion}>
+                            <Button variant="outline" size="sm" onClick={() => { setCurrentDocumentToUpload(reqDoc.name); setIsUploadDocDialogOpen(true); }} disabled={isSaving || isSavingPromotion}>
                               {(isSaving && currentDocumentToUpload === reqDoc.name) ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <UploadCloud className="mr-1 h-4 w-4" />} Upload
                             </Button>
                           ) : status === 'Submitted' ? (
-                             <Button variant="outline" size="sm" onClick={() => handleVerifyDocument(reqDoc.name)} disabled={isSaving || isSavingManagerPromotion}>
+                             <Button variant="outline" size="sm" onClick={() => handleVerifyDocument(reqDoc.name)} disabled={isSaving || isSavingPromotion}>
                               {isSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                             </Button>
                           ) : null}
@@ -944,12 +944,12 @@ export default function LoanDetailPage() {
                       </DialogHeader>
                       <div className="py-4">
                           <Label htmlFor="doc-upload">Select file</Label>
-                          <Input id="doc-upload" type="file" className="mt-1" disabled={isSaving || isSavingManagerPromotion}/>
+                          <Input id="doc-upload" type="file" className="mt-1" disabled={isSaving || isSavingPromotion}/>
                           <p className="text-xs text-muted-foreground mt-2">Actual file handling & upload to storage not implemented. This simulates document status change.</p>
                       </div>
                       <DialogFooter>
                           <DialogClose asChild>
-                            <Button variant="outline" disabled={isSaving || isSavingManagerPromotion} >Cancel</Button>
+                            <Button variant="outline" disabled={isSaving || isSavingPromotion} >Cancel</Button>
                           </DialogClose>
                           <Button onClick={() => {
                             if(currentDocumentToUpload) {
@@ -958,7 +958,7 @@ export default function LoanDetailPage() {
                                 toast({title: "Error", description: "No document type specified for upload.", variant: "destructive"});
                             }
                           }}
-                          disabled={isSaving || isSavingManagerPromotion}
+                          disabled={isSaving || isSavingPromotion}
                           >
                             {(isSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Simulate Upload
@@ -995,7 +995,7 @@ export default function LoanDetailPage() {
                       entry={entry}
                       isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED}
                       onFulfillInfoRequest={handleFulfillInfoRequest}
-                      isSaving={isSaving || isSavingManagerPromotion}
+                      isSaving={isSaving || isSavingPromotion}
                     />
                   ))}
                 </div>
@@ -1012,8 +1012,14 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {loan && (
-        <Dialog open={isManagerPromoteDialogOpen} onOpenChange={setIsManagerPromoteDialogOpen}>
+      {loan && isPromoteLoanDialogOpen && (
+        <Dialog open={isPromoteLoanDialogOpen} onOpenChange={(isOpen) => {
+            setIsPromoteLoanDialogOpen(isOpen);
+            if(!isOpen) {
+                setSelectedNextStageForPromotion('');
+                setSelectedAssigneeForPromotion(UNASSIGNED_DIALOG_OPTION_VALUE);
+            }
+        }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Manager: Promote Loan for {loan.customerName}</DialogTitle>
@@ -1023,28 +1029,29 @@ export default function LoanDetailPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="manager-next-stage">Next Stage</Label>
+                <Label htmlFor="promote-next-stage">Next Stage</Label>
                 <Select 
-                  value={selectedNextStageForManager} 
-                  onValueChange={(value) => setSelectedNextStageForManager(value as LoanStage)}
+                  value={selectedNextStageForPromotion} 
+                  onValueChange={(value) => setSelectedNextStageForPromotion(value as LoanStage)}
                 >
-                  <SelectTrigger id="manager-next-stage" className="mt-1">
+                  <SelectTrigger id="promote-next-stage" className="mt-1">
                     <SelectValue placeholder="Select next stage" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableNextStagesForManager(loan.currentStage).map(stage => (
+                    {availableNextStagesForPromotion(loan.currentStage).map(stage => (
                       <SelectItem key={stage} value={stage}>{stage}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="manager-assignee">Assign To</Label>
+                <Label htmlFor="promote-assignee">Assign To</Label>
                 <Select 
-                  value={selectedAssigneeForManager} 
-                  onValueChange={setSelectedAssigneeForManager}
+                  value={selectedAssigneeForPromotion} 
+                  onValueChange={setSelectedAssigneeForPromotion}
+                  disabled={!selectedNextStageForPromotion}
                 >
-                  <SelectTrigger id="manager-assignee" className="mt-1">
+                  <SelectTrigger id="promote-assignee" className="mt-1">
                     <SelectValue placeholder="Select assignee" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1060,10 +1067,10 @@ export default function LoanDetailPage() {
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isSavingManagerPromotion}>Cancel</Button>
+                <Button type="button" variant="outline" disabled={isSavingPromotion}>Cancel</Button>
               </DialogClose>
-              <Button type="button" onClick={handleConfirmManagerPromotion} disabled={isSavingManagerPromotion || !selectedNextStageForManager}>
-                {isSavingManagerPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="button" onClick={handleConfirmPromotion} disabled={isSavingPromotion || !selectedNextStageForPromotion}>
+                {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Confirm Promotion
               </Button>
             </DialogFooter>
@@ -1122,3 +1129,4 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
     )}
   </div>
 );
+

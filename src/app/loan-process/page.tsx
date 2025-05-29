@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import type { LoanRequest, User } from '@/types/loan';
+import type { LoanRequest, User, LoanHistoryEntry } from '@/types/loan'; // Added LoanHistoryEntry
 import { loanStages, LoanStage, UserRole } from '@/types/loan';
 import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, UserCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +38,7 @@ const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
 
 interface LoanCardProps {
   loan: LoanRequest;
-  onCardActionClick: (loan: LoanRequest) => void; // Renamed from onPromoteClick
+  onCardActionClick: (loan: LoanRequest) => void; 
 }
 
 function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
@@ -81,9 +81,9 @@ function LoanCard({ loan, onCardActionClick }: LoanCardProps) {
             Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}
           </div>
         )}
-        {loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED && loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED)?.requiredFulfilment && (
+        {loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED && loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && h.requiredFulfilment && (!h.notes || !h.notes.includes("[FULFILLED MOCK]")))?.requiredFulfilment && (
           <Badge variant="outline" className="mt-2 text-amber-700 border-amber-500">
-            Action Needed: {loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED)?.requiredFulfilment}
+            Action Needed: {loan.history.find(h => h.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && h.requiredFulfilment && (!h.notes || !h.notes.includes("[FULFILLED MOCK]")))?.requiredFulfilment}
           </Badge>
         )}
         {loan.isReadyForManagerReview && (
@@ -173,7 +173,7 @@ export default function LoanProcessPage() {
     if (loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED) {
         const activeInfoRequest = [...loan.history]
             .reverse()
-            .find(entry => entry.stage === LoanStage.ADDITIONAL_INFO_REQUIRED && entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+            .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
         if (activeInfoRequest) {
             toast({
                 title: "Action Pending",
@@ -208,13 +208,13 @@ export default function LoanProcessPage() {
     if (loan.isReadyForManagerReview) {
       // Manager action: Open promotion dialog
       setSelectedNextStage(''); 
-      setSelectedAssignee(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE); 
+      setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE); // Default to unassigned when dialog opens
       setIsPromoteDialogOpen(true);
     } else {
       // Officer action: Mark stage complete for review
       if (!validateCurrentStageRequirements(loan)) return;
 
-      setIsSavingPromotion(true); // Use same saving flag for quick update
+      setIsSavingPromotion(true); 
       const newHistoryEntry: LoanHistoryEntry = {
         id: `hist-mock-${Date.now()}`,
         stage: loan.currentStage,
@@ -231,7 +231,7 @@ export default function LoanProcessPage() {
       const result = await updateLoanRequest(loan.id, updatedFields);
       setIsSavingPromotion(false);
 
-      if (result.error || !result.success) {
+      if (result.error || !result.success || !result.updatedLoan) {
         toast({ title: "Error", description: result.error || "Failed to mark stage complete.", variant: "destructive" });
       } else {
         toast({ title: "Success", description: `${loan.customerName}'s stage '${loan.currentStage}' marked complete. Awaiting manager review.` });
@@ -262,20 +262,19 @@ export default function LoanProcessPage() {
   useEffect(() => {
     if (selectedLoanForDialog && selectedNextStage) {
       const nextStageConfig = initialStageConfigs.find(c => c.loanStageEnum === selectedNextStage);
-      let suggestedAssigneeId = selectedLoanForDialog.assignedTo || '';
+      let suggestedAssigneeId = UNASSIGNED_DIALOG_OPTION_VALUE; // Default to Unassigned
 
       if (nextStageConfig?.targetRoleForStage) {
         const potentialAssignees = users.filter(u => u.role === nextStageConfig.targetRoleForStage);
         if (potentialAssignees.length > 0) {
-          suggestedAssigneeId = potentialAssignees[0].id;
-        }
-      } else if (!suggestedAssigneeId && selectedNextStage !== LoanStage.REJECTED) { 
-        const defaultRMs = users.filter(u => u.role === UserRole.RELATIONSHIP_MANAGER);
-        if (defaultRMs.length > 0) {
-          suggestedAssigneeId = defaultRMs[0].id;
+          suggestedAssigneeId = potentialAssignees[0].id; // Suggest first user with target role
         }
       }
-      setSelectedAssignee(suggestedAssigneeId || UNASSIGNED_DIALOG_OPTION_VALUE); 
+      // If no target role, or no user found for that role, it remains UNASSIGNED_DIALOG_OPTION_VALUE
+      setSelectedAssignee(suggestedAssigneeId);
+    } else if (selectedLoanForDialog && !selectedNextStage) {
+        // When dialog opens for promotion but next stage not yet selected, default assignee to unassigned
+        setSelectedAssignee(UNASSIGNED_DIALOG_OPTION_VALUE);
     }
   }, [selectedNextStage, selectedLoanForDialog, users]);
 
@@ -286,8 +285,6 @@ export default function LoanProcessPage() {
       return;
     }
 
-    // Validation for current stage completeness should ideally happen before "Mark Complete" or before opening Manager dialog.
-    // Adding a safety check here.
     if (!validateCurrentStageRequirements(selectedLoanForDialog)) return;
 
 
@@ -297,8 +294,10 @@ export default function LoanProcessPage() {
     const newAssigneeName = finalAssignedTo ? (users.find(u => u.id === finalAssignedTo)?.name || 'Unknown') : 'Unassigned';
 
     let notes = `Manager promoted to ${selectedNextStage}.`;
-    if (finalAssignedTo !== selectedLoanForDialog.assignedTo) {
+    if (finalAssignedTo !== selectedLoanForDialog.assignedTo || (!selectedLoanForDialog.assignedTo && finalAssignedTo)) {
         notes += ` Assignment changed from ${currentAssigneeName} to ${newAssigneeName}.`;
+    } else if (selectedLoanForDialog.assignedTo && !finalAssignedTo) {
+        notes += ` Assignment changed from ${currentAssigneeName} to Unassigned.`;
     }
     
     const newHistoryEntry: LoanHistoryEntry = {
@@ -314,13 +313,13 @@ export default function LoanProcessPage() {
       currentStage: selectedNextStage,
       assignedTo: finalAssignedTo,
       history: [...selectedLoanForDialog.history, newHistoryEntry],
-      isReadyForManagerReview: false, // Reset flag
+      isReadyForManagerReview: false, 
     };
 
     const result = await updateLoanRequest(selectedLoanForDialog.id, updatedFields);
     setIsSavingPromotion(false);
 
-    if (result.error || !result.success) {
+    if (result.error || !result.success || !result.updatedLoan) {
       toast({ title: "Promotion Error", description: result.error || "Failed to promote loan.", variant: "destructive" });
     } else {
       toast({ title: "Promotion Successful", description: `${selectedLoanForDialog.customerName} moved to ${selectedNextStage}.` });
@@ -420,6 +419,7 @@ export default function LoanProcessPage() {
                 <Select 
                   value={selectedAssignee} 
                   onValueChange={setSelectedAssignee}
+                  disabled={!selectedNextStage} // Disable assignee if no next stage is selected
                 >
                   <SelectTrigger id="assignee" className="mt-1">
                     <SelectValue placeholder="Select assignee" />
