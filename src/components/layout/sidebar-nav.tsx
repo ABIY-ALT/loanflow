@@ -9,7 +9,9 @@ import {
   SearchCheck,
   Settings,
   KanbanSquare,
-  AlertTriangle, // Added AlertTriangle
+  AlertTriangle,
+  UserCheck, // For Manager Review
+  FolderKanban, // For Unassigned Cases
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -22,8 +24,10 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
   { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
   { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 },
+  { href: '/manager-review', label: 'Manager Review Queue', icon: UserCheck },
+  { href: '/department-queue', label: 'Unassigned Cases', icon: FolderKanban },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
-  { href: '/overdue-tasks', label: 'Overdue Tasks', icon: AlertTriangle }, // Added Overdue Tasks
+  { href: '/overdue-tasks', label: 'Overdue Tasks', icon: AlertTriangle },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
