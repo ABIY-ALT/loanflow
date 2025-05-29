@@ -117,7 +117,6 @@ export default function LoanDetailPage() {
 
   const [isPromoteLoanDialogOpen, setIsPromoteLoanDialogOpen] = useState(false);
   const [selectedNextStageForPromotion, setSelectedNextStageForPromotion] = useState<LoanStage | ''>('');
-  // const [selectedAssigneeForPromotion, setSelectedAssigneeForPromotion] = useState<string>(''); // Assignee selection removed from promotion dialog
   const [isSavingPromotion, setIsSavingPromotion] = useState(false);
 
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
@@ -189,9 +188,6 @@ export default function LoanDetailPage() {
     }
     setIsSavingOperationState(true);
 
-    const currentLoanState = { ...loan };
-
-
     try {
       const result = await updateLoanRequest(loan.id, updatedFields);
       if (result.error || !result.success || !result.updatedLoan) {
@@ -204,7 +200,7 @@ export default function LoanDetailPage() {
         return false;
       }
       if (result.updatedLoan) {
-        setLoan(result.updatedLoan);
+        setLoan(prevLoan => prevLoan ? { ...prevLoan, ...result.updatedLoan, lastUpdatedDate: formatISO(new Date()) } : null );
       }
       toast({
         title: "Update Successful",
@@ -355,8 +351,8 @@ export default function LoanDetailPage() {
         id: `hist-mock-${Date.now()}`,
         stage: loan.currentStage,
         timestamp: formatISO(new Date()),
-        userId: 'mock-user-id',
-        userName: 'Mock Bank User (Officer)',
+        userId: 'mock-user-id', // Replace with actual logged in user in a real app
+        userName: 'Mock Bank User (Officer)', // Replace with actual logged in user name
         notes: `Stage '${loan.currentStage}' marked complete. Submitted for manager review.`,
     };
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
@@ -370,7 +366,6 @@ export default function LoanDetailPage() {
     if (!loan) return;
     if (!validateCurrentStageRequirements()) return;
     setSelectedNextStageForPromotion('');
-    // Assignee selection removed from this dialog by default
     setIsPromoteLoanDialogOpen(true);
   };
 
@@ -391,7 +386,6 @@ export default function LoanDetailPage() {
     return [...new Set(nextStages)].sort((a, b) => loanStages.indexOf(a) - loanStages.indexOf(b));
   };
 
-  // useEffect for suggesting assignee in promotion dialog removed as it's no longer part of this dialog.
 
   const handleConfirmPromotion = async () => {
     if (!loan || !selectedNextStageForPromotion) {
@@ -401,21 +395,21 @@ export default function LoanDetailPage() {
 
     if (!validateCurrentStageRequirements()) return;
 
-    const finalAssignedTo = undefined; // Promotion always makes the case unassigned for the next stage.
+    const finalAssignedTo = undefined; 
     let notes = `Manager promoted to ${selectedNextStageForPromotion}. Case is now unassigned, awaiting allocation in the new stage.`;
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
       stage: selectedNextStageForPromotion,
       timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user',
+      userId: 'mock-manager-user', 
       userName: 'Manager User (Mock)',
       notes: notes
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
       currentStage: selectedNextStageForPromotion,
-      assignedTo: finalAssignedTo, // Always unassigned
+      assignedTo: finalAssignedTo, 
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
     };
@@ -423,13 +417,14 @@ export default function LoanDetailPage() {
     const success = await handleDatabaseUpdate(updatedFields, `${loan.customerName} moved to ${selectedNextStageForPromotion} and is now unassigned.`, "promotion");
     if (success) {
       setIsPromoteLoanDialogOpen(false);
+      setSelectedNextStageForPromotion('');
     }
   };
 
   const handleOpenReturnForReworkDialog = () => {
     if (!loan) return;
     setReworkNote('');
-    setReworkAssigneeId(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE); // Default to current assignee or Unassigned
+    setReworkAssigneeId(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE); 
     setIsReturnForReworkDialogOpen(true);
   };
 
@@ -444,15 +439,15 @@ export default function LoanDetailPage() {
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-mock-${Date.now()}`,
-      stage: loan.currentStage, // Remains in current stage
+      stage: loan.currentStage, 
       timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user',
+      userId: 'mock-manager-user', 
       userName: 'Manager User (Mock)',
       notes: `Manager returned case for rework. Reason: ${reworkNote}`
     };
 
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-      isReadyForManagerReview: false, // Officer needs to mark complete again
+      isReadyForManagerReview: false, 
       assignedTo: finalReworkAssignee,
       history: [...loan.history, newHistoryEntry],
     };
@@ -586,6 +581,7 @@ export default function LoanDetailPage() {
   const isActionableStage = ![LoanStage.FUNDS_DISBURSED, LoanStage.REJECTED].includes(loan.currentStage);
   const canOfficerMarkComplete = isActionableStage && !loan.isReadyForManagerReview;
   const canManagerTakeAction = isActionableStage && loan.isReadyForManagerReview;
+  const canManagerApprove = canManagerTakeAction && loan.currentStage !== LoanStage.APPROVED && loan.currentStage !== LoanStage.REJECTED && loan.currentStage !== LoanStage.FUNDS_DISBURSED;
 
 
   return (
@@ -838,7 +834,7 @@ export default function LoanDetailPage() {
                 {isSavingPromotion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                  <ArrowRight className="mr-2 h-4 w-4" /> Manager: Promote Loan
               </Button>
-               {loan.currentStage !== LoanStage.APPROVED && (
+               {canManagerApprove && (
                   <Button
                     variant="default"
                     onClick={async () => {
@@ -1011,6 +1007,7 @@ export default function LoanDetailPage() {
                     <HistoryEntryItem
                       key={entry.id}
                       entry={entry}
+                      loan={loan}
                       isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED}
                       onFulfillInfoRequest={handleFulfillInfoRequest}
                       isSaving={isSaving || isSavingPromotion || isSavingRework}
@@ -1036,7 +1033,6 @@ export default function LoanDetailPage() {
             setIsPromoteLoanDialogOpen(isOpen);
             if(!isOpen) {
                 setSelectedNextStageForPromotion('');
-                // selectedAssigneeForPromotion state removed
             }
         }}>
           <DialogContent className="sm:max-w-md">
@@ -1063,7 +1059,6 @@ export default function LoanDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Assignee selection removed from promotion dialog */}
             </div>
             <DialogFooter>
               <DialogClose asChild>
@@ -1082,7 +1077,7 @@ export default function LoanDetailPage() {
       {loan && isReturnForReworkDialogOpen && (
         <Dialog open={isReturnForReworkDialogOpen} onOpenChange={(isOpen) => {
             setIsReturnForReworkDialogOpen(isOpen);
-            if (!isOpen) setReworkNote(''); // Clear note on close
+            if (!isOpen) setReworkNote(''); 
         }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -1163,11 +1158,12 @@ const InfoItem = ({ icon, label, value }: InfoItemProps) => (
 
 interface HistoryEntryItemProps {
   entry: LoanHistoryEntry;
+  loan: LoanRequest; // Pass the full loan object
   isActiveInfoRequest?: boolean;
   onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
   isSaving?: boolean;
 }
-const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, isSaving }: HistoryEntryItemProps) => (
+const HistoryEntryItem = ({ entry, loan, isActiveInfoRequest, onFulfillInfoRequest, isSaving }: HistoryEntryItemProps) => (
   <div className="relative pl-6 pb-4 border-l border-border">
     <div className={`absolute -left-[0.30rem] top-1 w-2.5 h-2.5 rounded-full ${getStageColor(entry.stage)}`}></div>
     <p className="text-sm font-medium">{entry.stage}</p>
@@ -1195,20 +1191,7 @@ const HistoryEntryItem = ({ entry, isActiveInfoRequest, onFulfillInfoRequest, is
   </div>
 );
 
-// Need to ensure 'loan' is accessible in HistoryEntryItem if it's used for conditional rendering like loan?.currentStage
-// One way is to pass loan as a prop if HistoryEntryItem is outside the scope where loan is defined.
-// However, in this file structure, it seems `loan` would be in scope.
-// The provided HistoryEntryItem will have `loan` in its closure scope.
-// The error was "loan is not defined" if `loan` was used directly without being in scope.
-// Since `loan` is a state variable in LoanDetailPage, it is accessible within HistoryEntryItem's definition.
-
 // Global `loan` variable access fix for HistoryEntryItem:
-// To make `loan` accessible within HistoryEntryItem's scope for the conditional rendering,
-// and because it's a functional component, we rely on the closure.
-// This means `loan` must be in the scope where HistoryEntryItem is defined and used.
-// As `loan` is a state variable in `LoanDetailPage`, it is indeed in scope.
-// The note was a bit misleading; the problem wouldn't be "loan is not defined"
-// if `loan` is used directly from the parent component's state, but rather if `loan` was
-// expected as a prop to `HistoryEntryItem` and not passed, or if some inner function
-// redeclared `loan` shadowing the parent's state. This is not the case here.
-// The current structure is fine.
+// The `loan` object is now explicitly passed as a prop to HistoryEntryItem.
+// This ensures it's always available within the component's scope for conditional rendering,
+// such as checking loan.currentStage.
