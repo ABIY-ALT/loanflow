@@ -19,16 +19,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Landmark } from 'lucide-react'; 
-import React, { useState, useEffect } from 'react';
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2 } from 'lucide-react'; 
+import React, { useState } from 'react';
 import { addLoanRequest } from '@/services/loan-service'; 
-import type { LoanRequest, User } from '@/types/loan'; 
-import { UserRole } from '@/types/loan'; 
-import { mockUsers } from '@/lib/mock-data'; 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { LoanRequest } from '@/types/loan'; 
 
-const UNASSIGNED_MARKER = "---UNASSIGNED---";
-
+// Removed assignedTo from schema
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, {
     message: 'Customer name must be at least 2 characters.',
@@ -48,7 +44,6 @@ const loanRequestFormSchema = z.object({
   loanPurpose: z.string().min(10, {
     message: 'Loan purpose must be at least 10 characters.',
   }),
-  assignedTo: z.string().optional(), 
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
@@ -57,39 +52,30 @@ export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [relationshipManagers, setRelationshipManagers] = useState<User[]>([]);
-
-  useEffect(() => {
-    const rMs = mockUsers.filter(user => user.role === UserRole.RELATIONSHIP_MANAGER);
-    setRelationshipManagers(rMs);
-  }, []);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
-    defaultValues: {
+    defaultValues: { // Removed assignedTo from defaultValues
       customerName: '',
       customerEmail: '',
       customerPhone: '',
       loanAmount: 0,
       loanType: '',
       loanPurpose: '',
-      assignedTo: UNASSIGNED_MARKER, // Default to unassigned marker
     },
   });
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      const assignedToValue = data.assignedTo === UNASSIGNED_MARKER ? undefined : data.assignedTo;
-
-      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline'> & { assignedTo?: string } = {
+      // Prepare data for service; assignedTo is no longer included from the form
+      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
         customerPhone: data.customerPhone,
         loanAmount: data.loanAmount,
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
-        assignedTo: assignedToValue,
       };
       
       const result = await addLoanRequest(loanDataForService); 
@@ -102,13 +88,9 @@ export default function NewLoanRequestPage() {
         });
          console.error("Full error result from addLoanRequest service on client:", result);
       } else if (result.id) {
-        const assignedManagerName = assignedToValue 
-          ? relationshipManagers.find(rm => rm.id === assignedToValue)?.name 
-          : null;
-        
         toast({
           title: "Loan Request Submitted (Mock)",
-          description: `Request for ${data.customerName} has been submitted with ID: ${result.id}. Assigned to: ${assignedManagerName || 'Auto/Unassigned'}`,
+          description: `Request for ${data.customerName} has been submitted with ID: ${result.id}. It is currently unassigned.`,
         });
         form.reset();
         router.push('/loan-process');
@@ -140,7 +122,7 @@ export default function NewLoanRequestPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">New Loan Request</h1>
         <p className="text-muted-foreground">
-          Fill in the details below to submit a new loan application.
+          Fill in the details below to submit a new loan application. New requests will be unassigned.
         </p>
       </div>
       <Card>
@@ -232,34 +214,7 @@ export default function NewLoanRequestPage() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="assignedTo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Assign to Relationship Manager (Optional)</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value || UNASSIGNED_MARKER} disabled={isSubmitting}>
-                        <FormControl>
-                          <div className="relative">
-                            <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <SelectTrigger className="pl-10">
-                              <SelectValue placeholder="Select a manager or leave unassigned" />
-                            </SelectTrigger>
-                          </div>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value={UNASSIGNED_MARKER}>Unassigned / Auto-assign</SelectItem>
-                          {relationshipManagers.map(manager => (
-                            <SelectItem key={manager.id} value={manager.id}>
-                              {manager.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Removed Assignee Dropdown Field */}
               </div>
               
               <FormField
