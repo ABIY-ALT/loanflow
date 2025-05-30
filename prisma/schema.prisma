@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // You'll need to set this in your .env file
+}
+
+model User {
+  id     String   @id @default(cuid())
+  name   String
+  email  String   @unique
+  role   UserRole
+  LoanRequest LoanRequest[] @relation("AssignedLoans")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LoanRequest {
+  id                      String    @id @default(cuid())
+  loanNumber              String    @unique
+  customerNumber          String
+  customerName            String
+  customerEmail           String
+  customerPhone           String
+  loanAmount              Float
+  loanType                String
+  loanPurpose             String
+  currentStage            LoanStage
+  submittedDate           DateTime  @default(now())
+  lastUpdatedDate         DateTime  @updatedAt
+  
+  assignedToId            String?   // Foreign key to User
+  assignedTo              User?     @relation("AssignedLoans", fields: [assignedToId], references: [id])
+  
+  documents               Json      // For simplicity, storing as JSON. Consider separate table for complex document management.
+  history                 Json      // For simplicity, storing as JSON. Consider separate table for detailed history.
+  
+  stageDeadline           DateTime?
+  isOverdue               Boolean?  @default(false)
+  isReadyForManagerReview Boolean?  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum LoanStage {
+  APPLICATION_SUBMITTED
+  DOCUMENT_COLLECTION
+  UNDER_REVIEW
+  ADDITIONAL_INFO_REQUIRED
+  APPROVED
+  REJECTED
+  FUNDS_DISBURSED
+}
+
+enum UserRole {
+  ADMIN
+  RELATIONSHIP_MANAGER
+  UNDERWRITER
+  STAFF
+}
