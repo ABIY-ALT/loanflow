@@ -19,8 +19,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-// cn utility is not strictly needed here anymore since classNames are static
-// import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 
 const navItems = [
@@ -36,25 +34,27 @@ const navItems = [
 ];
 
 export default function SidebarNav() {
-  const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
+  // Call hooks at the top level
+  const currentPathname = usePathname();
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   if (!isClient) {
-    // Render null on the server and during the first client render pass.
-    // The actual content will be rendered on the client after hydration.
+    // Render nothing on the server and during the first client render pass.
+    // This ensures server-render is minimal and won't mismatch client-side dynamic content.
     return null;
   }
 
-  // Now that we are on the client, `pathname` from `usePathname()` is reliable.
+  // Now isClient is true, use currentPathname for rendering logic.
   return (
     <SidebarMenu>
       {navItems.map((item) => {
         const Icon = item.icon;
-        const buttonIsActive = pathname === item.href;
+        // Calculate active state based on the reliable client-side pathname
+        const buttonIsActive = currentPathname === item.href;
 
         return (
           <SidebarMenuItem key={item.href}>
@@ -62,7 +62,7 @@ export default function SidebarNav() {
               <SidebarMenuButton
                 asChild
                 isActive={buttonIsActive}
-                className="justify-start" // Static className
+                className="justify-start" // Static className, active state handled by isActive prop
                 tooltip={item.label}
               >
                 <a>
@@ -71,12 +71,12 @@ export default function SidebarNav() {
                 </a>
               </SidebarMenuButton>
             </Link>
-            {/* Sub-item rendering logic - ensure pathname is used here too */}
-            {item.subItems && item.subItems.length > 0 && pathname.startsWith(item.href) && (
+            {/* Sub-item rendering logic. Ensure this part is also hydration-safe if it becomes complex. */}
+            {item.subItems && item.subItems.length > 0 && currentPathname.startsWith(item.href) && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
                 {item.subItems.map(subItem => {
                   const SubIcon = subItem.icon;
-                  const isSubActive = pathname === subItem.href; // Use consistent pathname
+                  const isSubActive = currentPathname === subItem.href;
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
                        <Link href={subItem.href} legacyBehavior passHref>
