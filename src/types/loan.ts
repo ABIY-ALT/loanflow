@@ -4,7 +4,6 @@ export enum UserRole {
   RELATIONSHIP_MANAGER = "Relationship Manager",
   UNDERWRITER = "Underwriter",
   STAFF = "Staff",
-  // MANAGER is a functional role, not a specific DB role here.
 }
 
 export interface User {
@@ -12,38 +11,41 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  department?: string; // Optional: Department user belongs to
+  department?: string; 
 }
+
+// Represents a predefined department in the system
+export type Department = string; // For now, a list of department names
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
-  id: string; // Unique ID for this stage definition within a workflow version
-  name: string; // Display name, e.g., "Initial Document Review"
-  responsibleDepartment: string; // Name of the department
+  id: string; 
+  name: string; 
+  responsibleDepartment: Department; // Selected from predefined list
   defaultTimelineDays: number;
   requiredDocumentNames: string[];
   percentageWeight: number;
-  // Order is determined by array position in WorkflowVersion.stages
+  order: number; // Defines sequence
 }
 
 // Represents a specific version of a workflow
 export interface WorkflowVersion {
-  id: string; // Unique ID for this version
-  workflowDefinitionId: string; // FK to WorkflowDefinition
+  id: string; 
+  workflowDefinitionId: string; 
   versionNumber: number;
   description?: string;
   createdAt: string; // ISO date string
-  stages: WorkflowStageDefinition[]; // Ordered list of stages
+  stages: WorkflowStageDefinition[]; 
 }
 
-// Represents a workflow template
+// Represents a workflow template for a specific loan type
 export interface WorkflowDefinition {
-  id:string; // Unique ID for the workflow definition
-  name: string; // e.g., "Standard Personal Loan Workflow"
+  id:string; 
+  name: string; 
+  loanType: string; // e.g., "Personal Loan", "Mortgage" - links to a type of loan
   description?: string;
-  isActive: boolean; // Only one workflow definition can be active
-  versions: WorkflowVersion[]; // All versions of this workflow
-  // `activeVersionId` could be a field, or we assume latest version of active workflow is used
+  isActive: boolean; // Only one workflow definition can be active PER LOAN TYPE
+  versions: WorkflowVersion[]; 
 }
 
 
@@ -63,8 +65,6 @@ export interface LoanHistoryEntry {
   userName: string;
   notes?: string;
   requiredFulfilment?: string;
-  // Optional: could store oldLoanStageEnum if needed for icons/legacy
-  // oldLoanStageEnum?: LoanStage; 
 }
 
 export interface LoanRequest {
@@ -75,7 +75,7 @@ export interface LoanRequest {
   customerEmail: string;
   customerPhone: string;
   loanAmount: number;
-  loanType: string;
+  loanType: string; // This loanType will determine which WorkflowDefinition is used
   loanPurpose: string;
   
   workflowDefinitionId: string; // ID of the WorkflowDefinition this loan follows
@@ -96,21 +96,16 @@ export interface LoanRequest {
   isReadyForManagerReview?: boolean;
 }
 
-// The old LoanStage enum might still be useful for very generic categorizations or terminal states
-// but is no longer central to workflow definition.
+// This enum can be removed if stages are purely defined by WorkflowStageDefinition.name
+// Or kept for generic, non-workflow specific states if any remain.
+// For now, assuming stages are fully dynamic via workflow definitions.
+/*
 export enum LoanStage {
-  APPLICATION_SUBMITTED = "Application Submitted", // Generic term
-  PROCESSING = "Processing", // Generic term
-  ADDITIONAL_INFO_REQUIRED = "Additional Info Required", // Specific action state
-  APPROVED = "Approved", // Terminal State
-  REJECTED = "Rejected", // Terminal State
-  FUNDS_DISBURSED = "Funds Disbursed", // Terminal State
+  APPLICATION_SUBMITTED = "Application Submitted", 
+  PROCESSING = "Processing", 
+  ADDITIONAL_INFO_REQUIRED = "Additional Info Required", 
+  APPROVED = "Approved", 
+  REJECTED = "Rejected", 
+  FUNDS_DISBURSED = "Funds Disbursed", 
 }
-
-// This array is no longer used for defining stages in settings.
-// It might be used for specific dialogs if they need a generic list of terminal states.
-export const terminalLoanStages: LoanStage[] = [
-  LoanStage.APPROVED,
-  LoanStage.REJECTED,
-  LoanStage.FUNDS_DISBURSED,
-];
+*/

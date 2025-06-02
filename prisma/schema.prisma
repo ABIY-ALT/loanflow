@@ -8,80 +8,58 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum UserRole {
-  ADMIN
-  RELATIONSHIP_MANAGER
-  UNDERWRITER
-  STAFF
-}
-
 model User {
   id        String  @id @default(uuid())
   name      String
   email     String  @unique
   role      UserRole
-  department String? // Or link to a Department model: departmentId String?, department Department? @relation(fields: [departmentId], references: [id])
-  
-  assignedLoanRequests LoanRequest[] @relation("AssignedUserLoans")
+  department String? // Department name or ID
 
-  @@map("users")
+  loanRequestsAssigned LoanRequest[] @relation("AssignedUserLoans")
 }
 
-// New model for Departments (conceptual, can be simple string on User/WorkflowStage initially)
-// model Department {
-//   id String @id @default(uuid())
-//   name String @unique
-//   users User[]
-//   workflowStages WorkflowStage[] @relation("DepartmentResponsibleForStage")
-//   @@map("departments")
-// }
-
-
 model Workflow {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  isActive    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  versions    WorkflowVersion[]
-
-  @@map("workflows")
+  id            String   @id @default(uuid())
+  name          String
+  loanType      String   // e.g., "Personal Loan", "Mortgage". Defines the type of loan this workflow applies to.
+  description   String?
+  isActive      Boolean  @default(false) // Indicates if this is the active workflow for its loanType
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  versions      WorkflowVersion[]
+  // @@unique([loanType, isActive]) // Potentially too restrictive, handle uniqueness in app logic
 }
 
 model WorkflowVersion {
-  id                  String   @id @default(uuid())
-  workflowId          String
-  workflow            Workflow @relation(fields: [workflowId], references: [id])
-  versionNumber       Int
-  description         String?
-  createdAt           DateTime @default(now())
-  stages              WorkflowStage[]
-  
-  loanRequests        LoanRequest[] @relation("LoanWorkflowVersion")
+  id                   String   @id @default(uuid())
+  workflowId           String
+  workflow             Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  versionNumber        Int
+  description          String?
+  createdAt            DateTime @default(now())
+  stages               WorkflowStage[]
+
+  loanRequestsFollowingThisVersion LoanRequest[] @relation("LoanWorkflowVersion")
 
   @@unique([workflowId, versionNumber])
-  @@map("workflow_versions")
 }
 
 model WorkflowStage {
-  id                    String   @id @default(uuid())
-  workflowVersionId     String
-  workflowVersion       WorkflowVersion @relation(fields: [workflowVersionId], references: [id])
+  id                      String   @id @default(uuid())
+  workflowVersionId       String
+  workflowVersion         WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
   
-  name                  String
-  responsibleDepartment String // Could be FK to Department model: responsibleDepartmentId String
-  // responsibleDepartment Relation<Department> @relation("DepartmentResponsibleForStage", fields: [responsibleDepartmentId], references: [id])
-  defaultTimelineDays   Int
-  requiredDocumentNames String[]
-  percentageWeight      Int
-  order                 Int // Sequence within the version
+  name                    String
+  responsibleDepartment   String   // Name of the department
+  defaultTimelineDays     Int
+  requiredDocumentNames   String[]
+  percentageWeight        Int      @default(0)
+  order                   Int      // Order of the stage within the version
 
-  currentLoanRequests   LoanRequest[] @relation("CurrentLoanStage")
+  loanRequestsAtThisStage LoanRequest[] @relation("LoanCurrentStage")
 
-  @@map("workflow_stages")
+  @@index([workflowVersionId, order])
 }
-
 
 model LoanRequest {
   id            String   @id @default(uuid())
@@ -91,29 +69,45 @@ model LoanRequest {
   customerEmail String
   customerPhone String
   loanAmount    Float
-  loanType      String
+  loanType      String   // e.g., "Personal Loan", "Mortgage". Helps select the workflow.
   loanPurpose   String
 
-  workflowId           String // To know which high-level workflow it belongs to
-  workflowVersionId    String // Specific version this loan is following
-  workflowVersion      WorkflowVersion @relation("LoanWorkflowVersion", fields: [workflowVersionId], references: [id])
+  workflowDefinitionId    String // Stores the ID of the parent Workflow definition
+  workflowVersionId       String // FK to WorkflowVersion.id
+  workflowVersion         WorkflowVersion @relation("LoanWorkflowVersion", fields: [workflowVersionId], references: [id])
   
-  currentWorkflowStageId String   // Current stage ID
-  currentWorkflowStage   WorkflowStage @relation("CurrentLoanStage", fields: [currentWorkflowStageId], references: [id])
+  currentStageId          String // FK to WorkflowStage.id
+  currentStage            WorkflowStage @relation("LoanCurrentStage", fields: [currentStageId], references: [id])
   
   submittedDate DateTime @default(now())
   lastUpdatedDate DateTime @updatedAt
-
-  assignedDepartment String? // Denormalized from currentWorkflowStage.responsibleDepartment for easier querying
+  
+  assignedDepartment String? // Name of the department responsible for current stage (denormalized/derived from currentStage.responsibleDepartment)
   assignedToId  String?
   assignedTo    User?    @relation("AssignedUserLoans", fields: [assignedToId], references: [id])
 
-  documents Json // Array of LoanDocument objects
-  history   Json // Array of LoanHistoryEntry objects
-  
-  stageDeadline DateTime?
-  // isOverdue is a calculated field, not stored
-  isReadyForManagerReview Boolean @default(false)
+  documents     Json // Array of LoanDocument
+  history       Json // Array of LoanHistoryEntry
 
-  @@map("loan_requests")
+  stageDeadline DateTime?
+  // isOverdue is a calculated field, not stored directly
+  isReadyForManagerReview Boolean @default(false)
+}
+
+enum LoanStage {
+  APPLICATION_SUBMITTED
+  AWAITING_DOCUMENTS
+  UNDER_REVIEW
+  ADDITIONAL_INFO_REQUIRED
+  APPROVED
+  REJECTED
+  FUNDS_DISBURSED
+  CLOSED
+}
+
+enum UserRole {
+  ADMIN
+  RELATIONSHIP_MANAGER
+  UNDERWRITER
+  STAFF
 }

@@ -1,12 +1,12 @@
 
 'use server';
-import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-import { UserRole } from '@/types/loan'; // Removed LoanStage as it's less central
-import { mockLoanRequests, mockUsers, mockWorkflowDefinitions } from '@/lib/mock-data';
+import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
+import { UserRole } from '@/types/loan';
+import { mockLoanRequests, mockUsers, mockWorkflowDefinitions, mockDepartments } from '@/lib/mock-data';
 import { formatISO, parseISO, addDays } from 'date-fns';
 
 let sessionMockLoanRequests: LoanRequest[] = JSON.parse(JSON.stringify(mockLoanRequests));
-let sessionMockWorkflowDefinitions: WorkflowDefinition[] = JSON.parse(JSON.stringify(mockWorkflowDefinitions)); // For settings page to modify
+let sessionMockWorkflowDefinitions: WorkflowDefinition[] = JSON.parse(JSON.stringify(mockWorkflowDefinitions)); 
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   let detailedMessage = `Loan Service Mock Error (Context: ${context || 'Unknown'}): ${message}.`;
@@ -19,9 +19,8 @@ const createErrorResult = (message: string, context?: string, originalError?: an
 
 const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Helper to get the active workflow and its latest version
-const getActiveWorkflowLatestVersion = (): { workflowDef: WorkflowDefinition, latestVersion: WorkflowVersion } | null => {
-  const activeDef = sessionMockWorkflowDefinitions.find(def => def.isActive);
+const getActiveWorkflowVersionForLoanType = (loanType: string): { workflowDef: WorkflowDefinition, latestVersion: WorkflowVersion } | null => {
+  const activeDef = sessionMockWorkflowDefinitions.find(def => def.loanType === loanType && def.isActive);
   if (!activeDef || activeDef.versions.length === 0) return null;
   const latestVersion = activeDef.versions.sort((a, b) => b.versionNumber - a.versionNumber)[0];
   return { workflowDef: activeDef, latestVersion };
@@ -30,14 +29,18 @@ const getActiveWorkflowLatestVersion = (): { workflowDef: WorkflowDefinition, la
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment'>
 ): Promise<{ id?: string; error?: string }> {
-  console.log('[Mock Service:addLoanRequest] Called.');
+  console.log('[Mock Service:addLoanRequest] Called with data:', loanData);
   
-  const activeWorkflowInfo = getActiveWorkflowLatestVersion();
+  const activeWorkflowInfo = getActiveWorkflowVersionForLoanType(loanData.loanType);
   if (!activeWorkflowInfo || activeWorkflowInfo.latestVersion.stages.length === 0) {
-    return createErrorResult("No active workflow or active workflow has no stages defined.", "addLoanRequest");
+    return createErrorResult(`No active workflow or active workflow has no stages defined for loan type: ${loanData.loanType}.`, "addLoanRequest");
   }
   const { workflowDef, latestVersion } = activeWorkflowInfo;
-  const firstStage = latestVersion.stages[0];
+  const firstStage = latestVersion.stages.find(s => s.order === 0) || latestVersion.stages[0]; // Get first stage by order
+
+  if (!firstStage) {
+    return createErrorResult(`First stage not found for workflow: ${workflowDef.name} V${latestVersion.versionNumber}.`, "addLoanRequest");
+  }
 
   try {
     await simulateDelay(50 + Math.random() * 100);
@@ -50,7 +53,7 @@ export async function addLoanRequest(
       customerEmail: loanData.customerEmail,
       customerPhone: loanData.customerPhone,
       loanAmount: loanData.loanAmount,
-      loanType: loanData.loanType,
+      loanType: loanData.loanType, // Crucial for workflow selection
       loanPurpose: loanData.loanPurpose,
       loanNumber: `LN-MOCK-${String(Date.now()).slice(-5)}`,
       customerNumber: `CUST-MOCK-${String(Date.now()).slice(-4)}`,
@@ -59,7 +62,7 @@ export async function addLoanRequest(
       workflowVersionId: latestVersion.id,
       currentStageId: firstStage.id,
       assignedDepartment: firstStage.responsibleDepartment,
-      assignedTo: undefined, // Unassigned to a specific user initially
+      assignedTo: undefined, 
 
       submittedDate: formatISO(currentDate),
       lastUpdatedDate: formatISO(currentDate),
@@ -68,11 +71,11 @@ export async function addLoanRequest(
       history: [
         {
           id: `hist-mock-${Date.now()}`,
-          stageName: firstStage.name, // Using new stage name
+          stageName: firstStage.name,
           timestamp: formatISO(currentDate),
           userId: 'mock-system-user',
           userName: 'System/User (Mock)',
-          notes: `Loan application submitted. Workflow: ${workflowDef.name} (V${latestVersion.versionNumber}). Initial stage: ${firstStage.name}. Assigned to ${firstStage.responsibleDepartment} department.`,
+          notes: `Loan application submitted. Workflow: ${workflowDef.name} (V${latestVersion.versionNumber}, Type: ${workflowDef.loanType}). Initial stage: ${firstStage.name}. Assigned to ${firstStage.responsibleDepartment} department.`,
         },
       ],
       documents: [],
@@ -81,7 +84,7 @@ export async function addLoanRequest(
     };
     
     sessionMockLoanRequests.unshift(newLoan);
-    console.log(`[Mock Service:addLoanRequest] Loan added. ID: ${newLoan.id}. Workflow: ${workflowDef.name} V${latestVersion.versionNumber}, Stage: ${firstStage.name}`);
+    console.log(`[Mock Service:addLoanRequest] Loan added. ID: ${newLoan.id}. LoanType: ${newLoan.loanType}, Workflow: ${workflowDef.name} V${latestVersion.versionNumber}, Stage: ${firstStage.name}`);
     return { id: newLoan.id };
 
   } catch (e: any) {
@@ -89,7 +92,7 @@ export async function addLoanRequest(
   }
 }
 
-const getStageById = (versionId: string, stageId: string): WorkflowStageDefinition | undefined => {
+const getStageByIdFromAllWorkflows = (versionId: string, stageId: string): WorkflowStageDefinition | undefined => {
     for (const def of sessionMockWorkflowDefinitions) {
         const version = def.versions.find(v => v.id === versionId);
         if (version) {
@@ -106,23 +109,20 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     await simulateDelay(50 + Math.random() * 100);
 
     const processedLoans = sessionMockLoanRequests.map(loan => {
-      const stageDef = getStageById(loan.workflowVersionId, loan.currentStageId);
+      const stageDef = getStageByIdFromAllWorkflows(loan.workflowVersionId, loan.currentStageId);
       const stageDeadlineDate = loan.stageDeadline ? parseISO(loan.stageDeadline) : null;
       
-      // A stage is terminal if it's the last in its workflow version's stage list, or if it's explicitly marked (future enhancement)
       let isTerminalStage = false;
       const workflowVer = sessionMockWorkflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === loan.workflowVersionId);
       if (workflowVer && stageDef) {
           const stageIndex = workflowVer.stages.findIndex(s => s.id === stageDef.id);
           if (stageIndex === workflowVer.stages.length -1) {
-              isTerminalStage = true; // Last stage is terminal
+              isTerminalStage = true; 
           }
       }
-      // Or, if stage name matches specific terminal names (less flexible but ok for mock)
-      if (stageDef?.name.includes("Closed") || stageDef?.name.includes("Rejected") || stageDef?.name.includes("Disbursed")) {
+      if (stageDef?.name.toLowerCase().includes("closed") || stageDef?.name.toLowerCase().includes("rejected") || stageDef?.name.toLowerCase().includes("disbursed") || stageDef?.name.toLowerCase().includes("funded")) {
           isTerminalStage = true;
       }
-
 
       const isOverdue = stageDeadlineDate ? stageDeadlineDate.getTime() < new Date().getTime() && !isTerminalStage : false;
 
@@ -144,7 +144,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
      console.log(`[Mock Service:getLoanRequestById] Attempting to find loan with ID: ${id}. Found: ${!!foundLoanData}`);
 
     if (foundLoanData) {
-      const stageDef = getStageById(foundLoanData.workflowVersionId, foundLoanData.currentStageId);
+      const stageDef = getStageByIdFromAllWorkflows(foundLoanData.workflowVersionId, foundLoanData.currentStageId);
       const stageDeadlineDate = foundLoanData.stageDeadline ? parseISO(foundLoanData.stageDeadline) : null;
 
       let isTerminalStage = false;
@@ -153,7 +153,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
           const stageIndex = workflowVer.stages.findIndex(s => s.id === stageDef.id);
           if (stageIndex === workflowVer.stages.length -1) isTerminalStage = true;
       }
-       if (stageDef?.name.includes("Closed") || stageDef?.name.includes("Rejected") || stageDef?.name.includes("Disbursed")) {
+       if (stageDef?.name.toLowerCase().includes("closed") || stageDef?.name.toLowerCase().includes("rejected") || stageDef?.name.toLowerCase().includes("disbursed") || stageDef?.name.toLowerCase().includes("funded")) {
           isTerminalStage = true;
       }
 
@@ -194,14 +194,13 @@ export async function updateLoanRequest(
         lastUpdatedDate: formatISO(new Date()),
       };
       
-      // If currentStageId changed, update assignedDepartment and stageDeadline
       if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== originalLoan.currentStageId) {
-          const newStageDef = getStageById(updatedLoanData.workflowVersionId, dataToUpdate.currentStageId);
+          const newStageDef = getStageByIdFromAllWorkflows(updatedLoanData.workflowVersionId, dataToUpdate.currentStageId);
           if (newStageDef) {
               updatedLoanData.assignedDepartment = newStageDef.responsibleDepartment;
-              updatedLoanData.assignedTo = undefined; // Unassign user when stage/department changes
+              updatedLoanData.assignedTo = undefined; 
               updatedLoanData.stageDeadline = formatISO(addDays(new Date(), newStageDef.defaultTimelineDays));
-              updatedLoanData.isReadyForManagerReview = false; // Reset review flag
+              updatedLoanData.isReadyForManagerReview = false; 
           }
       }
 
@@ -230,10 +229,19 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 export async function saveWorkflowDefinitions(workflows: WorkflowDefinition[]): Promise<{ success?: boolean; error?: string }> {
   try {
     await simulateDelay(50);
-    sessionMockWorkflowDefinitions = JSON.parse(JSON.stringify(workflows)); // Update in-memory store
+    sessionMockWorkflowDefinitions = JSON.parse(JSON.stringify(workflows)); 
     console.log("[Mock Service:saveWorkflowDefinitions] Workflow definitions updated in mock store.");
     return { success: true };
   } catch (e:any) {
     return createErrorResult("Failed to save workflow definitions.", "saveWorkflowDefinitions", e);
+  }
+}
+
+export async function getDepartments(): Promise<{ departments?: Department[]; error?: string }> {
+  try {
+    await simulateDelay(10);
+    return { departments: mockDepartments };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch departments.", "getDepartments", e);
   }
 }
