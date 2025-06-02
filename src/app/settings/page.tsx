@@ -347,9 +347,7 @@ export default function SettingsPage() {
             ...def,
             versions: def.versions.map(v => ({
               ...v,
-              // Activate the target version if it belongs to THIS definition,
-              // otherwise (if it's a different definition but same loan type) deactivate its versions.
-              isActive: (def.id === definitionIdToActivate && v.id === versionIdToActivate)
+              isActive: (v.id === versionIdToActivate) // Only activate the target version within this loan type
             }))
           };
         }
@@ -377,30 +375,44 @@ export default function SettingsPage() {
           versionNumber: latestVersionNum + 1,
           createdAt: new Date().toISOString(),
           stages: [],
-          isActive: false,
+          isActive: false, // New versions are inactive by default
         };
-        // If no other version is active for this definition, make the new one active.
-        const hasActiveVersion = def.versions.some(v => v.isActive);
-        if (!hasActiveVersion) {
-            newVersion.isActive = true;
-        } else if (newVersion.isActive) { // Ensure only one active if we auto-activated
+        
+        // If new version is to be active, deactivate others of same loan type
+        if (newVersion.isActive) {
              def.versions.forEach(v => v.isActive = false);
+        } else if (def.versions.filter(v => v.isActive).length === 0) {
+            // If no version is active for this loan type, make the new one active
+            newVersion.isActive = true;
         }
+
 
         return { ...def, versions: [...def.versions, newVersion].sort((a,b) => b.versionNumber - a.versionNumber) };
       }
       return def;
     }));
-    toast({title: "New Version Created", description: "Empty new version added. Edit to add stages. It is inactive by default unless it's the only version."});
+    toast({title: "New Version Created", description: "Empty new version added. Edit to add stages. It is inactive by default unless it's the only version for this loan type."});
   };
 
   const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
      setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
        if (def.id === definitionId) {
-         return {
-           ...def,
-           versions: def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v).sort((a,b) => b.versionNumber - a.versionNumber)
-         };
+         // If the saved version is marked active, ensure other versions of the same loan type are not.
+         if (updatedVersion.isActive) {
+            return {
+                ...def,
+                versions: def.versions.map(v => 
+                    v.id === updatedVersion.id ? updatedVersion : {...v, isActive: false}
+                ).sort((a,b) => b.versionNumber - a.versionNumber)
+            };
+         } else {
+            // Check if this was the only active version, if so, and it's being made inactive, we need a rule.
+            // For now, allow deactivation. Another version would need to be explicitly activated.
+             return {
+               ...def,
+               versions: def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v).sort((a,b) => b.versionNumber - a.versionNumber)
+             };
+         }
        }
        return def;
      }));
@@ -423,7 +435,7 @@ export default function SettingsPage() {
         name: newWorkflowName,
         loanType: newWorkflowLoanType.trim(),
         description: newWorkflowDescription,
-        versions: [],
+        versions: [], // No versions initially
     };
     setWorkflowDefinitions(prev => [...prev, newWorkflowDef]);
     setNewWorkflowName('');
@@ -471,10 +483,13 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <h4 className="font-medium text-sm">Versions (Latest first):</h4>
+                {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined for this workflow. Add one below.</p>}
                 {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
                   <div key={version.id} className={`flex justify-between items-center p-3 border rounded-md ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
                     <div>
-                      <p className="font-semibold">Version {version.versionNumber} {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}</p>
+                      <div className="font-semibold"> {/* Changed from p to div */}
+                        Version {version.versionNumber} {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
+                      </div>
                       <p className="text-xs text-muted-foreground">Created: {new Date(version.createdAt).toLocaleDateString()} | Stages: {version.stages.length}</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
