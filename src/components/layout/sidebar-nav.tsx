@@ -10,8 +10,9 @@ import {
   Settings,
   KanbanSquare,
   AlertTriangle,
-  UserCheck, // For Manager Review
-  FolderKanban, // For Unassigned Cases
+  UserCheck, 
+  FolderKanban,
+  Building, // Icon for Manage Departments
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -28,7 +29,11 @@ const navItems = [
   { href: '/department-queue', label: 'Unassigned Cases', icon: FolderKanban },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
   { href: '/overdue-tasks', label: 'Overdue Tasks', icon: AlertTriangle },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/settings', label: 'Settings', icon: Settings,
+    subItems: [ // Adding sub-items for settings
+      { href: '/settings/departments', label: 'Manage Departments', icon: Building },
+    ]
+  },
 ];
 
 export default function SidebarNav() {
@@ -38,7 +43,9 @@ export default function SidebarNav() {
     <SidebarMenu>
       {navItems.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+        // Exact match for parent, startsWith for sub-items or general pages
+        const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+        
         return (
           <SidebarMenuItem key={item.href}>
             <Link href={item.href} legacyBehavior passHref>
@@ -57,6 +64,35 @@ export default function SidebarNav() {
                 </a>
               </SidebarMenuButton>
             </Link>
+            {item.subItems && isActive && ( // Show sub-items if parent is active
+              <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
+                {item.subItems.map(subItem => {
+                  const SubIcon = subItem.icon;
+                  const isSubActive = pathname === subItem.href;
+                  return (
+                    <SidebarMenuItem key={subItem.href} className="list-none">
+                       <Link href={subItem.href} legacyBehavior passHref>
+                         <SidebarMenuButton
+                            asChild
+                            isActive={isSubActive}
+                            className={cn(
+                                'justify-start text-sm h-8', // Smaller for sub-items
+                                isSubActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
+                                !isSubActive && 'hover:bg-sidebar-accent/70'
+                            )}
+                            tooltip={subItem.label}
+                         >
+                            <a>
+                                <SubIcon className="h-4 w-4 mr-2.5" />
+                                <span>{subItem.label}</span>
+                            </a>
+                         </SidebarMenuButton>
+                       </Link>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </ul>
+            )}
           </SidebarMenuItem>
         );
       })}

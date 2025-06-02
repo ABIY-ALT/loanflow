@@ -11,7 +11,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  department?: Department; // Department name
+  department?: Department; // Department name string
 }
 
 // Represents a predefined department in the system
@@ -26,6 +26,8 @@ export interface WorkflowStageDefinition {
   requiredDocumentNames: string[];
   percentageWeight: number;
   order: number; // Defines sequence
+  createdAt?: string; // Optional, may not be present on client-side objects initially
+  updatedAt?: string; // Optional
 }
 
 // Represents a specific version of a workflow
@@ -36,6 +38,7 @@ export interface WorkflowVersion {
   createdAt: string; // ISO date string
   stages: WorkflowStageDefinition[];
   isActive: boolean; // Only one version can be active PER LOAN TYPE for its parent WorkflowDefinition
+  updatedAt?: string; // Optional
 }
 
 // Represents a workflow template for a specific loan type
@@ -45,6 +48,8 @@ export interface WorkflowDefinition {
   loanType: string; // e.g., "Personal Loan", "Mortgage" - defines the type of loan this workflow applies to
   description?: string;
   versions: WorkflowVersion[];
+  createdAt?: string; // Optional, as it's set by Firestore
+  updatedAt?: string; // Optional
 }
 
 
@@ -94,7 +99,15 @@ export interface LoanRequest {
   isOverdue?: boolean; // Calculated
   isReadyForManagerReview?: boolean;
 
-  // Dynamically added by service layer
+  // Dynamically added by service layer or resolved from references
   currentStageName?: string;
   isTerminalStage?: boolean;
+
+  // Firestore specific technical fields (optional on client type if handled purely server-side on save)
+  workflowVersionRef?: any; // Firestore DocumentReference path or object
+  currentStageRef?: any; // Firestore DocumentReference path or object
+  workflowDefinitionId_mirror?: string; // Denormalized for easier querying
+  assignedToUserId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
