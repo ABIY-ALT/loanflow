@@ -1,62 +1,11 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-generator client {
-  provider = "prisma-client-js"
-}
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // You'll need to set this in your .env file
+  url      = env("DATABASE_URL")
 }
 
-model User {
-  id     String   @id @default(cuid())
-  name   String
-  email  String   @unique
-  role   UserRole
-  LoanRequest LoanRequest[] @relation("AssignedLoans")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model LoanRequest {
-  id                      String    @id @default(cuid())
-  loanNumber              String    @unique
-  customerNumber          String
-  customerName            String
-  customerEmail           String
-  customerPhone           String
-  loanAmount              Float
-  loanType                String
-  loanPurpose             String
-  currentStage            LoanStage
-  submittedDate           DateTime  @default(now())
-  lastUpdatedDate         DateTime  @updatedAt
-  
-  assignedToId            String?   // Foreign key to User
-  assignedTo              User?     @relation("AssignedLoans", fields: [assignedToId], references: [id])
-  
-  documents               Json      // For simplicity, storing as JSON. Consider separate table for complex document management.
-  history                 Json      // For simplicity, storing as JSON. Consider separate table for detailed history.
-  
-  stageDeadline           DateTime?
-  isOverdue               Boolean?  @default(false)
-  isReadyForManagerReview Boolean?  @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum LoanStage {
-  APPLICATION_SUBMITTED
-  DOCUMENT_COLLECTION
-  UNDER_REVIEW
-  ADDITIONAL_INFO_REQUIRED
-  APPROVED
-  REJECTED
-  FUNDS_DISBURSED
+generator client {
+  provider = "prisma-client-js"
 }
 
 enum UserRole {
@@ -64,4 +13,107 @@ enum UserRole {
   RELATIONSHIP_MANAGER
   UNDERWRITER
   STAFF
+}
+
+model User {
+  id        String  @id @default(uuid())
+  name      String
+  email     String  @unique
+  role      UserRole
+  department String? // Or link to a Department model: departmentId String?, department Department? @relation(fields: [departmentId], references: [id])
+  
+  assignedLoanRequests LoanRequest[] @relation("AssignedUserLoans")
+
+  @@map("users")
+}
+
+// New model for Departments (conceptual, can be simple string on User/WorkflowStage initially)
+// model Department {
+//   id String @id @default(uuid())
+//   name String @unique
+//   users User[]
+//   workflowStages WorkflowStage[] @relation("DepartmentResponsibleForStage")
+//   @@map("departments")
+// }
+
+
+model Workflow {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  versions    WorkflowVersion[]
+
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id                  String   @id @default(uuid())
+  workflowId          String
+  workflow            Workflow @relation(fields: [workflowId], references: [id])
+  versionNumber       Int
+  description         String?
+  createdAt           DateTime @default(now())
+  stages              WorkflowStage[]
+  
+  loanRequests        LoanRequest[] @relation("LoanWorkflowVersion")
+
+  @@unique([workflowId, versionNumber])
+  @@map("workflow_versions")
+}
+
+model WorkflowStage {
+  id                    String   @id @default(uuid())
+  workflowVersionId     String
+  workflowVersion       WorkflowVersion @relation(fields: [workflowVersionId], references: [id])
+  
+  name                  String
+  responsibleDepartment String // Could be FK to Department model: responsibleDepartmentId String
+  // responsibleDepartment Relation<Department> @relation("DepartmentResponsibleForStage", fields: [responsibleDepartmentId], references: [id])
+  defaultTimelineDays   Int
+  requiredDocumentNames String[]
+  percentageWeight      Int
+  order                 Int // Sequence within the version
+
+  currentLoanRequests   LoanRequest[] @relation("CurrentLoanStage")
+
+  @@map("workflow_stages")
+}
+
+
+model LoanRequest {
+  id            String   @id @default(uuid())
+  loanNumber    String   @unique
+  customerNumber String  @unique
+  customerName  String
+  customerEmail String
+  customerPhone String
+  loanAmount    Float
+  loanType      String
+  loanPurpose   String
+
+  workflowId           String // To know which high-level workflow it belongs to
+  workflowVersionId    String // Specific version this loan is following
+  workflowVersion      WorkflowVersion @relation("LoanWorkflowVersion", fields: [workflowVersionId], references: [id])
+  
+  currentWorkflowStageId String   // Current stage ID
+  currentWorkflowStage   WorkflowStage @relation("CurrentLoanStage", fields: [currentWorkflowStageId], references: [id])
+  
+  submittedDate DateTime @default(now())
+  lastUpdatedDate DateTime @updatedAt
+
+  assignedDepartment String? // Denormalized from currentWorkflowStage.responsibleDepartment for easier querying
+  assignedToId  String?
+  assignedTo    User?    @relation("AssignedUserLoans", fields: [assignedToId], references: [id])
+
+  documents Json // Array of LoanDocument objects
+  history   Json // Array of LoanHistoryEntry objects
+  
+  stageDeadline DateTime?
+  // isOverdue is a calculated field, not stored
+  isReadyForManagerReview Boolean @default(false)
+
+  @@map("loan_requests")
 }

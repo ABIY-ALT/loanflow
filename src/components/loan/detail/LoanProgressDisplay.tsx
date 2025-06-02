@@ -9,16 +9,20 @@ import { Clock } from 'lucide-react';
 
 interface LoanProgressDisplayProps {
   loan: LoanRequest;
-  progressPercentage: number; // Accept pre-calculated percentage
+  progressPercentage: number;
+  currentStageName: string; // Added
 }
 
-export function LoanProgressDisplay({ loan, progressPercentage }: LoanProgressDisplayProps) {
+export function LoanProgressDisplay({ loan, progressPercentage, currentStageName }: LoanProgressDisplayProps) {
   return (
     <div className="mb-6">
-      <Label className="text-xs font-semibold uppercase text-muted-foreground">Loan Progress</Label>
-      <Progress value={progressPercentage} className="w-full mt-1 h-3" />
+      <div className="flex justify-between items-center mb-1">
+        <Label className="text-xs font-semibold uppercase text-muted-foreground">Loan Progress: {currentStageName}</Label>
+        <span className="text-xs font-semibold text-primary">{progressPercentage.toFixed(0)}%</span>
+      </div>
+      <Progress value={progressPercentage} className="w-full h-3" />
       <div className="flex justify-between text-xs text-muted-foreground mt-1">
-        <span>Submitted: {format(parseISO(loan.submittedDate), 'MMM dd, yyyy')}</span>
+        <span>Submitted: {loan.submittedDate ? format(parseISO(loan.submittedDate), 'MMM dd, yyyy') : 'N/A'}</span>
         {loan.stageDeadline && (
           <span className={loan.isOverdue ? "text-destructive font-semibold" : ""}>
             <Clock className="inline h-3 w-3 mr-1" />
@@ -30,5 +34,3 @@ export function LoanProgressDisplay({ loan, progressPercentage }: LoanProgressDi
     </div>
   );
 }
-
-    

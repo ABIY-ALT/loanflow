@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent } from 'lucide-react';
-import React, { useState, useMemo, useCallback } from 'react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
   AccordionContent,
@@ -33,258 +33,406 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { LoanStage, UserRole } from '@/types/loan';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
+import { mockWorkflowDefinitions } from '@/lib/mock-data'; // Using new mock data
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 
-interface RequiredDocumentConfig {
-  id: string;
-  name: string;
+
+// Helper to create a new stage with unique ID
+const createNewStage = (name: string, department: string, timeline: number, weight: number): WorkflowStageDefinition => ({
+  id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  name,
+  responsibleDepartment: department,
+  defaultTimelineDays: timeline,
+  requiredDocumentNames: [],
+  percentageWeight: weight,
+});
+
+interface WorkflowStageConfigItemProps {
+  stage: WorkflowStageDefinition;
+  workflowVersionId: string;
+  onStageChange: (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => void;
+  onRemoveStage: (versionId: string, stageId: string) => void;
+  onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
+  onRemoveRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
+  onRequiredDocumentNameChange: (versionId: string, stageId: string, docName: string, newName: string) => void;
 }
 
-export interface StageConfig {
-  id: string;
-  name: string;
-  loanStageEnum: LoanStage;
-  defaultTimelineDays: number;
-  requiredDocuments: RequiredDocumentConfig[];
-  targetRoleForStage?: UserRole;
-  percentageWeight: number;
-}
-
-export const initialStageConfigs: StageConfig[] = [
-  { id: 'application_submitted', name: 'Application Submitted', loanStageEnum: LoanStage.APPLICATION_SUBMITTED, defaultTimelineDays: 2, requiredDocuments: [{id: 'doc_id_card', name: 'Identification Card'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 10 },
-  { id: 'document_collection', name: 'Document Collection', loanStageEnum: LoanStage.DOCUMENT_COLLECTION, defaultTimelineDays: 7, requiredDocuments: [{id: 'doc_proof_income', name: 'Proof of Income'}, {id: 'doc_bank_statement', name: 'Bank Statement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 20 },
-  { id: 'under_review', name: 'Under Review', loanStageEnum: LoanStage.UNDER_REVIEW, defaultTimelineDays: 5, requiredDocuments: [], targetRoleForStage: UserRole.UNDERWRITER, percentageWeight: 30 },
-  { id: 'additional_info_required', name: 'Additional Info Required', loanStageEnum: LoanStage.ADDITIONAL_INFO_REQUIRED, defaultTimelineDays: 3, requiredDocuments: [], percentageWeight: 5 },
-  { id: 'approved', name: 'Approved', loanStageEnum: LoanStage.APPROVED, defaultTimelineDays: 3, requiredDocuments: [{id: 'doc_loan_agreement', name: 'Signed Loan Agreement'}], targetRoleForStage: UserRole.RELATIONSHIP_MANAGER, percentageWeight: 20 },
-  { id: 'rejected', name: 'Rejected', loanStageEnum: LoanStage.REJECTED, defaultTimelineDays: 1, requiredDocuments: [], percentageWeight: 0 },
-  { id: 'funds_disbursed', name: 'Funds Disbursed', loanStageEnum: LoanStage.FUNDS_DISBURSED, defaultTimelineDays: 1, requiredDocuments: [], targetRoleForStage: UserRole.STAFF, percentageWeight: 15 },
-];
-
-const NO_SPECIFIC_ROLE_VALUE = "---NO_SPECIFIC_ROLE---";
-
-interface DraggableStageConfigItemProps {
-  stageConfig: StageConfig;
-  onStageConfigChange: (id: string, field: keyof StageConfig, value: any) => void;
-  onRemoveStageConfig: (id: string) => void;
-  onAddRequiredDocument: (stageId: string, docName: string) => void;
-  onRemoveRequiredDocument: (stageId: string, docId: string) => void;
-  onRequiredDocumentNameChange: (stageId: string, docId: string, newName: string) => void;
-}
-
-function DraggableStageConfigItem({
-  stageConfig,
-  onStageConfigChange,
-  onRemoveStageConfig,
+function WorkflowStageConfigItem({
+  stage,
+  workflowVersionId,
+  onStageChange,
+  onRemoveStage,
   onAddRequiredDocument,
   onRemoveRequiredDocument,
   onRequiredDocumentNameChange,
-}: DraggableStageConfigItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stageConfig.id });
+}: WorkflowStageConfigItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 100 : 'auto', opacity: isDragging ? 0.8 : 1, position: 'relative' as 'relative' };
   const [newReqDocName, setNewReqDocName] = useState('');
 
   const handleAddDoc = () => {
     if (newReqDocName.trim()) {
-      onAddRequiredDocument(stageConfig.id, newReqDocName.trim());
+      onAddRequiredDocument(workflowVersionId, stage.id, newReqDocName.trim());
       setNewReqDocName('');
     }
   };
 
   return (
-    <AccordionItem value={stageConfig.id} key={stageConfig.id} ref={setNodeRef} style={style} className="bg-card border rounded-md mb-2 shadow-sm">
+    <AccordionItem value={stage.id} key={stage.id} ref={setNodeRef} style={style} className="bg-card border rounded-md mb-2 shadow-sm">
       <AccordionTrigger className="hover:no-underline w-full data-[state=open]:border-b">
         <div className="flex items-center justify-between w-full pr-4 py-2">
           <div className="flex items-center" {...attributes} {...listeners} >
             <GripVertical className="h-5 w-5 text-muted-foreground mr-3 cursor-grab" />
-            <span>{stageConfig.name}</span>
+            <span>{stage.name}</span>
           </div>
           <div className="text-sm text-muted-foreground flex items-center gap-2">
-            {stageConfig.targetRoleForStage && <Users className="h-4 w-4"/>}{stageConfig.targetRoleForStage || 'Any Role'} | <Clock className="h-4 w-4"/>{stageConfig.defaultTimelineDays} days | <Percent className="h-4 w-4" />{stageConfig.percentageWeight || 0}% | <FileText className="h-4 w-4"/>{stageConfig.requiredDocuments.length} doc(s)
+            <Users className="h-4 w-4"/>{stage.responsibleDepartment || 'N/A'} | <Clock className="h-4 w-4"/>{stage.defaultTimelineDays}d | <Percent className="h-4 w-4" />{stage.percentageWeight || 0}% | <FileText className="h-4 w-4"/>{stage.requiredDocumentNames.length} doc(s)
           </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
-        {/* Inputs for stage name, timeline, weight, target role */}
         <div className="grid md:grid-cols-3 gap-4">
-          <div>
-            <Label htmlFor={`stage-name-${stageConfig.id}`}>Stage Name</Label>
-            <Input id={`stage-name-${stageConfig.id}`} value={stageConfig.name} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageConfigChange(stageConfig.id, 'name', e.target.value)} className="mt-1"/>
-          </div>
-          <div>
-            <Label htmlFor={`stage-timeline-${stageConfig.id}`}>Default Timeline (days)</Label>
-            <Input id={`stage-timeline-${stageConfig.id}`} type="number" value={stageConfig.defaultTimelineDays} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageConfigChange(stageConfig.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/>
-          </div>
-          <div>
-            <Label htmlFor={`stage-weight-${stageConfig.id}`}>Percentage Weight (%)</Label>
-            <Input id={`stage-weight-${stageConfig.id}`} type="number" value={stageConfig.percentageWeight} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageConfigChange(stageConfig.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/>
-          </div>
+          <div><Label htmlFor={`s-name-${stage.id}`}>Stage Name</Label><Input id={`s-name-${stage.id}`} value={stage.name} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'name', e.target.value)} className="mt-1"/></div>
+          <div><Label htmlFor={`s-dept-${stage.id}`}>Responsible Department</Label><Input id={`s-dept-${stage.id}`} value={stage.responsibleDepartment} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'responsibleDepartment', e.target.value)} className="mt-1"/></div>
+          <div><Label htmlFor={`s-time-${stage.id}`}>Timeline (days)</Label><Input id={`s-time-${stage.id}`} type="number" value={stage.defaultTimelineDays} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
+          <div><Label htmlFor={`s-weight-${stage.id}`}>Weight (%)</Label><Input id={`s-weight-${stage.id}`} type="number" value={stage.percentageWeight} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/></div>
         </div>
-         <div>
-            <Label htmlFor={`target-role-${stageConfig.id}`}>Target Role for this Stage</Label>
-            <Select value={stageConfig.targetRoleForStage || NO_SPECIFIC_ROLE_VALUE} onValueChange={(value) => onStageConfigChange(stageConfig.id, 'targetRoleForStage', value === NO_SPECIFIC_ROLE_VALUE ? undefined : value as UserRole)}>
-              <SelectTrigger id={`target-role-${stageConfig.id}`} className="mt-1"><SelectValue placeholder="Select a target role (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_SPECIFIC_ROLE_VALUE}>No specific role / Keep current</SelectItem>
-                {Object.values(UserRole).map(role => (<SelectItem key={role} value={role}>{role}</SelectItem>))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">If set, loans entering this stage may be auto-assigned.</p>
-          </div>
         <Separator />
-        {/* Required Documents Management */}
         <div>
           <h5 className="text-md font-medium mb-2">Required Documents for this Stage</h5>
-          {stageConfig.requiredDocuments.length === 0 && (<p className="text-sm text-muted-foreground">No documents required.</p>)}
+          {stage.requiredDocumentNames.length === 0 && (<p className="text-sm text-muted-foreground">No documents required.</p>)}
           <ul className="space-y-2">
-            {stageConfig.requiredDocuments.map(doc => (
-              <li key={doc.id} className="flex items-center gap-2 p-2 border rounded-md">
+            {stage.requiredDocumentNames.map((docName, index) => (
+              <li key={`${stage.id}-doc-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <Input value={doc.name} onChange={(e) => onRequiredDocumentNameChange(stageConfig.id, doc.id, e.target.value)} className="flex-grow text-sm" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
-                <Button variant="ghost" size="icon" onClick={() => onRemoveRequiredDocument(stageConfig.id, doc.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                <Input value={docName} onChange={(e) => onRequiredDocumentNameChange(workflowVersionId, stage.id, docName, e.target.value)} className="flex-grow text-sm" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
+                <Button variant="ghost" size="icon" onClick={() => onRemoveRequiredDocument(workflowVersionId, stage.id, docName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
               </li>
             ))}
           </ul>
           <div className="flex items-end gap-2 mt-4">
             <div className="flex-grow">
-              <Label htmlFor={`new-req-doc-${stageConfig.id}`}>New Document Name</Label>
-              <Input id={`new-req-doc-${stageConfig.id}`} value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., Passport" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
+              <Label htmlFor={`new-req-doc-${stage.id}`}>New Document Name</Label>
+              <Input id={`new-req-doc-${stage.id}`} value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., Passport" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
             </div>
             <Button onClick={handleAddDoc} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Document</Button>
           </div>
         </div>
-        <Button variant="destructive" size="sm" onClick={() => onRemoveStageConfig(stageConfig.id)} className="mt-4"><Trash2 className="mr-2 h-4 w-4" /> Remove Stage</Button>
+        <Button variant="outline" size="sm" onClick={() => onRemoveStage(workflowVersionId, stage.id)} className="mt-4 text-destructive border-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" /> Remove Stage From Version</Button>
       </AccordionContent>
     </AccordionItem>
   );
 }
 
-interface AddNewStageFormProps {
-    onAddStage: (name: string, enumVal: LoanStage, timeline: number, weight: number, targetRole?: UserRole) => void;
+interface EditWorkflowVersionDialogProps {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  workflowDefinition: WorkflowDefinition | null;
+  versionToEdit: WorkflowVersion | null;
+  onSaveVersion: (definitionId: string, version: WorkflowVersion) => void;
+  onStageChange: (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => void;
+  onRemoveStage: (versionId: string, stageId: string) => void;
+  onAddStageToVersion: (versionId: string, stage: WorkflowStageDefinition) => void;
+  onReorderStages: (versionId: string, activeId: string, overId: string | null) => void;
+  onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
+  onRemoveRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
+  onRequiredDocumentNameChange: (versionId: string, stageId: string, docName: string, newName: string) => void;
 }
 
-function AddNewStageForm({ onAddStage }: AddNewStageFormProps) {
-    const [name, setName] = useState('');
-    const [timeline, setTimeline] = useState(3);
-    const [weight, setWeight] = useState(0);
-    const [enumVal, setEnumVal] = useState<LoanStage>(LoanStage.APPLICATION_SUBMITTED);
-    const [targetRole, setTargetRole] = useState<UserRole | undefined>(undefined);
-    const { toast } = useToast();
+function EditWorkflowVersionDialog({
+  isOpen, onOpenChange, workflowDefinition, versionToEdit, onSaveVersion,
+  onStageChange, onRemoveStage, onAddStageToVersion, onReorderStages,
+  onAddRequiredDocument, onRemoveRequiredDocument, onRequiredDocumentNameChange
+}: EditWorkflowVersionDialogProps) {
+  const [editedVersion, setEditedVersion] = useState<WorkflowVersion | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const { toast } = useToast();
 
-    const handleSubmit = () => {
-        if (!name.trim()) {
-            toast({ title: "Error", description: "Stage name cannot be empty.", variant: "destructive" });
-            return;
-        }
-        onAddStage(name, enumVal, timeline, weight, targetRole);
-        setName(''); setTimeline(3); setWeight(0); setTargetRole(undefined);
-    };
+  const [newStageName, setNewStageName] = useState('');
+  const [newStageDept, setNewStageDept] = useState('');
+  const [newStageTimeline, setNewStageTimeline] = useState(3);
+  const [newStageWeight, setNewStageWeight] = useState(10);
 
-    return (
-        <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
-            <h4 className="font-medium">Add New Stage</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-                <div><Label htmlFor="new-stage-name">Stage Name</Label><Input id="new-stage-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Final Verification" className="mt-1"/></div>
-                <div><Label htmlFor="new-stage-enum">Corresponds to (Loan Stage Type)</Label><Select value={enumVal} onValueChange={(v) => setEnumVal(v as LoanStage)}><SelectTrigger id="new-stage-enum" className="mt-1"><SelectValue placeholder="Select base stage type" /></SelectTrigger><SelectContent>{Object.values(LoanStage).map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select></div>
-                <div><Label htmlFor="new-stage-timeline">Timeline (days)</Label><Input id="new-stage-timeline" type="number" value={timeline} onChange={(e) => setTimeline(parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
-                <div><Label htmlFor="new-stage-percentage-weight">Percentage Weight (%)</Label><Input id="new-stage-percentage-weight" type="number" value={weight} onChange={(e) => {let val = parseInt(e.target.value,10) || 0; if (val < 0) val = 0; if (val > 100) val = 100; setWeight(val);}} className="mt-1" min="0" max="100"/></div>
-                <div><Label htmlFor="new-stage-target-role">Target Role</Label><Select value={targetRole || NO_SPECIFIC_ROLE_VALUE} onValueChange={(v) => setTargetRole(v === NO_SPECIFIC_ROLE_VALUE ? undefined : v as UserRole)}><SelectTrigger id="new-stage-target-role" className="mt-1"><SelectValue placeholder="Select target role (optional)" /></SelectTrigger><SelectContent><SelectItem value={NO_SPECIFIC_ROLE_VALUE}>No specific role</SelectItem>{Object.values(UserRole).map(r => (<SelectItem key={r} value={r}>{r}</SelectItem>))}</SelectContent></Select></div>
-                <Button onClick={handleSubmit} className="w-full sm:w-auto mt-4 lg:col-span-1 self-end"><PlusCircle className="mr-2 h-4 w-4" /> Add Stage</Button>
+  useEffect(() => {
+    if (versionToEdit) {
+      setEditedVersion(JSON.parse(JSON.stringify(versionToEdit))); // Deep copy
+    } else {
+      setEditedVersion(null);
+    }
+  }, [versionToEdit, isOpen]);
+
+  const handleInternalStageChange = (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => {
+    setEditedVersion(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        stages: prev.stages.map(s => s.id === stageId ? { ...s, [field]: value } : s)
+      };
+    });
+  };
+  const handleInternalRemoveStage = (versionId: string, stageId: string) => {
+     setEditedVersion(prev => {
+      if (!prev) return null;
+      return { ...prev, stages: prev.stages.filter(s => s.id !== stageId) };
+    });
+  };
+  const handleInternalAddStageToVersion = () => {
+    if (!editedVersion) return;
+    if(!newStageName.trim() || !newStageDept.trim()){
+        toast({ title: "Error", description: "New stage name and department are required.", variant: "destructive"});
+        return;
+    }
+    const newStage = createNewStage(newStageName, newStageDept, newStageTimeline, newStageWeight);
+    setEditedVersion(prev => {
+      if (!prev) return null;
+      return { ...prev, stages: [...prev.stages, newStage] };
+    });
+    setNewStageName(''); setNewStageDept(''); setNewStageTimeline(3); setNewStageWeight(10);
+  };
+  const handleInternalReorderStages = (event: DragEndEvent) => {
+    if (!editedVersion) return;
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setEditedVersion(prev => {
+        if (!prev) return null;
+        const oldIndex = prev.stages.findIndex((s) => s.id === active.id);
+        const newIndex = prev.stages.findIndex((s) => s.id === over.id);
+        return { ...prev, stages: arrayMove(prev.stages, oldIndex, newIndex) };
+      });
+    }
+  };
+
+  const handleInternalAddReqDoc = (versionId: string, stageId: string, docName: string) => {
+    setEditedVersion(prev => {
+        if(!prev) return null;
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: [...s.requiredDocumentNames, docName]} : s)};
+    });
+  };
+  const handleInternalRemoveReqDoc = (versionId: string, stageId: string, docName: string) => {
+     setEditedVersion(prev => {
+        if(!prev) return null;
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: s.requiredDocumentNames.filter(name => name !== docName)} : s)};
+    });
+  };
+  const handleInternalReqDocNameChange = (versionId: string, stageId: string, oldDocName: string, newDocName: string) => {
+    setEditedVersion(prev => {
+        if(!prev) return null;
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: s.requiredDocumentNames.map(name => name === oldDocName ? newDocName : name)} : s)};
+    });
+  };
+
+
+  const handleSave = () => {
+    if (workflowDefinition && editedVersion) {
+      const totalWeight = editedVersion.stages.reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
+      if (totalWeight > 100) {
+        toast({ title: "Validation Error", description: `Total stage weight (${totalWeight}%) exceeds 100%.`, variant: "destructive"});
+        return;
+      }
+      onSaveVersion(workflowDefinition.id, editedVersion);
+      onOpenChange(false);
+    }
+  };
+  
+  if (!workflowDefinition || !editedVersion) return null;
+
+  const currentTotalWeight = editedVersion.stages.reduce((sum, config) => sum + (Number(config.percentageWeight) || 0), 0);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Edit Workflow Version {editedVersion.versionNumber} for: {workflowDefinition.name}</DialogTitle>
+          <DialogDescription>Modify stages for this version. Drag to reorder. Total Stage Weight: <span className={`font-semibold ${currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}`}>{currentTotalWeight}%</span></DialogDescription>
+        </DialogHeader>
+        <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-4">
+            <div>
+                <Label htmlFor={`version-desc-${editedVersion.id}`}>Version Description/Notes</Label>
+                <Textarea id={`version-desc-${editedVersion.id}`} value={editedVersion.description || ''} onChange={e => setEditedVersion(v => v ? {...v, description: e.target.value} : null)} placeholder="Reason for this version, e.g., Updated for new compliance rules" />
+            </div>
+            <Separator/>
+            <h4 className="font-medium">Stages in this Version</h4>
+             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleInternalReorderStages}>
+                <SortableContext items={editedVersion.stages.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                <Accordion type="single" collapsible className="w-full">
+                    {editedVersion.stages.map((stage) => (
+                    <WorkflowStageConfigItem
+                        key={stage.id}
+                        stage={stage}
+                        workflowVersionId={editedVersion.id}
+                        onStageChange={handleInternalStageChange}
+                        onRemoveStage={handleInternalRemoveStage}
+                        onAddRequiredDocument={handleInternalAddReqDoc}
+                        onRemoveRequiredDocument={handleInternalRemoveReqDoc}
+                        onRequiredDocumentNameChange={handleInternalReqDocNameChange}
+                    />
+                    ))}
+                </Accordion>
+                </SortableContext>
+            </DndContext>
+            <Separator />
+            <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                <h5 className="font-medium">Add New Stage to this Version</h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                    <div><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
+                    <div><Label htmlFor="new-s-dept">Responsible Dept.</Label><Input id="new-s-dept" value={newStageDept} onChange={e=>setNewStageDept(e.target.value)} placeholder="Department Name" /></div>
+                    <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
+                    <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
+                    <Button onClick={handleInternalAddStageToVersion} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
+                </div>
             </div>
         </div>
-    );
+        <DialogFooter className="mt-auto pt-4 border-t">
+          <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+          <Button type="button" onClick={handleSave}><Save className="mr-2 h-4 w-4"/>Save Version Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const [stageConfigs, setStageConfigs] = useState<StageConfig[]>(initialStageConfigs);
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(JSON.parse(JSON.stringify(mockWorkflowDefinitions))); // Deep copy
+  
+  const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
+  const [currentWorkflowDefForEdit, setCurrentWorkflowDefForEdit] = useState<WorkflowDefinition | null>(null);
+  const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
+
   const [enableNotifications, setEnableNotifications] = useState(true);
   const [overdueThreshold, setOverdueThreshold] = useState(2);
 
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  const currentTotalWeight = useMemo(() => stageConfigs.reduce((sum, config) => sum + (Number(config.percentageWeight) || 0), 0), [stageConfigs]);
+  const handleActivateWorkflow = (definitionId: string) => {
+    setWorkflowDefinitions(prevDefs => 
+      prevDefs.map(def => ({ ...def, isActive: def.id === definitionId }))
+    );
+    toast({ title: "Success", description: `Workflow '${workflowDefinitions.find(d=>d.id===definitionId)?.name}' activated.` });
+  };
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setStageConfigs((currentConfigs) => {
-        const oldIndex = currentConfigs.findIndex((config) => config.id === active.id);
-        const newIndex = currentConfigs.findIndex((config) => config.id === over.id);
-        return (oldIndex === -1 || newIndex === -1) ? currentConfigs : arrayMove(currentConfigs, oldIndex, newIndex);
-      });
-    }
-  }, []);
+  const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion) => {
+    setCurrentWorkflowDefForEdit(def);
+    setCurrentVersionToEdit(version);
+    setIsEditVersionDialogOpen(true);
+  };
+  
+  const handleAddNewVersion = (definitionId: string) => {
+    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+      if (def.id === definitionId) {
+        const latestVersionNum = def.versions.length > 0 ? Math.max(...def.versions.map(v => v.versionNumber)) : 0;
+        const newVersion: WorkflowVersion = {
+          id: `wfver-custom-${Date.now()}`,
+          workflowDefinitionId: def.id,
+          versionNumber: latestVersionNum + 1,
+          description: `Version ${latestVersionNum + 1}`,
+          createdAt: new Date().toISOString(),
+          stages: [], // Start with empty stages or copy from latest
+        };
+        return { ...def, versions: [...def.versions, newVersion] };
+      }
+      return def;
+    }));
+    toast({title: "New Version Created", description: "Empty new version added. Edit to add stages."});
+  };
+  
+  const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
+     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+       if (def.id === definitionId) {
+         return {
+           ...def,
+           versions: def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v)
+         };
+       }
+       return def;
+     }));
+     toast({title: "Version Saved", description: `Version ${updatedVersion.versionNumber} of workflow '${workflowDefinitions.find(d=>d.id===definitionId)?.name}' saved.`});
+  };
 
-  const handleAddStageConfig = useCallback((name: string, enumVal: LoanStage, timeline: number, weight: number, targetRole?: UserRole) => {
-    const newId = `custom-stage-${Date.now().toString()}`;
-    setStageConfigs(prev => [...prev, { id: newId, name, loanStageEnum: enumVal, defaultTimelineDays: timeline, percentageWeight: weight, requiredDocuments: [], targetRoleForStage: targetRole }]);
-    toast({ title: "Success", description: "New workflow stage added." });
-  }, [toast]);
 
-  const handleRemoveStageConfig = useCallback((id: string) => {
-    setStageConfigs(prev => prev.filter(config => config.id !== id));
-    toast({ title: "Success", description: "Workflow stage removed." });
-  }, [toast]);
-
-  const handleStageConfigChange = useCallback((id: string, field: keyof StageConfig, value: any) => {
-    let parsedValue = value;
-    if (field === 'defaultTimelineDays' || field === 'percentageWeight') {
-      parsedValue = parseInt(value, 10);
-      if (isNaN(parsedValue)) parsedValue = 0;
-      if (field === 'percentageWeight') { parsedValue = Math.min(100, Math.max(0, parsedValue)); }
-      if (field === 'defaultTimelineDays' && parsedValue < 0) parsedValue = 0;
-    }
-    setStageConfigs(configs => configs.map(config => config.id === id ? { ...config, [field]: parsedValue } : config));
-  }, []);
-
-  const handleAddRequiredDocument = useCallback((stageId: string, docName: string) => {
-    setStageConfigs(configs => configs.map(config => config.id === stageId ? { ...config, requiredDocuments: [...config.requiredDocuments, { id: `req-doc-${Date.now()}`, name: docName }] } : config));
-  }, []);
-
-  const handleRemoveRequiredDocument = useCallback((stageId: string, docId: string) => {
-     setStageConfigs(configs => configs.map(config => config.id === stageId ? { ...config, requiredDocuments: config.requiredDocuments.filter(doc => doc.id !== docId) } : config));
-  }, []);
-
-  const handleRequiredDocumentNameChange = useCallback((stageId: string, docId: string, newName: string) => {
-    setStageConfigs(configs => configs.map(config => config.id === stageId ? { ...config, requiredDocuments: config.requiredDocuments.map(doc => doc.id === docId ? { ...doc, name: newName } : doc)} : config));
-  }, []);
+  // Placeholder functions for stage modifications within the dialog - these will be passed to EditWorkflowVersionDialog
+  // The actual modification logic will happen inside EditWorkflowVersionDialog's local state, and then `handleSaveVersion` will persist it.
+  const onStageChange = () => {}; 
+  const onRemoveStage = () => {};
+  const onAddStageToVersion = () => {};
+  const onReorderStages = () => {};
+  const onAddRequiredDocument = () => {};
+  const onRemoveRequiredDocument = () => {};
+  const onRequiredDocumentNameChange = () => {};
 
   const handleSaveChanges = () => {
-    if (currentTotalWeight > 100) {
-      toast({ title: "Validation Error", description: `Total percentage weight (${currentTotalWeight}%) exceeds 100%. Adjust weights.`, variant: "destructive", duration: 5000 });
-      return;
-    }
-    console.log("Settings saved (mock):", { stageConfigs, enableNotifications, overdueThreshold });
-    toast({ title: "Settings Saved (Mock)", description: "Workflow and notification settings updated.", action: <Check className="h-5 w-5 text-green-500" /> });
+    // Here you would typically send workflowDefinitions to your backend
+    console.log("Settings saved (mock):", { workflowDefinitions, enableNotifications, overdueThreshold });
+    toast({ title: "All Settings Saved (Mock)", description: "Workflow and notification settings would be persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
   };
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Configure loan workflows, timelines, required documents, and notification preferences.</p>
+        <p className="text-muted-foreground">Define loan processing workflows, versions, stages, and notification preferences.</p>
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Workflow Configuration</CardTitle>
-            <CardDescription>Define stages, timelines, weights, documents, and roles. Drag to reorder. Current Total Weight: <span className={`font-semibold ${currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}`}>{currentTotalWeight}%</span></CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <SortableContext items={stageConfigs.map(s => s.id)} strategy={verticalListSortingStrategy}>
-              <Accordion type="single" collapsible className="w-full">
-                {stageConfigs.map((config) => (
-                  <DraggableStageConfigItem key={config.id} stageConfig={config} onStageConfigChange={handleStageConfigChange} onRemoveStageConfig={handleRemoveStageConfig} onAddRequiredDocument={handleAddRequiredDocument} onRemoveRequiredDocument={handleRemoveRequiredDocument} onRequiredDocumentNameChange={handleRequiredDocumentNameChange} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow Definitions</CardTitle>
+          <CardDescription>Manage different loan workflows. Only one workflow can be active for new applications.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {workflowDefinitions.map(def => (
+            <Card key={def.id} className={def.isActive ? "border-primary shadow-md" : ""}>
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-xl">{def.name} {def.isActive && <Badge className="ml-2">Active</Badge>}</CardTitle>
+                    <CardDescription>{def.description || "No description."}</CardDescription>
+                  </div>
+                  {!def.isActive && <Button size="sm" onClick={() => handleActivateWorkflow(def.id)}><Check className="mr-2 h-4 w-4"/>Set Active</Button>}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <h4 className="font-medium text-sm">Versions:</h4>
+                {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
+                  <div key={version.id} className="flex justify-between items-center p-2 border rounded-md bg-muted/30">
+                    <div>
+                      <p className="font-semibold">Version {version.versionNumber} <span className="text-xs text-muted-foreground">({new Date(version.createdAt).toLocaleDateString()})</span></p>
+                      <p className="text-xs text-muted-foreground">{version.description || "No version notes."} ({version.stages.length} stages)</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)}><Edit className="mr-2 h-4 w-4" />Edit Stages</Button>
+                  </div>
                 ))}
-              </Accordion>
-            </SortableContext>
-            <Separator />
-            <AddNewStageForm onAddStage={handleAddStageConfig} />
-          </CardContent>
-        </Card>
-      </DndContext>
-      {/* Notification Settings Card */}
+                <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2"><PlusCircle className="mr-2 h-4 w-4" />Add New Version</Button>
+              </CardContent>
+            </Card>
+          ))}
+          {/* TODO: Add button to create a new WorkflowDefinition */}
+        </CardContent>
+      </Card>
+      
+      <EditWorkflowVersionDialog
+        isOpen={isEditVersionDialogOpen}
+        onOpenChange={setIsEditVersionDialogOpen}
+        workflowDefinition={currentWorkflowDefForEdit}
+        versionToEdit={currentVersionToEdit}
+        onSaveVersion={handleSaveVersion}
+        onStageChange={onStageChange} // Pass down placeholders
+        onRemoveStage={onRemoveStage}
+        onAddStageToVersion={onAddStageToVersion}
+        onReorderStages={onReorderStages}
+        onAddRequiredDocument={onAddRequiredDocument}
+        onRemoveRequiredDocument={onRemoveRequiredDocument}
+        onRequiredDocumentNameChange={onRequiredDocumentNameChange}
+      />
+
       <Card>
         <CardHeader><CardTitle>Notification Settings</CardTitle><CardDescription>Manage how and when notifications are sent for overdue tasks.</CardDescription></CardHeader>
         <CardContent className="space-y-6">

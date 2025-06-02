@@ -17,13 +17,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import type { LoanRequest, User as UserType } from '@/types/loan';
-import { UNASSIGNED_DIALOG_OPTION_VALUE } from './EditLoanDetailsDialog'; // Assuming this constant is centralized or redefined
+import { UNASSIGNED_DIALOG_OPTION_VALUE } from './EditLoanDetailsDialog';
 
 interface ReturnLoanForReworkDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   loan: LoanRequest | null;
-  users: UserType[];
+  users: UserType[]; // Should be filtered by current department
+  currentDepartment?: string;
   onSubmit: (reworkNote: string, assigneeId?: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -33,6 +34,7 @@ export function ReturnLoanForReworkDialog({
   onOpenChange,
   loan,
   users,
+  currentDepartment,
   onSubmit,
   isSaving,
 }: ReturnLoanForReworkDialogProps) {
@@ -42,6 +44,7 @@ export function ReturnLoanForReworkDialog({
   useEffect(() => {
     if (isOpen && loan) {
       setReworkNote('');
+      // Default to current assignee or unassigned if none
       setReworkAssigneeId(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE);
     }
   }, [isOpen, loan]);
@@ -57,13 +60,13 @@ export function ReturnLoanForReworkDialog({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
         onOpenChange(open);
-        if(!open) setReworkNote('');
+        if(!open) { setReworkNote(''); setReworkAssigneeId(''); }
     }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Return Loan for Rework: {loan.customerName}</DialogTitle>
           <DialogDescription>
-            Explain why this case is being returned to the officer for further work in the current stage: {loan.currentStage}.
+            Explain why this case is being returned to staff for further work. Department: {currentDepartment || 'N/A'}.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -73,25 +76,25 @@ export function ReturnLoanForReworkDialog({
               id="rework-note-dialog"
               value={reworkNote}
               onChange={(e) => setReworkNote(e.target.value)}
-              placeholder="e.g., Missing signature on page 3, income verification unclear..."
+              placeholder="e.g., Missing signature, income verification unclear..."
               rows={4}
               className="mt-1"
               disabled={isSaving}
             />
           </div>
           <div>
-            <Label htmlFor="rework-assignee-dialog">Assign Rework To</Label>
+            <Label htmlFor="rework-assignee-dialog">Re-assign Rework To (within {currentDepartment || 'current'} Dept)</Label>
             <Select
               value={reworkAssigneeId}
               onValueChange={setReworkAssigneeId}
               disabled={isSaving}
             >
               <SelectTrigger id="rework-assignee-dialog" className="mt-1">
-                <SelectValue placeholder="Select assignee for rework" />
+                <SelectValue placeholder="Select staff for rework" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned</SelectItem>
-                {users.map(user => (
+                <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned to Staff</SelectItem>
+                {users.map(user => ( // Users should be pre-filtered for the department
                   <SelectItem key={user.id} value={user.id}>
                     {user.name} ({user.role})
                   </SelectItem>
