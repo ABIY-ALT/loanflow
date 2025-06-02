@@ -2,7 +2,6 @@
 'use client';
 
 import type { LoanHistoryEntry } from '@/types/loan';
-// Removed LoanStage import as stageName is now a string
 import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquare } from 'lucide-react';
@@ -12,7 +11,6 @@ const getHistoryDotColor = () => 'bg-primary';
 
 interface HistoryEntryItemProps {
   entry: LoanHistoryEntry;
-  // loanCurrentStageName: string; // No longer needed if logic for fulfill changes
   isActiveInfoRequest?: boolean;
   onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
   isSaving?: boolean;
@@ -35,7 +33,6 @@ export function HistoryEntryItem({
       {entry.requiredFulfilment && (
         <div className={`text-sm mt-1 p-2 rounded-md border ${isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-muted/50'}`}>
           <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
-          {/* Fulfill button logic might need re-evaluation based on when info requests are allowed vs. current stage */}
           {isActiveInfoRequest && onFulfillInfoRequest && entry.requiredFulfilment && (
             <Button
               size="sm"
@@ -53,3 +50,4 @@ export function HistoryEntryItem({
     </div>
   );
 }
+

@@ -2,7 +2,7 @@
 'use client';
 
 import type { LoanRequest, LoanHistoryEntry } from '@/types/loan';
-import { LoanStage } from '@/types/loan';
+// Removed: import { LoanStage } from '@/types/loan';
 import { Clock } from 'lucide-react';
 import { HistoryEntryItem } from '@/components/loan/common/HistoryEntryItem';
 
@@ -13,11 +13,10 @@ interface LoanHistoryTimelineProps {
 }
 
 export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal }: LoanHistoryTimelineProps) {
-  const activeInfoRequestEntry = loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED
-    ? [...loan.history]
-        .reverse()
-        .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")))
-    : undefined;
+  // Find the latest history entry that has a 'requiredFulfilment' and is not yet marked as fulfilled.
+  const activeInfoRequestEntry = [...loan.history]
+    .reverse()
+    .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
 
   return (
     <div>
@@ -28,8 +27,7 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
             <HistoryEntryItem
               key={entry.id}
               entry={entry}
-              loanCurrentStage={loan.currentStage}
-              isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id && loan.currentStage === LoanStage.ADDITIONAL_INFO_REQUIRED}
+              isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
               onFulfillInfoRequest={onFulfillInfoRequest}
               isSaving={isSavingGlobal}
             />
@@ -41,3 +39,4 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
     </div>
   );
 }
+
