@@ -6,16 +6,16 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service'; 
+import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
-import { LoanStage } from '@/types/loan';
+// Removed: import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
-  approvalRate: string; 
+  approvalRate: string;
   overdueTasksCount: number;
 }
 
@@ -29,16 +29,16 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); 
+        const result = await getLoanRequests();
 
         if (result.error) {
-          console.error("Error from getLoanRequests service in Dashboard:", result.error, result); 
+          console.error("Error from getLoanRequests service in Dashboard:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
           const loans = result.loans;
-          const activeLoans = loans.filter(
-            loan => ![LoanStage.REJECTED, LoanStage.FUNDS_DISBURSED].includes(loan.currentStage)
-          ).length;
+          
+          // A loan is active if it's not in a terminal stage
+          const activeLoans = loans.filter(loan => !loan.isTerminalStage).length;
 
           const sevenDaysAgo = subDays(new Date(), 7);
           const newApplications = loans.filter(
@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" ? ( // Display error in one card as an example
+          ) : error && title === "Active Loans" ? ( 
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -98,7 +98,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !stats && !isLoading) { 
+  if (error && !stats && !isLoading) {
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

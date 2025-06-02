@@ -11,17 +11,17 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  department?: string; 
+  department?: string;
 }
 
 // Represents a predefined department in the system
-export type Department = string; // For now, a list of department names
+export type Department = string;
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
-  id: string; 
-  name: string; 
-  responsibleDepartment: Department; // Selected from predefined list
+  id: string;
+  name: string;
+  responsibleDepartment: Department;
   defaultTimelineDays: number;
   requiredDocumentNames: string[];
   percentageWeight: number;
@@ -30,22 +30,22 @@ export interface WorkflowStageDefinition {
 
 // Represents a specific version of a workflow
 export interface WorkflowVersion {
-  id: string; 
-  workflowDefinitionId: string; 
+  id: string;
+  workflowDefinitionId: string;
   versionNumber: number;
   description?: string;
   createdAt: string; // ISO date string
-  stages: WorkflowStageDefinition[]; 
+  stages: WorkflowStageDefinition[];
 }
 
 // Represents a workflow template for a specific loan type
 export interface WorkflowDefinition {
-  id:string; 
-  name: string; 
-  loanType: string; // e.g., "Personal Loan", "Mortgage" - links to a type of loan
+  id:string;
+  name: string;
+  loanType: string; // e.g., "Personal Loan", "Mortgage"
   description?: string;
   isActive: boolean; // Only one workflow definition can be active PER LOAN TYPE
-  versions: WorkflowVersion[]; 
+  versions: WorkflowVersion[];
 }
 
 
@@ -75,37 +75,27 @@ export interface LoanRequest {
   customerEmail: string;
   customerPhone: string;
   loanAmount: number;
-  loanType: string; // This loanType will determine which WorkflowDefinition is used
+  loanType: string;
   loanPurpose: string;
-  
-  workflowDefinitionId: string; // ID of the WorkflowDefinition this loan follows
-  workflowVersionId: string; // ID of the WorkflowVersion this loan follows
-  currentStageId: string; // ID of the current WorkflowStageDefinition
+
+  workflowDefinitionId: string;
+  workflowVersionId: string;
+  currentStageId: string;
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
-  
-  assignedDepartment?: string; // Name of the department responsible for the current stage
-  assignedTo?: string; // User ID of the assigned staff member
+
+  assignedDepartment?: string;
+  assignedTo?: string; // User ID
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
-  
-  stageDeadline?: string; // ISO date string, for current stage
+
+  stageDeadline?: string; // ISO date string
   isOverdue?: boolean; // Calculated
   isReadyForManagerReview?: boolean;
-}
 
-// This enum can be removed if stages are purely defined by WorkflowStageDefinition.name
-// Or kept for generic, non-workflow specific states if any remain.
-// For now, assuming stages are fully dynamic via workflow definitions.
-/*
-export enum LoanStage {
-  APPLICATION_SUBMITTED = "Application Submitted", 
-  PROCESSING = "Processing", 
-  ADDITIONAL_INFO_REQUIRED = "Additional Info Required", 
-  APPROVED = "Approved", 
-  REJECTED = "Rejected", 
-  FUNDS_DISBURSED = "Funds Disbursed", 
+  // Fields that can be dynamically added by the service layer
+  currentStageName?: string;
+  isTerminalStage?: boolean;
 }
-*/
