@@ -12,14 +12,16 @@ import {
   AlertTriangle,
   UserCheck,
   FolderKanban,
-  Building, 
+  Building,
 } from 'lucide-react';
 import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import { cn } from '@/lib/utils';
+// cn utility is not strictly needed here anymore since classNames are static
+// import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
@@ -35,7 +37,19 @@ const navItems = [
 
 export default function SidebarNav() {
   const pathname = usePathname();
+  const [isClient, setIsClient] = useState(false);
 
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    // Render null on the server and during the first client render pass.
+    // The actual content will be rendered on the client after hydration.
+    return null;
+  }
+
+  // Now that we are on the client, `pathname` from `usePathname()` is reliable.
   return (
     <SidebarMenu>
       {navItems.map((item) => {
@@ -48,9 +62,7 @@ export default function SidebarNav() {
               <SidebarMenuButton
                 asChild
                 isActive={buttonIsActive}
-                // Removed conditional active styling from className here.
-                // Relies on SidebarMenuButton's internal data-[active=true] styling.
-                className="justify-start"
+                className="justify-start" // Static className
                 tooltip={item.label}
               >
                 <a>
@@ -59,20 +71,19 @@ export default function SidebarNav() {
                 </a>
               </SidebarMenuButton>
             </Link>
-            {/* Sub-item rendering logic (for future use if subItems are added back to an item) */}
+            {/* Sub-item rendering logic - ensure pathname is used here too */}
             {item.subItems && item.subItems.length > 0 && pathname.startsWith(item.href) && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
                 {item.subItems.map(subItem => {
                   const SubIcon = subItem.icon;
-                  const isSubActive = pathname === subItem.href;
+                  const isSubActive = pathname === subItem.href; // Use consistent pathname
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
                        <Link href={subItem.href} legacyBehavior passHref>
                          <SidebarMenuButton
                             asChild
                             isActive={isSubActive}
-                            // Relies on SidebarMenuButton's internal data-[active=true] styling.
-                            className="justify-start text-sm h-8"
+                            className="justify-start text-sm h-8" // Static className
                             tooltip={subItem.label}
                          >
                             <a>
