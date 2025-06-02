@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests } from '@/services/loan-service'; 
+import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest, WorkflowDefinition } from '@/types/loan'; // Workflow types not directly used here but good for context
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react'; // Added useCallback here
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { mockWorkflowDefinitions } from '@/lib/mock-data'; // To resolve stage names
 
@@ -40,13 +40,13 @@ export default function DepartmentQueuePage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); 
+        const result = await getLoanRequests();
         if (result.error) {
           setError(result.error);
           setUnassignedLoans([]);
         } else if (result.loans) {
           // A loan is "unassigned" if it has an assignedDepartment but no assignedTo (user)
-          const filteredLoans = result.loans.filter(loan => 
+          const filteredLoans = result.loans.filter(loan =>
             loan.assignedDepartment && !loan.assignedTo && !loan.isReadyForManagerReview
             // Also ensure it's not in a terminal-like state if those exist outside workflow
           );
@@ -67,7 +67,7 @@ export default function DepartmentQueuePage() {
   }, []);
 
 
-  if (isLoading) { /* ... loading UI ... */ 
+  if (isLoading) { /* ... loading UI ... */
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -75,7 +75,7 @@ export default function DepartmentQueuePage() {
       </div>
     );
   }
-  if (error) { /* ... error UI ... */ 
+  if (error) { /* ... error UI ... */
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
