@@ -8,9 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
 import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
-// Removed: import { LoanStage } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
+
+// Firestore connection test imports
+import { db } from '@/lib/firebase';
+import { collection, getDocs, limit, query as firestoreQuery } from 'firebase/firestore';
+
 
 interface DashboardStats {
   activeLoansCount: number;
@@ -23,6 +27,43 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Firestore Connection Test Effect
+  useEffect(() => {
+    const testFirestoreConnection = async () => {
+      console.log("Attempting Firestore connection test...");
+      try {
+        // Try to read the first document from the 'departments' collection
+        // If 'departments' doesn't exist or is empty, this will still "succeed" with an empty snapshot
+        // If you have a specific test collection/document, use that.
+        const departmentsColRef = collection(db, "departments");
+        const q = firestoreQuery(departmentsColRef, limit(1));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          console.log("Firestore connection SUCCESSFUL! Found documents in 'departments':");
+          querySnapshot.forEach((doc) => {
+            console.log(doc.id, " => ", doc.data());
+          });
+        } else {
+          console.log("Firestore connection SEEMS OK, but 'departments' collection is empty or does not exist. This is not an error if the collection is indeed empty/absent.");
+        }
+      } catch (e: any) {
+        console.error("Firestore connection FAILED:", e);
+        console.error("Detailed Firebase Error:", {
+          code: e.code,
+          message: e.message,
+          name: e.name,
+        });
+        alert(`Firestore Connection Failed. Check browser console & Firebase setup. Error: ${e.message}`);
+      }
+    };
+    // Run the test only once on component mount for debugging
+    if (process.env.NODE_ENV === 'development') { // Only run in development
+        testFirestoreConnection();
+    }
+  }, []);
+
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -37,12 +78,12 @@ export default function DashboardPage() {
         } else if (result.loans) {
           const loans = result.loans;
           
-          // A loan is active if it's not in a terminal stage
           const activeLoans = loans.filter(loan => !loan.isTerminalStage).length;
 
           const sevenDaysAgo = subDays(new Date(), 7);
           const newApplications = loans.filter(
-            loan => isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
+            (loan): loan is LoanRequest & { submittedDate: string } => 
+              typeof loan.submittedDate === 'string' && isAfter(parseISO(loan.submittedDate), sevenDaysAgo)
           ).length;
           
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
@@ -54,7 +95,7 @@ export default function DashboardPage() {
             overdueTasksCount: overdueTasks,
           });
         } else {
-          setError("No loan data received.");
+          setError("No loan data received for dashboard.");
         }
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
@@ -75,7 +116,7 @@ export default function DashboardPage() {
           <Icon className={cn("h-4 w-4 text-muted-foreground", isErrorSource && "text-destructive")} />
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && title === "Active Loans" ? ( // Show loader only for one card or a general loading state
             <Loader2 className="h-6 w-6 animate-spin" />
           ) : error && title === "Active Loans" ? ( 
              <div className="flex items-center text-destructive">
@@ -86,7 +127,7 @@ export default function DashboardPage() {
             <div className={cn("text-2xl font-bold", isErrorSource && "text-destructive")}>{value}</div>
           )}
           {description && !isLoading && !error && <p className="text-xs text-muted-foreground">{description}</p>}
-          {isLoading && <p className="text-xs text-muted-foreground">Loading...</p>}
+          {isLoading && title === "Active Loans" && <p className="text-xs text-muted-foreground">Loading...</p>}
         </CardContent>
       </Card>
     );
@@ -177,27 +218,27 @@ export default function DashboardPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Active Loans"
-          value={stats?.activeLoansCount ?? (isLoading ? '' : 0)}
+          value={stats?.activeLoansCount ?? (isLoading && !error ? '' : 0)}
           icon={Briefcase}
         />
         <StatCard
           title="New Applications (7 days)"
-          value={stats?.newApplicationsCount ?? (isLoading ? '' : 0)}
+          value={stats?.newApplicationsCount ?? (isLoading && !error ? '' : 0)}
           icon={Users}
         />
         <StatCard
           title="Approval Rate"
-          value={stats?.approvalRate ?? (isLoading ? '' : "N/A")}
+          value={stats?.approvalRate ?? (isLoading && !error ? '' : "N/A")}
           icon={TrendingUp}
           description={isLoading ? "" : "vs last month (placeholder)"}
         />
         <StatCard
           title="Overdue Tasks"
-          value={stats?.overdueTasksCount ?? (isLoading ? '' : 0)}
+          value={stats?.overdueTasksCount ?? (isLoading && !error ? '' : 0)}
           icon={AlertTriangle}
           description={isLoading ? "" : "Require immediate attention"}
           link="/overdue-tasks"
-          isErrorSource={stats ? (stats.overdueTasksCount > 0) : false}
+          isErrorSource={stats ? (stats.overdueTasksCount > 0 && !error) : false}
         />
       </div>
 
