@@ -36,6 +36,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { mockWorkflowDefinitions } from '@/lib/mock-data'; // Using new mock data
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge'; // Added missing import
 import {
   Dialog,
   DialogContent,
@@ -456,3 +457,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
