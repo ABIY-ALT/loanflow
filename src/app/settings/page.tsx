@@ -34,7 +34,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
-import { mockWorkflowDefinitions, mockDepartments } from '@/lib/mock-data'; 
+import { mockWorkflowDefinitions, mockDepartments } from '@/lib/mock-data';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -172,7 +172,7 @@ function EditWorkflowVersionDialog({
 
   useEffect(() => {
     if (versionToEdit) {
-      setEditedVersion(JSON.parse(JSON.stringify(versionToEdit))); 
+      setEditedVersion(JSON.parse(JSON.stringify(versionToEdit)));
     } else {
       setEditedVersion(null);
     }
@@ -256,7 +256,7 @@ function EditWorkflowVersionDialog({
       onOpenChange(false);
     }
   };
-  
+
   if (!workflowDefinition || !editedVersion) return null;
 
   const currentTotalWeight = editedVersion.stages.reduce((sum, config) => sum + (Number(config.percentageWeight) || 0), 0);
@@ -272,10 +272,6 @@ function EditWorkflowVersionDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-4">
-            <div>
-                <Label htmlFor={`version-desc-${editedVersion.id}`}>Version Description/Notes</Label>
-                <Textarea id={`version-desc-${editedVersion.id}`} value={editedVersion.description || ''} onChange={e => setEditedVersion(v => v ? {...v, description: e.target.value} : null)} placeholder="Reason for this version, e.g., Updated for new compliance rules" />
-            </div>
             <Separator/>
             <h4 className="font-medium">Stages in this Version (Sorted by Order)</h4>
              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleInternalReorderStages}>
@@ -327,9 +323,9 @@ function EditWorkflowVersionDialog({
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(() => JSON.parse(JSON.stringify(mockWorkflowDefinitions))); 
-  const [departments, setDepartments] = useState<Department[]>(() => [...mockDepartments]); // Use state for departments
-  
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(() => JSON.parse(JSON.stringify(mockWorkflowDefinitions)));
+  const [departments, setDepartments] = useState<Department[]>(() => [...mockDepartments]);
+
   const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
   const [currentWorkflowDefForEdit, setCurrentWorkflowDefForEdit] = useState<WorkflowDefinition | null>(null);
   const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
@@ -339,21 +335,21 @@ export default function SettingsPage() {
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
 
 
-  const handleActivateWorkflowVersion = (definitionId: string, versionIdToActivate: string) => {
-    const targetDef = workflowDefinitions.find(d => d.id === definitionId);
+  const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
+    const targetDef = workflowDefinitions.find(d => d.id === definitionIdToActivate);
     if (!targetDef) return;
 
-    setWorkflowDefinitions(prevDefs => 
+    setWorkflowDefinitions(prevDefs =>
       prevDefs.map(def => {
-        // If this is the definition whose version is being activated OR another definition of the SAME loan type
-        if (def.id === definitionId || def.loanType === targetDef.loanType) {
+        // If this definition is of the same loan type as the one being activated
+        if (def.loanType === targetDef.loanType) {
           return {
             ...def,
             versions: def.versions.map(v => ({
               ...v,
-              // Activate the target version if it belongs to this definition,
-              // otherwise (if it's a different definition but same loan type) deactivate all its versions.
-              isActive: (def.id === definitionId && v.id === versionIdToActivate)
+              // Activate the target version if it belongs to THIS definition,
+              // otherwise (if it's a different definition but same loan type) deactivate its versions.
+              isActive: (def.id === definitionIdToActivate && v.id === versionIdToActivate)
             }))
           };
         }
@@ -364,12 +360,13 @@ export default function SettingsPage() {
     toast({ title: "Success", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDef.name}' (${targetDef.loanType}) is now active.` });
   };
 
+
   const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion) => {
     setCurrentWorkflowDefForEdit(def);
     setCurrentVersionToEdit(version);
     setIsEditVersionDialogOpen(true);
   };
-  
+
   const handleAddNewVersion = (definitionId: string) => {
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
       if (def.id === definitionId) {
@@ -378,18 +375,25 @@ export default function SettingsPage() {
           id: `wfver-custom-${Date.now()}`,
           workflowDefinitionId: def.id,
           versionNumber: latestVersionNum + 1,
-          description: `Version ${latestVersionNum + 1}`,
           createdAt: new Date().toISOString(),
-          stages: [], 
-          isActive: false, // New versions are not active by default
+          stages: [],
+          isActive: false,
         };
+        // If no other version is active for this definition, make the new one active.
+        const hasActiveVersion = def.versions.some(v => v.isActive);
+        if (!hasActiveVersion) {
+            newVersion.isActive = true;
+        } else if (newVersion.isActive) { // Ensure only one active if we auto-activated
+             def.versions.forEach(v => v.isActive = false);
+        }
+
         return { ...def, versions: [...def.versions, newVersion].sort((a,b) => b.versionNumber - a.versionNumber) };
       }
       return def;
     }));
-    toast({title: "New Version Created", description: "Empty new version added. Edit to add stages. It is inactive by default."});
+    toast({title: "New Version Created", description: "Empty new version added. Edit to add stages. It is inactive by default unless it's the only version."});
   };
-  
+
   const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
      setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
        if (def.id === definitionId) {
@@ -408,14 +412,18 @@ export default function SettingsPage() {
         toast({ title: "Error", description: "Workflow name and loan type are required.", variant: "destructive" });
         return;
     }
-    
+    const existingForLoanType = workflowDefinitions.find(wd => wd.loanType.toLowerCase() === newWorkflowLoanType.trim().toLowerCase());
+    if(existingForLoanType){
+        toast({ title: "Error", description: `A workflow definition for loan type '${newWorkflowLoanType}' already exists: '${existingForLoanType.name}'. Each loan type should have one definition container. Add versions to it.`, variant: "destructive", duration: 7000 });
+        return;
+    }
+
     const newWorkflowDef: WorkflowDefinition = {
         id: `wfdef-custom-${Date.now()}`,
         name: newWorkflowName,
-        loanType: newWorkflowLoanType,
+        loanType: newWorkflowLoanType.trim(),
         description: newWorkflowDescription,
-        // isActive is removed from definition level
-        versions: [], 
+        versions: [],
     };
     setWorkflowDefinitions(prev => [...prev, newWorkflowDef]);
     setNewWorkflowName('');
@@ -468,14 +476,13 @@ export default function SettingsPage() {
                     <div>
                       <p className="font-semibold">Version {version.versionNumber} {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}</p>
                       <p className="text-xs text-muted-foreground">Created: {new Date(version.createdAt).toLocaleDateString()} | Stages: {version.stages.length}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{version.description || "No version notes."}</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center">
-                        {!version.isActive && 
+                        {!version.isActive &&
                             <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)}>
                                 <ShieldCheck className="mr-2 h-4 w-4"/>Set Active
                             </Button>}
-                        {version.isActive && 
+                        {version.isActive &&
                             <Button variant="ghost" size="sm" disabled className="text-green-600">
                                 <ShieldCheck className="mr-2 h-4 w-4"/>Currently Active
                             </Button>}
@@ -501,7 +508,7 @@ export default function SettingsPage() {
             </div>
         </CardContent>
       </Card>
-      
+
       <EditWorkflowVersionDialog
         isOpen={isEditVersionDialogOpen}
         onOpenChange={setIsEditVersionDialogOpen}
@@ -534,4 +541,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

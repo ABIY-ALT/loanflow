@@ -33,10 +33,9 @@ export interface WorkflowVersion {
   id: string;
   workflowDefinitionId: string;
   versionNumber: number;
-  description?: string;
   createdAt: string; // ISO date string
   stages: WorkflowStageDefinition[];
-  isActive: boolean; // Only one version can be active PER LOAN TYPE
+  isActive: boolean; // Only one version can be active PER LOAN TYPE for its parent WorkflowDefinition
 }
 
 // Represents a workflow template for a specific loan type
@@ -45,7 +44,6 @@ export interface WorkflowDefinition {
   name: string;
   loanType: string; // e.g., "Personal Loan", "Mortgage" - defines the type of loan this workflow applies to
   description?: string;
-  // isActive removed from here
   versions: WorkflowVersion[];
 }
 
@@ -97,7 +95,6 @@ export interface LoanRequest {
   isReadyForManagerReview?: boolean;
 
   // Dynamically added by service layer
-  currentStageName?: string; 
-  isTerminalStage?: boolean; 
+  currentStageName?: string;
+  isTerminalStage?: boolean;
 }
-

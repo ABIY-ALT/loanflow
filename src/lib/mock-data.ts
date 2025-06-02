@@ -60,26 +60,24 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
   {
     id: 'wf_def_personal_loan',
     name: 'Standard Personal Loan Process',
-    loanType: 'Personal Loan', // Crucial: defines the type this workflow is for
+    loanType: 'Personal Loan',
     description: 'Default workflow for processing personal loan applications.',
     versions: [
       {
         id: 'pl_v_1',
         workflowDefinitionId: 'wf_def_personal_loan',
         versionNumber: 1,
-        description: 'Initial version of the personal loan process.',
         createdAt: new Date(MOCK_REFERENCE_DATE - 30 * 24 * 60 * 60 * 1000).toISOString(),
         stages: personalLoan_v1_stages,
-        isActive: false, // V1 is not active
+        isActive: false,
       },
       {
         id: 'pl_v_2',
         workflowDefinitionId: 'wf_def_personal_loan',
         versionNumber: 2,
-        description: 'Updated personal loan process with more automation (V2).',
         createdAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
         stages: personalLoan_v2_stages,
-        isActive: true, // V2 is the active one for Personal Loans
+        isActive: true,
       }
     ],
   },
@@ -92,14 +90,13 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
       id: 'al_v_1',
       workflowDefinitionId: 'wf_def_auto_loan',
       versionNumber: 1,
-      description: 'Initial auto loan process.',
       createdAt: new Date(MOCK_REFERENCE_DATE - 45 * 24 * 60 * 60 * 1000).toISOString(),
-      stages: [ 
+      stages: [
         { id: 'al_v1_s1', name: 'Application & Vehicle Info (AL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Application Form', 'Vehicle Purchase Agreement'], percentageWeight: 20, order: 0 },
         { id: 'al_v1_s2', name: 'Credit & Affordability Check (AL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Income Proof'], percentageWeight: 40, order: 1 },
         { id: 'al_v1_s3', name: 'Final Review & Funding (AL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Insurance Proof', 'Signed Loan Agreement'], percentageWeight: 40, order: 2 },
       ],
-      isActive: true, // This version is active for Auto Loans
+      isActive: true,
     }],
   },
   {
@@ -111,31 +108,26 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
       id: 'ml_v_1',
       workflowDefinitionId: 'wf_def_mortgage_loan',
       versionNumber: 1,
-      description: 'Initial mortgage process.',
       createdAt: new Date(MOCK_REFERENCE_DATE - 60 * 24 * 60 * 60 * 1000).toISOString(),
       stages: mortgageLoan_v1_stages,
-      isActive: true, // This version is active for Mortgages
+      isActive: true,
     }],
   },
 ];
 
 // --- Initial Loan Requests (Examples) ---
-// Helper to find an active version for a given loan type for initial mock data
 const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: string, versionId: string, stages: WorkflowStageDefinition[] } | null => {
-  for (const def of mockWorkflowDefinitions) {
-    if (def.loanType === loanType) {
-      const activeVersion = def.versions.find(v => v.isActive);
-      if (activeVersion) {
-        return { definitionId: def.id, versionId: activeVersion.id, stages: activeVersion.stages };
-      }
-    }
+  const definition = mockWorkflowDefinitions.find(def => def.loanType === loanType);
+  if (!definition) return null;
+  const activeVersion = definition.versions.find(v => v.isActive);
+  if (activeVersion) {
+    return { definitionId: definition.id, versionId: activeVersion.id, stages: activeVersion.stages };
   }
-  // Fallback to the first version of the first definition matching the loan type if no explicitly active one is found
-  const fallbackDef = mockWorkflowDefinitions.find(def => def.loanType === loanType);
-  if (fallbackDef && fallbackDef.versions.length > 0) {
-    const firstVersion = fallbackDef.versions.sort((a,b) => a.versionNumber - b.versionNumber)[0];
-     console.warn(`No active version found for loan type "${loanType}" for mock data. Falling back to first version ID ${firstVersion.id} of definition ${fallbackDef.id}. Please ensure an active version is set in mock data.`);
-    return { definitionId: fallbackDef.id, versionId: firstVersion.id, stages: firstVersion.stages };
+  // Fallback to latest version if no active one is explicitly set for the loan type
+  if (definition.versions.length > 0) {
+    const latestVersion = [...definition.versions].sort((a,b) => b.versionNumber - a.versionNumber)[0];
+    console.warn(`No active version for loan type "${loanType}". Falling back to latest version ${latestVersion.versionNumber}.`);
+    return { definitionId: definition.id, versionId: latestVersion.id, stages: latestVersion.stages };
   }
   return null;
 };
@@ -143,6 +135,7 @@ const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: s
 
 const personalLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Personal Loan');
 const autoLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Auto Loan');
+const mortgageLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Mortgage');
 
 export let mockLoanRequests: LoanRequest[] = [
   {
@@ -153,7 +146,7 @@ export let mockLoanRequests: LoanRequest[] = [
     customerEmail: 'alice@example.com',
     customerPhone: '555-0101',
     loanAmount: 10000,
-    loanType: 'Personal Loan', 
+    loanType: 'Personal Loan',
     loanPurpose: 'Home Renovation',
     workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
     workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
@@ -191,10 +184,10 @@ export let mockLoanRequests: LoanRequest[] = [
     workflowVersionId: autoLoanActiveWfInfo?.versionId || '',
     currentStageId: autoLoanActiveWfInfo?.stages[0].id || '',
     assignedDepartment: autoLoanActiveWfInfo?.stages[0].responsibleDepartment,
-    assignedTo: undefined, 
+    assignedTo: undefined,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'Submitted' } ],
+    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'Submitted', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString() } ],
     history: [
       { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
     ],
@@ -213,13 +206,13 @@ export let mockLoanRequests: LoanRequest[] = [
     loanType: 'Personal Loan',
     loanPurpose: 'Debt Consolidation',
     workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: personalLoanActiveWfInfo?.versionId || '', 
-    currentStageId: personalLoanActiveWfInfo?.stages[3].id || '', 
-    assignedDepartment: personalLoanActiveWfInfo?.stages[3].responsibleDepartment, 
-    assignedTo: 'user-underwriter-bob', 
+    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
+    currentStageId: personalLoanActiveWfInfo?.stages[3].id || '',
+    assignedDepartment: personalLoanActiveWfInfo?.stages[3].responsibleDepartment,
+    assignedTo: 'user-underwriter-bob',
     submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'Verified' } ],
+    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'Verified', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString() } ],
     history: [
       { id: 'hist-3prev', stageName: personalLoanActiveWfInfo?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'Credit Scoring complete. Promoted to Underwriting for final review.'},
       { id: 'hist-3', stageName: personalLoanActiveWfInfo?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
@@ -228,8 +221,8 @@ export let mockLoanRequests: LoanRequest[] = [
     isOverdue: false,
     isReadyForManagerReview: true,
   },
-  { 
-    id: 'loan-004', // Example of a loan on an OLDER (inactive) version of a workflow
+  {
+    id: 'loan-004',
     loanNumber: 'LN00004',
     customerNumber: 'CUST004',
     customerName: 'Diana Prince (Personal Loan - Old Inactive V1 Workflow)',
@@ -238,19 +231,19 @@ export let mockLoanRequests: LoanRequest[] = [
     loanAmount: 15000,
     loanType: 'Personal Loan',
     loanPurpose: 'Travel',
-    workflowDefinitionId: 'wf_def_personal_loan', // Belongs to "Standard Personal Loan" definition
+    workflowDefinitionId: 'wf_def_personal_loan',
     workflowVersionId: 'pl_v_1', // Specifically tied to V1 (which is isActive: false)
-    currentStageId: personalLoan_v1_stages[1].id, 
-    assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment, 
-    assignedTo: 'user-jane-doe', 
+    currentStageId: personalLoan_v1_stages[1].id,
+    assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment,
+    assignedTo: 'user-jane-doe',
     submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'Verified' } ],
+    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'Verified', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString() } ],
     history: [
       { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: true, 
+    isOverdue: true,
     isReadyForManagerReview: false,
   },
    {
@@ -264,13 +257,13 @@ export let mockLoanRequests: LoanRequest[] = [
     loanType: 'Personal Loan',
     loanPurpose: 'Education',
     workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: personalLoanActiveWfInfo?.versionId || '', // Should be pl_v_2 if it's active
-    currentStageId: personalLoanActiveWfInfo?.stages[1].id || '', // e.g., 'Automated Document Verification (PL V2)'
-    assignedDepartment: personalLoanActiveWfInfo?.stages[1].responsibleDepartment, // Origination
+    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
+    currentStageId: personalLoanActiveWfInfo?.stages[1].id || '',
+    assignedDepartment: personalLoanActiveWfInfo?.stages[1].responsibleDepartment,
     assignedTo: undefined, // Unassigned
     submittedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'Submitted'}],
+    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'Submitted', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString()}],
     history: [
       { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
     ],
@@ -280,7 +273,6 @@ export let mockLoanRequests: LoanRequest[] = [
   },
 ];
 
-// Function to quickly check which version is active for a loan type (for testing/logging)
 export const logActiveVersionForLoanType = (loanType: string) => {
     const wfDef = mockWorkflowDefinitions.find(def => def.loanType === loanType);
     if (!wfDef) {
@@ -294,8 +286,3 @@ export const logActiveVersionForLoanType = (loanType: string) => {
         console.log(`No active version found for loan type: ${loanType} in definition: ${wfDef.name}`);
     }
 };
-
-// Example calls for logging (can be used during development/testing)
-// logActiveVersionForLoanType("Personal Loan");
-// logActiveVersionForLoanType("Auto Loan");
-

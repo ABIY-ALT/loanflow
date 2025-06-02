@@ -16,53 +16,60 @@ enum UserRole {
 }
 
 model User {
-  id                   String        @id @default(uuid())
-  name                 String
-  email                String        @unique
-  role                 UserRole
-  department           String? // Or link to a Department table
-  loanRequestsAssigned LoanRequest[] @relation("AssignedLoans")
+  id                      String        @id @default(uuid())
+  name                    String
+  email                   String        @unique
+  role                    UserRole
+  loanRequestsAssigned    LoanRequest[] @relation("LoanAssignedToUser")
+  // departmentId String? // Future enhancement
+  // department Department? @relation(fields: [departmentId], references: [id]) // Future enhancement
 }
 
+// model Department { // Future enhancement for more structured department management
+//   id String @id @default(uuid())
+//   name String @unique
+//   users User[]
+//   workflowStages WorkflowStage[] @relation("StageResponsibleDepartment")
+// }
+
 model Workflow {
-  id          String            @id @default(uuid())
-  name        String // e.g., "Standard Personal Loan Workflow"
-  loanType    String // e.g., "Personal Loan", "Mortgage". Defines which loan types this workflow definition applies to.
+  id          String   @id @default(uuid())
+  name        String
+  loanType    String // e.g., "Personal Loan", "Mortgage"
   description String?
-  // isActive removed from here
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  // isActive removed - version level activation now
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   versions    WorkflowVersion[]
 }
 
 model WorkflowVersion {
-  id                   String              @id @default(uuid())
-  workflowId           String
-  workflow             Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  versionNumber        Int
-  description          String?
-  isActive             Boolean             @default(false) // Only one version PER loanType (across all Workflow Definitions) should be active.
-  createdAt            DateTime            @default(now())
-  stages               WorkflowStage[]
-  loanRequests         LoanRequest[]       @relation("LoanWorkflowVersion")
-
-  @@unique([workflowId, versionNumber]) // A workflow definition cannot have two versions with the same number
+  id                  String            @id @default(uuid())
+  workflowId          String
+  workflow            Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  versionNumber       Int
+  createdAt           DateTime          @default(now())
+  isActive            Boolean           @default(false) // Only one version active per WorkflowDefinition.loanType
+  stages              WorkflowStage[]
+  loanRequests        LoanRequest[] // Loans following this specific version
 }
 
 model WorkflowStage {
-  id                      String   @id @default(uuid())
-  workflowVersionId       String
-  workflowVersion         WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
-  name                    String
-  responsibleDepartment   String // Name of the department
-  defaultTimelineDays     Int
-  requiredDocumentNames   String[]
-  percentageWeight        Int
-  order                   Int // Defines the sequence
-  loanRequestsAtThisStage LoanRequest[] @relation("LoanCurrentStage")
+  id                    String    @id @default(uuid())
+  workflowVersionId     String
+  workflowVersion       WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  name                  String
+  responsibleDepartment String    // Name of the department
+  defaultTimelineDays   Int
+  requiredDocumentNames String[]
+  percentageWeight      Int
+  order                 Int       // Defines the sequence of the stage
+  loanRequests          LoanRequest[] // Loans currently in this stage
 
-  @@index([workflowVersionId, order])
+  @@unique([workflowVersionId, order]) // Ensure order is unique within a version
+  @@index([workflowVersionId])
 }
+
 
 model LoanRequest {
   id                      String   @id @default(uuid())
@@ -77,29 +84,25 @@ model LoanRequest {
   submittedDate           DateTime @default(now())
   lastUpdatedDate         DateTime @updatedAt
 
-  workflowDefinitionId    String // To quickly know which high-level definition it belongs to (optional, denormalization)
-  workflowVersionId       String
-  workflowVersion         WorkflowVersion @relation("LoanWorkflowVersion", fields: [workflowVersionId], references: [id])
+  workflowVersionId       String // Points to the specific WorkflowVersion this loan follows
+  workflowVersion         WorkflowVersion @relation(fields: [workflowVersionId], references: [id])
   
-  currentStageId          String
-  currentStage            WorkflowStage   @relation("LoanCurrentStage", fields: [currentStageId], references: [id])
-  
-  assignedDepartment      String? // Derived from currentStage.responsibleDepartment
+  currentWorkflowStageId  String // Points to a WorkflowStage.id
+  currentWorkflowStage    WorkflowStage @relation(fields: [currentWorkflowStageId], references: [id])
+
+  assignedDepartment      String?  // Denormalized from currentWorkflowStage.responsibleDepartment for easier querying
   assignedToId            String?
-  assignedTo              User?    @relation("AssignedLoans", fields: [assignedToId], references: [id])
-  
+  assignedTo              User?    @relation("LoanAssignedToUser", fields: [assignedToId], references: [id])
+
   documents               Json // Array of LoanDocument
   history                 Json // Array of LoanHistoryEntry
-  
+
   stageDeadline           DateTime?
   // isOverdue is a calculated field, not stored directly
   isReadyForManagerReview Boolean  @default(false)
-}
 
-// Enums like LoanDocumentStatus could be defined if 'documents' becomes a separate table
-// enum LoanDocumentStatus {
-//   PENDING
-//   SUBMITTED
-//   VERIFIED
-//   REJECTED
-// }
+  @@index([workflowVersionId])
+  @@index([currentWorkflowStageId])
+  @@index([assignedToId])
+  @@index([assignedDepartment])
+}
