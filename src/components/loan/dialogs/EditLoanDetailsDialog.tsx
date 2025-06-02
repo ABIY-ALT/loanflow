@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, User, Info, Phone, DollarSign, Type, Landmark } from 'lucide-react';
-import type { LoanRequest, User as UserType } from '@/types/loan';
+import type { LoanRequest, User as UserType, Department } from '@/types/loan';
 import { useEffect } from 'react';
 
 export const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
@@ -50,7 +50,7 @@ interface EditLoanDetailsDialogProps {
   onOpenChange: (isOpen: boolean) => void;
   loan: LoanRequest | null;
   users: UserType[]; // Potentially filtered by department already
-  currentDepartment?: string; // To inform the user
+  currentDepartment?: Department; // To inform the user
   onSubmit: (data: EditLoanFormValues) => Promise<void>;
   isSaving: boolean;
 }
@@ -135,7 +135,7 @@ export function EditLoanDetailsDialog({
 
             <FormField control={form.control} name="loanPurpose" render={({ field }) => ( <FormItem> <FormLabel>Loan Purpose</FormLabel> <FormControl><div className="relative"><Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} rows={3} disabled={isSaving} /></div></FormControl> <FormDesc>Provide a clear and concise reason for the loan application.</FormDesc> <FormMessage /> </FormItem> )} />
             <DialogFooter className="pt-4">
-              <DialogClose asChild> <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button> </DialogClose>
+              <DialogClose asChild><Button type="button" variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={isSaving}> {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes </Button>
             </DialogFooter>
           </form>
