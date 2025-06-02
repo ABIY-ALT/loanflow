@@ -11,17 +11,17 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  department?: string;
+  department?: Department; // Department name
 }
 
 // Represents a predefined department in the system
-export type Department = string;
+export type Department = string; // e.g., "Origination", "Underwriting"
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
   id: string;
   name: string;
-  responsibleDepartment: Department;
+  responsibleDepartment: Department; // Name of the department
   defaultTimelineDays: number;
   requiredDocumentNames: string[];
   percentageWeight: number;
@@ -36,15 +36,16 @@ export interface WorkflowVersion {
   description?: string;
   createdAt: string; // ISO date string
   stages: WorkflowStageDefinition[];
+  isActive: boolean; // Only one version can be active PER LOAN TYPE
 }
 
 // Represents a workflow template for a specific loan type
 export interface WorkflowDefinition {
   id:string;
   name: string;
-  loanType: string; // e.g., "Personal Loan", "Mortgage"
+  loanType: string; // e.g., "Personal Loan", "Mortgage" - defines the type of loan this workflow applies to
   description?: string;
-  isActive: boolean; // Only one workflow definition can be active PER LOAN TYPE
+  // isActive removed from here
   versions: WorkflowVersion[];
 }
 
@@ -78,14 +79,14 @@ export interface LoanRequest {
   loanType: string;
   loanPurpose: string;
 
-  workflowDefinitionId: string;
-  workflowVersionId: string;
-  currentStageId: string;
+  workflowDefinitionId: string; // Points to the parent WorkflowDefinition
+  workflowVersionId: string; // Points to the specific WorkflowVersion this loan follows
+  currentStageId: string; // Points to a WorkflowStageDefinition.id within the workflowVersionId
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
 
-  assignedDepartment?: string;
+  assignedDepartment?: string; // Name of the department responsible for the current stage
   assignedTo?: string; // User ID
 
   documents: LoanDocument[];
@@ -95,7 +96,8 @@ export interface LoanRequest {
   isOverdue?: boolean; // Calculated
   isReadyForManagerReview?: boolean;
 
-  // Fields that can be dynamically added by the service layer
-  currentStageName?: string;
-  isTerminalStage?: boolean;
+  // Dynamically added by service layer
+  currentStageName?: string; 
+  isTerminalStage?: boolean; 
 }
+

@@ -27,42 +27,41 @@ export const mockDepartments: Department[] = [
 
 // --- Workflow Mock Data ---
 const personalLoan_v1_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v1_s1', name: 'Application Intake', responsibleDepartment: 'Origination', defaultTimelineDays: 2, requiredDocumentNames: ['Identification Card', 'Application Form'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v1_s2', name: 'Initial Document Review', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Proof of Income', 'Bank Statement'], percentageWeight: 20, order: 1 },
-  { id: 'pl_v1_s3', name: 'Credit Check', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Credit Report Consent'], percentageWeight: 20, order: 2 },
-  { id: 'pl_v1_s4', name: 'Basic Underwriting', responsibleDepartment: 'Underwriting', defaultTimelineDays: 3, requiredDocumentNames: [], percentageWeight: 30, order: 3 },
-  { id: 'pl_v1_s5', name: 'Final Approval Review', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Signed Offer Letter'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v1_s6', name: 'Funds Disbursement Prep', responsibleDepartment: 'Closing', defaultTimelineDays: 2, requiredDocumentNames: ['Payment Instructions'], percentageWeight: 0, order: 5 },
-  { id: 'pl_v1_s7', name: 'Loan Closed - Disbursed', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 6 },
+  { id: 'pl_v1_s1', name: 'Application Intake (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 2, requiredDocumentNames: ['Identification Card', 'Application Form'], percentageWeight: 10, order: 0 },
+  { id: 'pl_v1_s2', name: 'Initial Document Review (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Proof of Income', 'Bank Statement'], percentageWeight: 20, order: 1 },
+  { id: 'pl_v1_s3', name: 'Credit Check (PL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Credit Report Consent'], percentageWeight: 20, order: 2 },
+  { id: 'pl_v1_s4', name: 'Basic Underwriting (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 3, requiredDocumentNames: [], percentageWeight: 30, order: 3 },
+  { id: 'pl_v1_s5', name: 'Final Approval Review (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Signed Offer Letter'], percentageWeight: 15, order: 4 },
+  { id: 'pl_v1_s6', name: 'Funds Disbursement Prep (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 2, requiredDocumentNames: ['Payment Instructions'], percentageWeight: 0, order: 5 },
+  { id: 'pl_v1_s7', name: 'Loan Closed - Disbursed (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 6 },
 ];
 const personalLoan_v2_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v2_s1', name: 'Online Application Intake', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Online Application Summary'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v2_s2', name: 'Automated Document Verification', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Digital ID Upload', 'Income API Consent'], percentageWeight: 15, order: 1 },
-  { id: 'pl_v2_s3', name: 'AI-Assisted Credit Scoring', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 25, order: 2 },
-  { id: 'pl_v2_s4', name: 'Underwriter Review (V2)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Risk Assessment Report'], percentageWeight: 30, order: 3 },
-  { id: 'pl_v2_s5', name: 'E-Signature & Closing Prep', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Final Agreement E-sign'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v2_s6', name: 'Loan Closed - Disbursed (V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 5 },
+  { id: 'pl_v2_s1', name: 'Online Application Intake (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Online Application Summary'], percentageWeight: 10, order: 0 },
+  { id: 'pl_v2_s2', name: 'Automated Document Verification (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Digital ID Upload', 'Income API Consent'], percentageWeight: 15, order: 1 },
+  { id: 'pl_v2_s3', name: 'AI-Assisted Credit Scoring (PL V2)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 25, order: 2 },
+  { id: 'pl_v2_s4', name: 'Underwriter Review (PL V2)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Risk Assessment Report'], percentageWeight: 30, order: 3 },
+  { id: 'pl_v2_s5', name: 'E-Signature & Closing Prep (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Final Agreement E-sign'], percentageWeight: 15, order: 4 },
+  { id: 'pl_v2_s6', name: 'Loan Closed - Disbursed (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 5 },
 ];
 
 const mortgageLoan_v1_stages: WorkflowStageDefinition[] = [
-    { id: 'ml_v1_s1', name: 'Pre-qualification Application', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Pre-qual Form', 'ID'], percentageWeight: 5, order: 0 },
-    { id: 'ml_v1_s2', name: 'Full Application & Doc Collection', responsibleDepartment: 'Origination', defaultTimelineDays: 7, requiredDocumentNames: ['Full Application', 'Income Proof', 'Asset Statements'], percentageWeight: 15, order: 1 },
-    { id: 'ml_v1_s3', name: 'Property Appraisal Ordered', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Appraisal Request'], percentageWeight: 5, order: 2 },
-    { id: 'ml_v1_s4', name: 'Appraisal Review & Credit Analysis', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 5, requiredDocumentNames: ['Appraisal Report', 'Credit Report'], percentageWeight: 25, order: 3 },
-    { id: 'ml_v1_s5', name: 'Underwriting Decision', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, requiredDocumentNames: ['Underwriting Worksheet'], percentageWeight: 30, order: 4 },
-    { id: 'ml_v1_s6', name: 'Conditional Approval Issued', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Conditional Approval Letter'], percentageWeight: 5, order: 5 },
-    { id: 'ml_v1_s7', name: 'Closing Disclosure & Final Docs', responsibleDepartment: 'Closing', defaultTimelineDays: 3, requiredDocumentNames: ['Closing Disclosure', 'Insurance Binder'], percentageWeight: 10, order: 6 },
-    { id: 'ml_v1_s8', name: 'Loan Closed - Funded', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 7 },
+    { id: 'ml_v1_s1', name: 'Pre-qualification Application (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Pre-qual Form', 'ID'], percentageWeight: 5, order: 0 },
+    { id: 'ml_v1_s2', name: 'Full Application & Doc Collection (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 7, requiredDocumentNames: ['Full Application', 'Income Proof', 'Asset Statements'], percentageWeight: 15, order: 1 },
+    { id: 'ml_v1_s3', name: 'Property Appraisal Ordered (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Appraisal Request'], percentageWeight: 5, order: 2 },
+    { id: 'ml_v1_s4', name: 'Appraisal Review & Credit Analysis (ML V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 5, requiredDocumentNames: ['Appraisal Report', 'Credit Report'], percentageWeight: 25, order: 3 },
+    { id: 'ml_v1_s5', name: 'Underwriting Decision (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, requiredDocumentNames: ['Underwriting Worksheet'], percentageWeight: 30, order: 4 },
+    { id: 'ml_v1_s6', name: 'Conditional Approval Issued (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Conditional Approval Letter'], percentageWeight: 5, order: 5 },
+    { id: 'ml_v1_s7', name: 'Closing Disclosure & Final Docs (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 3, requiredDocumentNames: ['Closing Disclosure', 'Insurance Binder'], percentageWeight: 10, order: 6 },
+    { id: 'ml_v1_s8', name: 'Loan Closed - Funded (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 7 },
 ];
 
 
 export const mockWorkflowDefinitions: WorkflowDefinition[] = [
   {
     id: 'wf_def_personal_loan',
-    name: 'Standard Personal Loan',
-    loanType: 'Personal Loan',
+    name: 'Standard Personal Loan Process',
+    loanType: 'Personal Loan', // Crucial: defines the type this workflow is for
     description: 'Default workflow for processing personal loan applications.',
-    isActive: true, // Active for "Personal Loan" type
     versions: [
       {
         id: 'pl_v_1',
@@ -71,6 +70,7 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
         description: 'Initial version of the personal loan process.',
         createdAt: new Date(MOCK_REFERENCE_DATE - 30 * 24 * 60 * 60 * 1000).toISOString(),
         stages: personalLoan_v1_stages,
+        isActive: false, // V1 is not active
       },
       {
         id: 'pl_v_2',
@@ -79,26 +79,27 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
         description: 'Updated personal loan process with more automation (V2).',
         createdAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
         stages: personalLoan_v2_stages,
+        isActive: true, // V2 is the active one for Personal Loans
       }
     ],
   },
   {
     id: 'wf_def_auto_loan',
-    name: 'Standard Auto Loan',
+    name: 'Standard Auto Loan Process',
     loanType: 'Auto Loan',
     description: 'Workflow for auto loan applications.',
-    isActive: true, // Active for "Auto Loan" type
     versions: [{
       id: 'al_v_1',
       workflowDefinitionId: 'wf_def_auto_loan',
       versionNumber: 1,
       description: 'Initial auto loan process.',
       createdAt: new Date(MOCK_REFERENCE_DATE - 45 * 24 * 60 * 60 * 1000).toISOString(),
-      stages: [ // Simplified stages for auto loan
-        { id: 'al_v1_s1', name: 'Application & Vehicle Info', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Application Form', 'Vehicle Purchase Agreement'], percentageWeight: 20, order: 0 },
-        { id: 'al_v1_s2', name: 'Credit & Affordability Check', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Income Proof'], percentageWeight: 40, order: 1 },
-        { id: 'al_v1_s3', name: 'Final Review & Funding', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Insurance Proof', 'Signed Loan Agreement'], percentageWeight: 40, order: 2 },
+      stages: [ 
+        { id: 'al_v1_s1', name: 'Application & Vehicle Info (AL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Application Form', 'Vehicle Purchase Agreement'], percentageWeight: 20, order: 0 },
+        { id: 'al_v1_s2', name: 'Credit & Affordability Check (AL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Income Proof'], percentageWeight: 40, order: 1 },
+        { id: 'al_v1_s3', name: 'Final Review & Funding (AL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Insurance Proof', 'Signed Loan Agreement'], percentageWeight: 40, order: 2 },
       ],
+      isActive: true, // This version is active for Auto Loans
     }],
   },
   {
@@ -106,7 +107,6 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     name: 'Standard Mortgage Process',
     loanType: 'Mortgage',
     description: 'Workflow for mortgage applications.',
-    isActive: true, // Active for "Mortgage" type
     versions: [{
       id: 'ml_v_1',
       workflowDefinitionId: 'wf_def_mortgage_loan',
@@ -114,67 +114,66 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
       description: 'Initial mortgage process.',
       createdAt: new Date(MOCK_REFERENCE_DATE - 60 * 24 * 60 * 60 * 1000).toISOString(),
       stages: mortgageLoan_v1_stages,
+      isActive: true, // This version is active for Mortgages
     }],
   },
-  { // Example of an older, inactive personal loan workflow definition
-    id: 'wf_def_personal_loan_old',
-    name: 'Legacy Personal Loan',
-    loanType: 'Personal Loan',
-    description: 'Older, inactive workflow for personal loans.',
-    isActive: false,
-    versions: [{
-      id: 'pl_v_0_5',
-      workflowDefinitionId: 'wf_def_personal_loan_old',
-      versionNumber: 1, // Internal versioning, but a distinct definition
-      description: 'Very old legacy process.',
-      createdAt: new Date(MOCK_REFERENCE_DATE - 300 * 24 * 60 * 60 * 1000).toISOString(),
-      stages: [
-         { id: 'pl_old_s1', name: 'Manual Application Entry', responsibleDepartment: 'Origination', defaultTimelineDays: 5, requiredDocumentNames: ['Paper Application'], percentageWeight: 50, order: 0 },
-         { id: 'pl_old_s2', name: 'Manager Manual Approval', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, requiredDocumentNames: [], percentageWeight: 50, order: 1 },
-      ],
-    }],
-  }
 ];
 
 // --- Initial Loan Requests (Examples) ---
-// Find active personal loan workflow (should be wf_def_personal_loan, latest version pl_v_2)
-const activePersonalLoanWf = mockWorkflowDefinitions.find(wf => wf.loanType === 'Personal Loan' && wf.isActive);
-const latestPersonalLoanVersion = activePersonalLoanWf?.versions.sort((a, b) => b.versionNumber - a.versionNumber)[0] || activePersonalLoanWf?.versions[0];
+// Helper to find an active version for a given loan type for initial mock data
+const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: string, versionId: string, stages: WorkflowStageDefinition[] } | null => {
+  for (const def of mockWorkflowDefinitions) {
+    if (def.loanType === loanType) {
+      const activeVersion = def.versions.find(v => v.isActive);
+      if (activeVersion) {
+        return { definitionId: def.id, versionId: activeVersion.id, stages: activeVersion.stages };
+      }
+    }
+  }
+  // Fallback to the first version of the first definition matching the loan type if no explicitly active one is found
+  const fallbackDef = mockWorkflowDefinitions.find(def => def.loanType === loanType);
+  if (fallbackDef && fallbackDef.versions.length > 0) {
+    const firstVersion = fallbackDef.versions.sort((a,b) => a.versionNumber - b.versionNumber)[0];
+     console.warn(`No active version found for loan type "${loanType}" for mock data. Falling back to first version ID ${firstVersion.id} of definition ${fallbackDef.id}. Please ensure an active version is set in mock data.`);
+    return { definitionId: fallbackDef.id, versionId: firstVersion.id, stages: firstVersion.stages };
+  }
+  return null;
+};
 
-// Find active auto loan workflow
-const activeAutoLoanWf = mockWorkflowDefinitions.find(wf => wf.loanType === 'Auto Loan' && wf.isActive);
-const latestAutoLoanVersion = activeAutoLoanWf?.versions.sort((a,b) => b.versionNumber - a.versionNumber)[0] || activeAutoLoanWf?.versions[0];
+
+const personalLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Personal Loan');
+const autoLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Auto Loan');
 
 export let mockLoanRequests: LoanRequest[] = [
   {
     id: 'loan-001',
     loanNumber: 'LN00001',
     customerNumber: 'CUST001',
-    customerName: 'Alice Wonderland (Personal Loan - Latest Workflow)',
+    customerName: 'Alice Wonderland (Unassigned Personal Loan)',
     customerEmail: 'alice@example.com',
     customerPhone: '555-0101',
     loanAmount: 10000,
-    loanType: 'Personal Loan', // Matches active Personal Loan workflow
+    loanType: 'Personal Loan', 
     loanPurpose: 'Home Renovation',
-    workflowDefinitionId: latestPersonalLoanVersion?.workflowDefinitionId || '',
-    workflowVersionId: latestPersonalLoanVersion?.id || '',
-    currentStageId: latestPersonalLoanVersion?.stages[0].id || '',
-    assignedDepartment: latestPersonalLoanVersion?.stages[0].responsibleDepartment,
-    assignedTo: undefined, // Unassigned within department
+    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
+    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
+    currentStageId: personalLoanActiveWfInfo?.stages[0].id || '',
+    assignedDepartment: personalLoanActiveWfInfo?.stages[0].responsibleDepartment,
+    assignedTo: undefined, // Unassigned
     submittedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [],
     history: [
       {
         id: 'hist-1',
-        stageName: latestPersonalLoanVersion?.stages[0].name || 'N/A',
+        stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A',
         timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'system',
         userName: 'System',
-        notes: `Loan application submitted. Workflow: ${activePersonalLoanWf?.name} (V${latestPersonalLoanVersion?.versionNumber}). Initial stage: ${latestPersonalLoanVersion?.stages[0].name}. Awaiting assignment in ${latestPersonalLoanVersion?.stages[0].responsibleDepartment}.`,
+        notes: `Loan application submitted. Workflow Version ID: ${personalLoanActiveWfInfo?.versionId}. Initial stage: ${personalLoanActiveWfInfo?.stages[0].name}. Awaiting assignment in ${personalLoanActiveWfInfo?.stages[0].responsibleDepartment}.`,
       },
     ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((latestPersonalLoanVersion?.stages[0].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[0].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: false,
     isReadyForManagerReview: false,
   },
@@ -182,25 +181,24 @@ export let mockLoanRequests: LoanRequest[] = [
     id: 'loan-002',
     loanNumber: 'LN00002',
     customerNumber: 'CUST002',
-    customerName: 'Bob The Builder (Auto Loan - Assigned)',
+    customerName: 'Bob The Builder (Unassigned Auto Loan)',
     customerEmail: 'bob@example.com',
     customerPhone: '555-0102',
     loanAmount: 25000,
-    loanType: 'Auto Loan', // Matches active Auto Loan workflow
+    loanType: 'Auto Loan',
     loanPurpose: 'New Truck Purchase',
-    workflowDefinitionId: latestAutoLoanVersion?.workflowDefinitionId || '',
-    workflowVersionId: latestAutoLoanVersion?.id || '',
-    currentStageId: latestAutoLoanVersion?.stages[0].id || '',
-    assignedDepartment: latestAutoLoanVersion?.stages[0].responsibleDepartment,
-    assignedTo: 'user-jane-doe', // Assigned to Jane in Origination (assuming she handles auto loans too)
+    workflowDefinitionId: autoLoanActiveWfInfo?.definitionId || '',
+    workflowVersionId: autoLoanActiveWfInfo?.versionId || '',
+    currentStageId: autoLoanActiveWfInfo?.stages[0].id || '',
+    assignedDepartment: autoLoanActiveWfInfo?.stages[0].responsibleDepartment,
+    assignedTo: undefined, 
     submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'Submitted' } ],
     history: [
-      { id: 'hist-2a', stageName: latestAutoLoanVersion?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: `Auto loan submitted. Workflow: ${activeAutoLoanWf?.name} V${latestAutoLoanVersion?.versionNumber}` },
-      { id: 'hist-2b', stageName: latestAutoLoanVersion?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-manager-mike', userName: 'Mike Manager (Origination)', notes: 'Assigned to Jane Doe for initial processing.'},
+      { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
     ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((latestAutoLoanVersion?.stages[0].defaultTimelineDays || 1) ) * 24 * 60 * 60 * 1000).toISOString(),
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((autoLoanActiveWfInfo?.stages[0].defaultTimelineDays || 1) ) * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: false,
     isReadyForManagerReview: false,
   },
@@ -208,51 +206,96 @@ export let mockLoanRequests: LoanRequest[] = [
     id: 'loan-003',
     loanNumber: 'LN00003',
     customerNumber: 'CUST003',
-    customerName: 'Charlie Brown (Personal Loan - Ready for UW Review)',
+    customerName: 'Charlie Brown (Personal Loan - For Manager Review)',
     customerEmail: 'charlie@example.com',
     customerPhone: '555-0103',
     loanAmount: 5000,
     loanType: 'Personal Loan',
     loanPurpose: 'Debt Consolidation',
-    workflowDefinitionId: latestPersonalLoanVersion?.workflowDefinitionId || '',
-    workflowVersionId: latestPersonalLoanVersion?.id || '', // Following V2 of personal loan
-    currentStageId: latestPersonalLoanVersion?.stages[3].id || '', // 'Underwriter Review (V2)'
-    assignedDepartment: latestPersonalLoanVersion?.stages[3].responsibleDepartment, // Underwriting
-    assignedTo: 'user-underwriter-bob', // Assigned to Bob
+    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
+    workflowVersionId: personalLoanActiveWfInfo?.versionId || '', 
+    currentStageId: personalLoanActiveWfInfo?.stages[3].id || '', 
+    assignedDepartment: personalLoanActiveWfInfo?.stages[3].responsibleDepartment, 
+    assignedTo: 'user-underwriter-bob', 
     submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'Verified' } ], // Assuming Bob generated this
+    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'Verified' } ],
     history: [
-      { id: 'hist-3prev', stageName: latestPersonalLoanVersion?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'AI Credit Scoring complete. Promoted to Underwriting for final review.'},
-      { id: 'hist-3', stageName: latestPersonalLoanVersion?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
+      { id: 'hist-3prev', stageName: personalLoanActiveWfInfo?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'Credit Scoring complete. Promoted to Underwriting for final review.'},
+      { id: 'hist-3', stageName: personalLoanActiveWfInfo?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
     ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((latestPersonalLoanVersion?.stages[3].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[3].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: false,
-    isReadyForManagerReview: true, // Ready for UW Manager (Sara) to review
+    isReadyForManagerReview: true,
   },
-  { // Example of a loan on an OLDER version of a workflow
-    id: 'loan-004',
+  { 
+    id: 'loan-004', // Example of a loan on an OLDER (inactive) version of a workflow
     loanNumber: 'LN00004',
     customerNumber: 'CUST004',
-    customerName: 'Diana Prince (Personal Loan - Old V1 Workflow)',
+    customerName: 'Diana Prince (Personal Loan - Old Inactive V1 Workflow)',
     customerEmail: 'diana@example.com',
     customerPhone: '555-0104',
     loanAmount: 15000,
-    loanType: 'Personal Loan', // This loan is still on V1 of Personal Loan workflow
+    loanType: 'Personal Loan',
     loanPurpose: 'Travel',
     workflowDefinitionId: 'wf_def_personal_loan', // Belongs to "Standard Personal Loan" definition
-    workflowVersionId: 'pl_v_1', // Specifically tied to V1
-    currentStageId: personalLoan_v1_stages[1].id, // 'Initial Document Review' from V1
-    assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment, // Origination
-    assignedTo: undefined, // Unassigned in Origination
+    workflowVersionId: 'pl_v_1', // Specifically tied to V1 (which is isActive: false)
+    currentStageId: personalLoan_v1_stages[1].id, 
+    assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment, 
+    assignedTo: 'user-jane-doe', 
     submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'Verified' } ],
     history: [
       { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
     ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(), // This one is overdue
-    isOverdue: true, // Manually set for testing, service would calculate
+    stageDeadline: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    isOverdue: true, 
+    isReadyForManagerReview: false,
+  },
+   {
+    id: 'loan-005',
+    loanNumber: 'LN00005',
+    customerNumber: 'CUST005',
+    customerName: 'Edward Nigma (Unassigned Personal Loan, V2)',
+    customerEmail: 'edward@example.com',
+    customerPhone: '555-0105',
+    loanAmount: 7500,
+    loanType: 'Personal Loan',
+    loanPurpose: 'Education',
+    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
+    workflowVersionId: personalLoanActiveWfInfo?.versionId || '', // Should be pl_v_2 if it's active
+    currentStageId: personalLoanActiveWfInfo?.stages[1].id || '', // e.g., 'Automated Document Verification (PL V2)'
+    assignedDepartment: personalLoanActiveWfInfo?.stages[1].responsibleDepartment, // Origination
+    assignedTo: undefined, // Unassigned
+    submittedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'Submitted'}],
+    history: [
+      { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
+    ],
+    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[1].defaultTimelineDays || 1) - 2) * 24 * 60 * 60 * 1000).toISOString(),
+    isOverdue: false,
     isReadyForManagerReview: false,
   },
 ];
+
+// Function to quickly check which version is active for a loan type (for testing/logging)
+export const logActiveVersionForLoanType = (loanType: string) => {
+    const wfDef = mockWorkflowDefinitions.find(def => def.loanType === loanType);
+    if (!wfDef) {
+        console.log(`No workflow definition found for loan type: ${loanType}`);
+        return;
+    }
+    const activeVersion = wfDef.versions.find(v => v.isActive);
+    if (activeVersion) {
+        console.log(`Active version for ${loanType}: Version ${activeVersion.versionNumber} (ID: ${activeVersion.id}) from Workflow Definition: ${wfDef.name}`);
+    } else {
+        console.log(`No active version found for loan type: ${loanType} in definition: ${wfDef.name}`);
+    }
+};
+
+// Example calls for logging (can be used during development/testing)
+// logActiveVersionForLoanType("Personal Loan");
+// logActiveVersionForLoanType("Auto Loan");
+
