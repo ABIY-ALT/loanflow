@@ -7,7 +7,7 @@ import {
   LayoutGrid,
   FilePlus2,
   SearchCheck,
-  Settings,
+  Settings as SettingsIcon, // Renamed to avoid conflict
   KanbanSquare,
   AlertTriangle,
   UserCheck,
@@ -29,8 +29,15 @@ const navItems = [
   { href: '/department-queue', label: 'Unassigned Cases', icon: FolderKanban },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
   { href: '/overdue-tasks', label: 'Overdue Tasks', icon: AlertTriangle },
-  { href: '/settings/departments', label: 'Manage Departments', icon: Building },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  {
+    href: '/settings', 
+    label: 'Settings',
+    icon: SettingsIcon,
+    subItems: [
+      { href: '/settings/departments', label: 'Manage Departments', icon: Building },
+      // Future settings sub-items can be added here
+    ],
+  },
 ];
 
 export default function SidebarNav() {
@@ -53,16 +60,19 @@ export default function SidebarNav() {
     <SidebarMenu>
       {navItems.map((item) => {
         const Icon = item.icon;
-        // Calculate active state based on the reliable client-side pathname
-        const buttonIsActive = currentPathname === item.href;
+        // The button for the main item is active only if its href is an exact match.
+        const mainButtonIsActive = currentPathname === item.href;
+        
+        // Determine if the submenu should be open (if a sub-item is active or the main item's page itself is active and it has subitems)
+        const openSubMenu = item.subItems && item.subItems.length > 0 && currentPathname.startsWith(item.href);
 
         return (
           <SidebarMenuItem key={item.href}>
             <Link href={item.href} legacyBehavior passHref>
               <SidebarMenuButton
                 asChild
-                isActive={buttonIsActive}
-                className="justify-start" // Static className, active state handled by isActive prop
+                isActive={mainButtonIsActive} // Main button active only on direct match
+                className="justify-start"
                 tooltip={item.label}
               >
                 <a>
@@ -71,19 +81,19 @@ export default function SidebarNav() {
                 </a>
               </SidebarMenuButton>
             </Link>
-            {/* Sub-item rendering logic. Ensure this part is also hydration-safe if it becomes complex. */}
-            {item.subItems && item.subItems.length > 0 && currentPathname.startsWith(item.href) && (
+            {/* Render sub-items if they exist AND the sub-menu should be open */}
+            {openSubMenu && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
-                {item.subItems.map(subItem => {
+                {item.subItems!.map(subItem => { // Added ! because openSubMenu implies item.subItems exists
                   const SubIcon = subItem.icon;
-                  const isSubActive = currentPathname === subItem.href;
+                  const subItemIsActive = currentPathname === subItem.href;
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
                        <Link href={subItem.href} legacyBehavior passHref>
                          <SidebarMenuButton
                             asChild
-                            isActive={isSubActive}
-                            className="justify-start text-sm h-8" // Static className
+                            isActive={subItemIsActive}
+                            className="justify-start text-sm h-8"
                             tooltip={subItem.label}
                          >
                             <a>
