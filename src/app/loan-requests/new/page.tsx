@@ -19,12 +19,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2 } from 'lucide-react'; 
-import React, { useState } from 'react';
-import { addLoanRequest } from '@/services/loan-service'; 
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter } from 'lucide-react'; 
+import React, { useState, useEffect } from 'react';
+import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service'; 
 import type { LoanRequest } from '@/types/loan'; 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 
-// Removed assignedTo from schema
+
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, {
     message: 'Customer name must be at least 2 characters.',
@@ -38,7 +40,7 @@ const loanRequestFormSchema = z.object({
   loanAmount: z.coerce.number().positive({
     message: 'Loan amount must be a positive number.',
   }),
-  loanType: z.string().min(2, {
+  loanType: z.string().min(1, { // Ensure a loan type is selected
     message: 'Loan type is required.',
   }),
   loanPurpose: z.string().min(10, {
@@ -52,15 +54,43 @@ export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableLoanTypes, setAvailableLoanTypes] = useState<string[]>([]);
+  const [isLoadingLoanTypes, setIsLoadingLoanTypes] = useState(true);
+  const [loanTypesError, setLoanTypesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchLoanTypes() {
+      setIsLoadingLoanTypes(true);
+      setLoanTypesError(null);
+      try {
+        const result = await getAvailableLoanTypesForWorkflow();
+        if (result.error) {
+          setLoanTypesError(result.error);
+          setAvailableLoanTypes([]);
+        } else if (result.loanTypes) {
+          setAvailableLoanTypes(result.loanTypes);
+        } else {
+          setLoanTypesError("No loan types with active workflows found.");
+          setAvailableLoanTypes([]);
+        }
+      } catch (err: any) {
+        setLoanTypesError(err.message || "Failed to fetch available loan types.");
+        setAvailableLoanTypes([]);
+      } finally {
+        setIsLoadingLoanTypes(false);
+      }
+    }
+    fetchLoanTypes();
+  }, []);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
-    defaultValues: { // Removed assignedTo from defaultValues
+    defaultValues: { 
       customerName: '',
       customerEmail: '',
       customerPhone: '',
       loanAmount: 0,
-      loanType: '',
+      loanType: '', // Will be set by Select
       loanPurpose: '',
     },
   });
@@ -68,8 +98,7 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      // Prepare data for service; assignedTo is no longer included from the form
-      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'currentStage' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo'> = {
+      const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
         customerPhone: data.customerPhone,
@@ -86,30 +115,24 @@ export default function NewLoanRequestPage() {
           description: `Failed to save loan request: ${result.error}`,
           variant: "destructive",
         });
-         console.error("Full error result from addLoanRequest service on client:", result);
       } else if (result.id) {
         toast({
-          title: "Loan Request Submitted (Mock)",
-          description: `Request for ${data.customerName} has been submitted with ID: ${result.id}. It is currently unassigned.`,
+          title: "Loan Request Submitted",
+          description: `Request for ${data.customerName} submitted. It is currently unassigned in its initial department.`,
         });
         form.reset();
         router.push('/loan-process');
       } else {
          toast({
           title: "Submission Error",
-          description: "An unexpected issue occurred with submission (Mock).",
+          description: "An unexpected issue occurred with submission.",
           variant: "destructive",
         });
       }
     } catch (error: any) { 
-      console.error("Client-side error during loan request submission (outer catch):", error);
-      console.error("Error name:", error?.name);
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
-      console.error("Full error object (client):", error);
       toast({
-        title: "Submission System Error (Mock)",
-        description: `A client-side error occurred: ${error?.message || 'Please try again.'}. Check server terminal logs for more details if this persists.`,
+        title: "Submission System Error",
+        description: `A client-side error occurred: ${error?.message || 'Please try again.'}.`,
         variant: "destructive",
       });
     } finally {
@@ -128,7 +151,7 @@ export default function NewLoanRequestPage() {
       <Card>
         <CardHeader>
           <CardTitle>Applicant & Loan Information</CardTitle>
-          <CardDescription>All fields are required unless marked optional.</CardDescription>
+          <CardDescription>All fields are required. Select a loan type with an active workflow.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -204,17 +227,36 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Loan Type</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSubmitting} />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
+                       <div className="relative">
+                        <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Select 
+                          onValueChange={field.onChange} 
+                          defaultValue={field.value} 
+                          disabled={isLoadingLoanTypes || isSubmitting || availableLoanTypes.length === 0}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="pl-10">
+                              <SelectValue placeholder={isLoadingLoanTypes ? "Loading loan types..." : "Select loan type"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {availableLoanTypes.map(type => (
+                              <SelectItem key={type} value={type}>{type}</SelectItem>
+                            ))}
+                             {availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
+                                <SelectItem value="no-types" disabled>No loan types with active workflows</SelectItem>
+                             )}
+                          </SelectContent>
+                        </Select>
+                       </div>
+                      {loanTypesError && <FormMessage>{loanTypesError}</FormMessage>}
+                      {!loanTypesError && availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
+                        <p className="text-sm text-muted-foreground">No loan types with active workflows are configured. Please contact an admin.</p>
+                      )}
+                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                {/* Removed Assignee Dropdown Field */}
               </div>
               
               <FormField
@@ -241,7 +283,11 @@ export default function NewLoanRequestPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+              <Button 
+                type="submit" 
+                className="w-full sm:w-auto" 
+                disabled={isSubmitting || isLoadingLoanTypes || availableLoanTypes.length === 0}
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isSubmitting ? 'Submitting...' : 'Submit Loan Request'}
               </Button>
