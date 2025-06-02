@@ -63,7 +63,41 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
 
     if (versionsSnapshot.empty) {
       console.warn(`[Service:getActiveWorkflowVersionForLoanType] No active version found for workflow: ${workflowDefinition.name} (Loan Type: ${loanType})`);
-      return null;
+      // Attempt to get the latest version if no active one is found
+      const latestVersionQuery = query(
+        collection(db, `workflowDefinitions/${wfDefDoc.id}/versions`),
+        orderBy("versionNumber", "desc"),
+        // limit(1) // If you use limit, ensure you handle the snapshot correctly
+      );
+      const latestVersionsSnapshot = await getDocs(latestVersionQuery);
+      if (latestVersionsSnapshot.empty) {
+        console.warn(`[Service:getActiveWorkflowVersionForLoanType] No versions at all found for workflow: ${workflowDefinition.name}`);
+        return null;
+      }
+      // If you use limit(1), it would be latestVersionsSnapshot.docs[0]
+      // Without limit, you might need to sort client-side if not already sorted by versionNumber or pick the first one after sorting
+      const latestVersionDoc = latestVersionsSnapshot.docs[0]; // Assuming latest by descending order
+      if(!latestVersionDoc) {
+        console.warn(`[Service:getActiveWorkflowVersionForLoanType] Could not determine latest version for ${loanType}`);
+        return null;
+      }
+      console.warn(`[Service:getActiveWorkflowVersionForLoanType] No active version, falling back to latest version for ${loanType}: V${latestVersionDoc.data().versionNumber}`);
+      const latestVersionData = convertTimestampsToISO(latestVersionDoc.data()) as Omit<WorkflowVersion, 'id' | 'stages'>;
+      const latestVersionAsActive: WorkflowVersion = { id: latestVersionDoc.id, workflowDefinitionId: wfDefDoc.id, ...latestVersionData, stages: [], isActive: true /* Treat as active for this operation */ };
+      
+      const stagesQueryFallback = query(
+          collection(db, `workflowDefinitions/${wfDefDoc.id}/versions/${latestVersionAsActive.id}/stages`),
+          orderBy("order", "asc")
+      );
+      const stagesSnapshotFallback = await getDocs(stagesQueryFallback);
+      latestVersionAsActive.stages = stagesSnapshotFallback.docs.map(stageDoc => ({
+          id: stageDoc.id, ...(convertTimestampsToISO(stageDoc.data()) as Omit<WorkflowStageDefinition, 'id'>)
+      }));
+
+      if (latestVersionAsActive.stages.length === 0) {
+          console.warn(`[Service:getActiveWorkflowVersionForLoanType] Fallback latest version ${latestVersionAsActive.id} for ${loanType} has no stages defined.`);
+      }
+      return { workflowDef: workflowDefinition, activeVersion: latestVersionAsActive, stages: latestVersionAsActive.stages };
     }
     
     const activeVersionDoc = versionsSnapshot.docs[0];
@@ -81,7 +115,6 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
     
     if (activeVersion.stages.length === 0) {
         console.warn(`[Service:getActiveWorkflowVersionForLoanType] Active version ${activeVersion.id} for ${loanType} has no stages defined.`);
-        // Potentially return null or handle as an error depending on desired behavior
     }
 
     return { workflowDef: workflowDefinition, activeVersion, stages: activeVersion.stages };
@@ -92,36 +125,42 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
   }
 };
 
-const getStageDefinitionByRef = async (stageRef: any): Promise<WorkflowStageDefinition | null> => {
-  if (!stageRef || typeof stageRef.path !== 'string') return null;
+const getStageDefinitionByRef = async (stageRefPath: string): Promise<WorkflowStageDefinition | null> => {
+  // stageRefPath will be the full path string e.g. "workflowDefinitions/DEF_ID/versions/VER_ID/stages/STAGE_ID"
+  if (!stageRefPath || typeof stageRefPath !== 'string') return null;
   try {
-    const stageDocSnap = await getDoc(stageRef);
+    const stageDocRef = doc(db, stageRefPath);
+    const stageDocSnap = await getDoc(stageDocRef);
     if (stageDocSnap.exists()) {
       return { id: stageDocSnap.id, ...convertTimestampsToISO(stageDocSnap.data()) } as WorkflowStageDefinition;
     }
-    console.warn(`[Service:getStageDefinitionByRef] Stage document not found at path: ${stageRef.path}`);
+    console.warn(`[Service:getStageDefinitionByRef] Stage document not found at path: ${stageRefPath}`);
     return null;
   } catch (error) {
-    console.error(`[Service:getStageDefinitionByRef] Error fetching stage by reference ${stageRef.path}:`, error);
+    console.error(`[Service:getStageDefinitionByRef] Error fetching stage by reference ${stageRefPath}:`, error);
     return null;
   }
 };
 
 const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>> => {
   const resolvedData: Partial<LoanRequest> = {};
-  if (loanData.currentStageRef && typeof loanData.currentStageRef.path === 'string') {
-    const stageDef = await getStageDefinitionByRef(loanData.currentStageRef);
+  // In Firestore, references are stored as objects with a path property, or just the path string.
+  // Let's assume loanData.currentStageRef is the *path string* to the stage document.
+  const stageRefPath = loanData.currentStageRef; 
+
+  if (typeof stageRefPath === 'string' && stageRefPath) {
+    const stageDef = await getStageDefinitionByRef(stageRefPath);
     if (stageDef) {
       resolvedData.currentStageId = stageDef.id;
       resolvedData.currentStageName = stageDef.name;
       resolvedData.assignedDepartment = stageDef.responsibleDepartment;
 
-      // To get workflowDefinitionId and workflowVersionId, we need to traverse up from stageRef
-      // stageRef.path is like "workflowDefinitions/DEF_ID/versions/VER_ID/stages/STAGE_ID"
-      const pathSegments = loanData.currentStageRef.path.split('/');
+      const pathSegments = stageRefPath.split('/');
       if (pathSegments.length >= 5) {
-        resolvedData.workflowDefinitionId = pathSegments[1];
-        resolvedData.workflowVersionId = pathSegments[3];
+        resolvedData.workflowDefinitionId = pathSegments[1]; // e.g., "workflowDefinitions" is 0, ID is 1
+        resolvedData.workflowVersionId = pathSegments[3]; // e.g., "versions" is 2, ID is 3
+      } else {
+        console.warn("[Service:resolveLoanStageData] Could not parse workflowDefinitionId/VersionId from stageRefPath:", stageRefPath);
       }
       const isTerminal = stageDef.name.toLowerCase().includes("closed") || 
                          stageDef.name.toLowerCase().includes("rejected") || 
@@ -138,11 +177,13 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
         resolvedData.currentStageName = 'Unknown Stage (Ref Invalid)';
         resolvedData.isOverdue = false;
         resolvedData.isTerminalStage = false;
+        console.warn("[Service:resolveLoanStageData] Stage definition not found for ref:", stageRefPath);
     }
   } else {
-    resolvedData.currentStageName = 'Unknown Stage (No Ref)';
+    resolvedData.currentStageName = 'Unknown Stage (No Valid Ref)';
     resolvedData.isOverdue = false;
     resolvedData.isTerminalStage = false;
+    console.warn("[Service:resolveLoanStageData] loanData.currentStageRef is not a valid path string:", loanData.currentStageRef);
   }
   return resolvedData;
 };
@@ -170,28 +211,29 @@ export async function addLoanRequest(
     const serverTime = serverTimestamp(); 
 
     const newLoanDocData = {
-      ...loanData,
+      ...loanData, // customerName, customerEmail, etc.
       loanNumber: `LN-FS-${String(Date.now()).slice(-6)}`, 
       customerNumber: `CUST-FS-${String(Date.now()).slice(-5)}`,
       
       workflowDefinitionId_mirror: workflowDef.id, 
-      workflowVersionRef: doc(db, `workflowDefinitions/${workflowDef.id}/versions/${activeVersion.id}`),
-      currentStageRef: doc(db, `workflowDefinitions/${workflowDef.id}/versions/${activeVersion.id}/stages/${firstStage.id}`),
+      // Store full paths for references
+      workflowVersionRef: `workflowDefinitions/${workflowDef.id}/versions/${activeVersion.id}`,
+      currentStageRef: `workflowDefinitions/${workflowDef.id}/versions/${activeVersion.id}/stages/${firstStage.id}`,
       
       assignedDepartment: firstStage.responsibleDepartment,
-      assignedTo: null, 
+      assignedToUserId: null, // Firestore typically uses null for empty fields
 
-      submittedDate: serverTime, 
+      submittedDate: Timestamp.fromDate(currentDate), // Use client date for submission, or serverTimestamp()
       lastUpdatedDate: serverTime, 
-      stageEntryDate: serverTime, 
+      stageEntryDate: Timestamp.fromDate(currentDate), 
       stageDeadline: Timestamp.fromDate(stageDeadlineDate), 
       
       history: [
         {
-          id: `hist-fs-${Date.now()}`,
+          id: `hist-fs-${Date.now()}`, // Consider UUIDs
           stageName: firstStage.name,
           timestamp: formatISO(currentDate), 
-          userId: 'system-fs-user',
+          userId: 'system-fs-user', // Or current authenticated user ID
           userName: 'System/User (Firestore)',
           notes: `Loan application submitted. Workflow: ${workflowDef.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Assigned to ${firstStage.responsibleDepartment} department.`,
         },
@@ -217,29 +259,34 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
   console.log('[Service:getLoanRequests] Attempting to fetch from Firestore.');
   try {
     const loanCollectionRef = collection(db, "loanRequests");
-    // Add orderBy if needed, e.g., orderBy("lastUpdatedDate", "desc")
     const q = query(loanCollectionRef, orderBy("lastUpdatedDate", "desc"));
     const querySnapshot = await getDocs(q);
 
+    if (querySnapshot.empty) {
+        console.log("[Service:getLoanRequests] No loan requests found in Firestore.");
+        return { loans: [], users: mockUsers };
+    }
+    
     const loansFromFirestore: LoanRequest[] = [];
     for (const loanDoc of querySnapshot.docs) {
       const rawData = loanDoc.data();
       const stageRelatedData = await resolveLoanStageData(rawData);
       const loan: LoanRequest = {
         id: loanDoc.id,
-        ...convertTimestampsToISO(rawData),
-        ...stageRelatedData,
+        ...convertTimestampsToISO(rawData), // Converts Timestamps to ISO strings
+        ...stageRelatedData, // Adds currentStageId, currentStageName, etc.
         history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
         documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
-      } as LoanRequest;
+        assignedTo: rawData.assignedToUserId, // Map from assignedToUserId
+      } as LoanRequest; // Assert type carefully
       loansFromFirestore.push(loan);
     }
     
     console.log(`[Service:getLoanRequests] Fetched ${loansFromFirestore.length} loans from Firestore.`);
-    return { loans: loansFromFirestore, users: mockUsers }; // mockUsers still used for assignee names if needed
-  } catch (e: any)
-  {
+    return { loans: loansFromFirestore, users: mockUsers }; 
+  } catch (e: any) {
     console.error("[Service:getLoanRequests] Firestore error:", e);
+    // Return an error object, do not fall back to mocks.
     return createErrorResult("Failed to fetch loans from Firestore.", "getLoanRequests", e);
   }
 }
@@ -260,16 +307,19 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
         ...stageRelatedData,
         history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
         documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+        assignedTo: rawData.assignedToUserId,
       } as LoanRequest;
 
-      const workflowsResult = await getWorkflowDefinitions(); // Fetch all workflow defs for settings context
+      const workflowsResult = await getWorkflowDefinitions(); 
       return { loan, users: mockUsers, workflowDefinitions: workflowsResult.workflows };
     } else {
       console.warn(`[Service:getLoanRequestById] Loan with ID "${id}" not found in Firestore.`);
+      // Return error, do not fall back to mocks.
       return { loan: null, users: mockUsers, error: `Loan with ID "${id}" not found.` };
     }
   } catch (e: any) {
     console.error(`[Service:getLoanRequestById] Firestore error for ID ${id}:`, e);
+    // Return an error object.
     return createErrorResult(`Failed to fetch loan request for ID ${id} from Firestore.`, `getLoanRequestById-${id}`, e);
   }
 }
@@ -279,58 +329,82 @@ export async function updateLoanRequest(
   id: string,
   dataToUpdate: Partial<Omit<LoanRequest, 'id'>>
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
-  console.log(`[Service:updateLoanRequest] Called for ID ${id} with data:`, dataToUpdate, "(Still using MOCK for now)");
-  // THIS FUNCTION STILL USES MOCK DATA. Needs full Firestore implementation.
-  // Firestore update would involve:
-  // const loanDocRef = doc(db, "loanRequests", id);
-  // const updatePayload = { ...dataToUpdate, lastUpdatedDate: serverTimestamp() };
-  // if (dataToUpdate.currentStageId && dataToUpdate.workflowDefinitionId && dataToUpdate.workflowVersionId) {
-  //    updatePayload.currentStageRef = doc(db, `workflowDefinitions/${dataToUpdate.workflowDefinitionId}/versions/${dataToUpdate.workflowVersionId}/stages/${dataToUpdate.currentStageId}`);
-  //    // also update stageEntryDate, stageDeadline, assignedDepartment, assignedTo=null, isReadyForManagerReview=false etc.
-  // }
-  // await updateDoc(loanDocRef, updatePayload);
-  // Fetch the updated doc and return it.
+  console.log(`[Service:updateLoanRequest] Called for ID ${id} with data:`, dataToUpdate);
   
-  // Fallback to MOCK for now - TO BE REPLACED
-  let sessionMockLoanRequests: LoanRequest[] = []; // Placeholder, as mock data source removed for reads
+  const loanDocRef = doc(db, "loanRequests", id);
   try {
-    const tempResult = await getLoanRequests(); // This is bad for performance in a real app
-    if (tempResult.loans) sessionMockLoanRequests = tempResult.loans;
-  } catch (e) { /* ignore, just for mock fallback */ }
-
-   try {
-    await simulateDelay(50 + Math.random() * 100);
-    const loanIndex = sessionMockLoanRequests.findIndex(l => l.id === id);
-
-    if (loanIndex > -1) {
-      const originalLoan = sessionMockLoanRequests[loanIndex];
-      
-      const updatedLoanData: LoanRequest = {
-        ...originalLoan,
-        ...dataToUpdate,
-        history: dataToUpdate.history ? [...dataToUpdate.history] : [...originalLoan.history],
-        documents: dataToUpdate.documents ? [...dataToUpdate.documents] : [...originalLoan.documents],
-        lastUpdatedDate: formatISO(new Date()), 
-      };
-      
-      if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== originalLoan.currentStageId && updatedLoanData.workflowDefinitionId && updatedLoanData.workflowVersionId) {
-          // This mock logic for stage change is highly simplified and needs proper Firestore ref resolution
-          // const newStageDef = await getStageDefinitionByRef(...); // Needs a real ref
-          // For mock, we'll try to find it in a mock structure if available, or just update name
-          updatedLoanData.assignedDepartment = dataToUpdate.assignedDepartment || 'New Dept (Mock)';
-          updatedLoanData.currentStageName = 'New Stage (Mock)';
-          updatedLoanData.assignedTo = undefined; 
-          updatedLoanData.stageDeadline = formatISO(addDays(new Date(), 5)); // Mock deadline
-          updatedLoanData.isReadyForManagerReview = false; 
+    await runTransaction(db, async (transaction) => {
+      const loanDoc = await transaction.get(loanDocRef);
+      if (!loanDoc.exists()) {
+        throw new Error(`Loan with ID "${id}" not found.`);
       }
 
-      sessionMockLoanRequests[loanIndex] = updatedLoanData; // This updates a local copy, not persistent
-      console.warn(`[Mock Service:updateLoanRequest] Successfully updated MOCK loan ID: ${id}. Data is NOT persistent.`);
-      return { success: true, updatedLoan: updatedLoanData };
+      const currentLoanData = loanDoc.data() as LoanRequest; // Assume this matches our type for now
+      const updatePayload: { [key: string]: any } = { ...dataToUpdate, lastUpdatedDate: serverTimestamp() };
+
+      // Handle stage transitions specifically
+      if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== (await resolveLoanStageData(currentLoanData)).currentStageId) {
+        if (!dataToUpdate.workflowDefinitionId || !dataToUpdate.workflowVersionId) {
+          throw new Error("workflowDefinitionId and workflowVersionId are required when changing stage.");
+        }
+        const newStageRefPath = `workflowDefinitions/${dataToUpdate.workflowDefinitionId}/versions/${dataToUpdate.workflowVersionId}/stages/${dataToUpdate.currentStageId}`;
+        const newStageDef = await getStageDefinitionByRef(newStageRefPath);
+        if (!newStageDef) {
+          throw new Error(`New stage definition not found for path: ${newStageRefPath}`);
+        }
+        updatePayload.currentStageRef = newStageRefPath;
+        updatePayload.assignedDepartment = newStageDef.responsibleDepartment;
+        updatePayload.assignedToUserId = dataToUpdate.assignedTo === undefined ? null : dataToUpdate.assignedTo; // Handle unassignment
+        updatePayload.stageEntryDate = serverTimestamp();
+        updatePayload.stageDeadline = Timestamp.fromDate(addDays(new Date(), newStageDef.defaultTimelineDays));
+        updatePayload.isReadyForManagerReview = false; // Reset review status on stage change
+        // Remove fields that should not be directly in dataToUpdate when changing stage
+        delete updatePayload.currentStageId;
+        delete updatePayload.workflowDefinitionId; 
+        delete updatePayload.workflowVersionId;
+        delete updatePayload.currentStageName; // This will be resolved on read
+      } else {
+         // If not changing stage, still handle assignedTo mapping
+        if(dataToUpdate.hasOwnProperty('assignedTo')){
+            updatePayload.assignedToUserId = dataToUpdate.assignedTo === undefined ? null : dataToUpdate.assignedTo;
+            delete updatePayload.assignedTo;
+        }
+      }
+      
+      // Ensure history and documents are treated as arrays
+      if (dataToUpdate.history && !Array.isArray(dataToUpdate.history)) {
+        updatePayload.history = [dataToUpdate.history]; // Ensure it's an array
+      }
+      if (dataToUpdate.documents && !Array.isArray(dataToUpdate.documents)) {
+        updatePayload.documents = [dataToUpdate.documents]; // Ensure it's an array
+      }
+
+
+      transaction.update(loanDocRef, updatePayload);
+    });
+
+    // Fetch the updated document to return it
+    const updatedDocSnap = await getDoc(loanDocRef);
+    if (updatedDocSnap.exists()) {
+        const rawData = updatedDocSnap.data();
+        const stageRelatedData = await resolveLoanStageData(rawData);
+        const updatedLoanObject: LoanRequest = {
+            id: updatedDocSnap.id,
+            ...convertTimestampsToISO(rawData),
+            ...stageRelatedData,
+            history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
+            documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+            assignedTo: rawData.assignedToUserId,
+        } as LoanRequest;
+        console.log(`[Service:updateLoanRequest] Successfully updated loan ID: ${id} in Firestore.`);
+        return { success: true, updatedLoan: updatedLoanObject };
+    } else {
+        // Should not happen if transaction succeeded
+        return createErrorResult("Failed to retrieve updated loan after transaction.", `updateLoanRequest-${id}`);
     }
-    return createErrorResult(`MOCK loan with ID "${id}" not found for update.`, "updateLoanRequest-Mock");
+
   } catch (e: any) {
-    return createErrorResult(`Failed to update MOCK loan request for ID ${id}.`, `updateLoanRequest-Mock-${id}`, e);
+    return createErrorResult(`Failed to update loan request for ID ${id} in Firestore.`, `updateLoanRequest-${id}`, e);
   }
 }
 
@@ -338,8 +412,16 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
   console.log('[Service:getWorkflowDefinitions] Attempting to fetch from Firestore.');
   try {
     const workflowDefsCollectionRef = collection(db, "workflowDefinitions");
-    const q = query(workflowDefsCollectionRef, orderBy("loanType"), orderBy("name"));
+    // Temporarily simplify query if index is an issue. Ideal: orderBy("loanType"), orderBy("name")
+    const q = query(workflowDefsCollectionRef, orderBy("loanType") /*, orderBy("name") */); 
+    console.log("[Service:getWorkflowDefinitions] Query constructed. Ensure composite index (loanType ASC, name ASC) exists if both orderBy are used.");
+
     const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+        console.warn("[Service:getWorkflowDefinitions] No workflow definitions found in Firestore. This is okay if none are configured yet.");
+        return { workflows: [] };
+    }
     
     const workflows: WorkflowDefinition[] = [];
 
@@ -367,8 +449,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
       workflows.push(definition);
     }
     
-    if (workflows.length === 0) console.warn("[Service:getWorkflowDefinitions] No workflow definitions found in Firestore.");
-    else console.log(`[Service:getWorkflowDefinitions] Fetched ${workflows.length} workflow definitions from Firestore.`);
+    console.log(`[Service:getWorkflowDefinitions] Fetched ${workflows.length} workflow definitions from Firestore.`);
     return { workflows };
   } catch (e: any) {
     console.error("[Service:getWorkflowDefinitions] Firestore error:", e);
@@ -380,30 +461,82 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
   console.log("[Service:saveWorkflowDefinitions] Attempting to save to Firestore:", definitions);
   const batch = writeBatch(db);
   try {
-    // Logic to determine existing definitions, versions, stages for deletion (optional, based on strategy)
-    // For simplicity, this version focuses on add/update. A more robust version would handle deletions.
+    // Existing definitions in Firestore (to handle deletions - optional advanced logic)
+    // const existingDefsSnapshot = await getDocs(collection(db, "workflowDefinitions"));
+    // const existingDefIds = new Set(existingDefsSnapshot.docs.map(doc => doc.id));
+    // const incomingDefIds = new Set(definitions.map(def => def.id));
 
     for (const definition of definitions) {
+      if (!definition.id) { // Should not happen if frontend assigns IDs
+        console.error("[Service:saveWorkflowDefinitions] Workflow definition missing ID:", definition);
+        continue;
+      }
       const defRef = doc(db, "workflowDefinitions", definition.id);
       const { versions, ...defData } = definition;
-      batch.set(defRef, { ...defData, updatedAt: serverTimestamp() }, { merge: true }); // Use merge to create if not exists, or update
+      // Add/update definition
+      batch.set(defRef, { ...defData, createdAt: defData.createdAt || serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+
+      const existingVersionIdsForDef = new Set<string>();
+      if (versions.length > 0) { // Only query existing if there are incoming versions
+          const existingVersionsSnapshot = await getDocs(collection(defRef, "versions"));
+          existingVersionsSnapshot.forEach(doc => existingVersionIdsForDef.add(doc.id));
+      }
+      const incomingVersionIds = new Set(versions.map(v => v.id));
+
 
       for (const version of versions) {
+        if (!version.id) {
+            console.error("[Service:saveWorkflowDefinitions] Workflow version missing ID for definition:", definition.id, version);
+            continue;
+        }
         const versionRef = doc(collection(defRef, "versions"), version.id);
         const { stages, ...versionData } = version;
-        batch.set(versionRef, { ...versionData, workflowDefinitionId: definition.id, updatedAt: serverTimestamp() }, { merge: true });
+        // Add/update version
+        batch.set(versionRef, { ...versionData, workflowDefinitionId: definition.id, createdAt: versionData.createdAt || serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+        
+        const existingStageIdsForVersion = new Set<string>();
+        if (stages.length > 0) { // Only query existing if there are incoming stages
+            const existingStagesSnapshot = await getDocs(collection(versionRef, "stages"));
+            existingStagesSnapshot.forEach(doc => existingStageIdsForVersion.add(doc.id));
+        }
+        const incomingStageIds = new Set(stages.map(s => s.id));
 
         for (const stage of stages) {
+          if (!stage.id) {
+            console.error("[Service:saveWorkflowDefinitions] Workflow stage missing ID for version:", version.id, stage);
+            continue;
+          }
           const stageRef = doc(collection(versionRef, "stages"), stage.id);
-          batch.set(stageRef, { ...stage, updatedAt: serverTimestamp() }, { merge: true });
+          // Add/update stage
+          batch.set(stageRef, { ...stage, createdAt: stage.createdAt || serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
         }
+        // Delete stages not in incoming for this version
+        // existingStageIdsForVersion.forEach(stageId => {
+        //   if (!incomingStageIds.has(stageId)) {
+        //     batch.delete(doc(collection(versionRef, "stages"), stageId));
+        //   }
+        // });
       }
+      // Delete versions not in incoming for this definition
+      // existingVersionIdsForDef.forEach(versionId => {
+      //   if (!incomingVersionIds.has(versionId)) {
+      //     batch.delete(doc(collection(defRef, "versions"), versionId));
+      //   }
+      // });
     }
+    
+    // Delete definitions not in incoming
+    // existingDefIds.forEach(defId => {
+    //   if (!incomingDefIds.has(defId)) {
+    //     batch.delete(doc(db, "workflowDefinitions", defId));
+    //   }
+    // });
 
     await batch.commit();
     console.log("[Service:saveWorkflowDefinitions] Workflow definitions batch written to Firestore.");
     return { success: true };
   } catch (e: any) {
+    console.error("[Service:saveWorkflowDefinitions] Firestore error during batch write:", e);
     return createErrorResult("Failed to save workflow definitions to Firestore.", "saveWorkflowDefinitions", e);
   }
 }
@@ -412,21 +545,25 @@ export async function getDepartments(): Promise<{ departments?: Department[]; er
   console.log('[Service:getDepartments] Attempting to fetch from Firestore.');
   try {
     const departmentsCollectionRef = collection(db, "departments");
-    const q = query(departmentsCollectionRef, orderBy("name")); // Assuming documents have a 'name' field.
+    const q = query(departmentsCollectionRef, orderBy("name")); 
     const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+        console.warn("[Service:getDepartments] No departments found in Firestore 'departments' collection. This might be expected if none are configured.");
+        return { departments: [] }; // Return empty array if none found
+    }
 
     const departments: Department[] = [];
     querySnapshot.forEach((docSnap) => {
-      // Assuming each department document has a 'name' field.
-      // And Department type is just `string`.
       const deptName = docSnap.data().name as string;
       if (deptName) {
         departments.push(deptName);
+      } else {
+        console.warn(`[Service:getDepartments] Document ID ${docSnap.id} in 'departments' collection is missing a 'name' field.`);
       }
     });
     
-    if (departments.length === 0) console.warn("[Service:getDepartments] No departments found in Firestore 'departments' collection or documents lack a 'name' field.");
-    else console.log(`[Service:getDepartments] Fetched ${departments.length} departments from Firestore.`);
+    console.log(`[Service:getDepartments] Fetched ${departments.length} departments from Firestore.`);
     return { departments };
   } catch (e: any) {
     console.error("[Service:getDepartments] Firestore error:", e);
@@ -441,9 +578,19 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     const q = query(collection(db, "workflowDefinitions"));
     const querySnapshot = await getDocs(q);
 
+    if (querySnapshot.empty) {
+        console.warn("[Service:getAvailableLoanTypesForWorkflow] No workflow definitions found at all.");
+        return { loanTypes: [] };
+    }
+
     for (const defDoc of querySnapshot.docs) {
       const definitionId = defDoc.id;
       const loanType = defDoc.data().loanType as string;
+
+      if (!loanType) {
+        console.warn(`[Service:getAvailableLoanTypesForWorkflow] Workflow definition ${definitionId} is missing loanType field.`);
+        continue;
+      }
 
       const versionsQuery = query(
         collection(db, `workflowDefinitions/${definitionId}/versions`),
@@ -451,7 +598,7 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
       );
       const versionsSnapshot = await getDocs(versionsQuery);
 
-      if (!versionsSnapshot.empty && loanType) {
+      if (!versionsSnapshot.empty) {
         availableTypes.add(loanType);
       }
     }
