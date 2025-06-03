@@ -6,8 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-import { UserRole } from '@/types/loan'; // LoanStage removed as it's not primary for stages
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -29,36 +28,37 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-// Select for next stage is removed, promotion is automatic
 import { useToast } from '@/hooks/use-toast';
 import { mockWorkflowDefinitions, mockUsers } from '@/lib/mock-data'; // For stage names & user names
+import { useRouter } from 'next/navigation'; // Added for router push in LoanCard
 
 interface LoanCardProps {
   loan: LoanRequest;
-  stageName: string; // Pass resolved stage name
+  stageName: string;
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerView: boolean; // To differentiate manager actions on card
+  isManagerView: boolean;
+  router: ReturnType<typeof useRouter>; // Pass router instance
 }
 
-function LoanCard({ loan, stageName, onCardActionClick, isManagerView }: LoanCardProps) {
+function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }: LoanCardProps) {
   const canTakeAction = !stageName.toLowerCase().includes("closed") && !stageName.toLowerCase().includes("rejected") && !stageName.toLowerCase().includes("disbursed");
   
   let actionButtonText = "Details";
-  let ActionIcon = ArrowRight; // Default
-  let actionHandler = () => router.push(`/loan-requests/${loan.id}`); // Default to view details
+  let ActionIcon = ArrowRight;
+  let actionHandler = () => router.push(`/loan-requests/${loan.id}`);
 
   if (isManagerView && loan.isReadyForManagerReview && canTakeAction) {
     actionButtonText = "Review & Promote";
-    ActionIcon = UserCheck; // Manager specific icon for promotion
-    actionHandler = () => onCardActionClick(loan); // Opens manager promote dialog
+    ActionIcon = UserCheck;
+    actionHandler = () => onCardActionClick(loan);
   } else if (!isManagerView && loan.assignedTo && !loan.isReadyForManagerReview && canTakeAction) {
     actionButtonText = "Mark Complete";
-    ActionIcon = CheckSquare; // Officer icon
-    actionHandler = () => onCardActionClick(loan); // Officer marks complete
+    ActionIcon = CheckSquare;
+    actionHandler = () => onCardActionClick(loan);
   } else if (!loan.assignedTo && canTakeAction) {
     actionButtonText = "Assign Staff";
-    ActionIcon = UserPlus; // Icon for assigning
-     actionHandler = () => router.push(`/loan-requests/${loan.id}`); // Go to detail page to assign
+    ActionIcon = UserPlus;
+    actionHandler = () => router.push(`/loan-requests/${loan.id}`);
   }
 
 
@@ -82,13 +82,12 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView }: LoanCar
         <p>Assigned: {loan.assignedTo ? mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown' : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
         {loan.stageDeadline && (<div className="flex items-center text-xs text-muted-foreground"><Clock className="h-3 w-3 mr-1" />Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}</div>)}
         
-        {/* Simplified, more detailed info on loan detail page */}
         {loan.isReadyForManagerReview && canTakeAction && (
              <Badge variant="outline" className="mt-2 text-orange-600 border-orange-400 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                 Awaiting Manager Review
             </Badge>
         )}
-         {(isManagerView || (loan.assignedTo && !loan.isReadyForManagerReview)) && canTakeAction && ( // Show button if it's actionable
+         {(isManagerView || (loan.assignedTo && !loan.isReadyForManagerReview) || !loan.assignedTo) && canTakeAction && (
           <Button variant="outline" size="sm" className="w-full mt-2" onClick={actionHandler}>
             <ActionIcon className="mr-2 h-4 w-4" /> {actionButtonText}
           </Button>
@@ -99,41 +98,41 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView }: LoanCar
 }
 
 interface KanbanColumnProps {
-  stageDef: WorkflowStageDefinition; // Use new stage definition
+  stageDef: WorkflowStageDefinition;
   loans: LoanRequest[];
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerView: boolean; // For pipeline, officer usually acts. Manager queue for manager view.
+  isManagerView: boolean;
+  router: ReturnType<typeof useRouter>; // Pass router
 }
 
-function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView }: KanbanColumnProps) {
+function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, router }: KanbanColumnProps) {
   return (
     <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
       <div className="flex justify-between items-center p-2 mb-2">
         <h3 className="font-semibold text-foreground flex items-center"><Building className="h-4 w-4 mr-2 text-muted-foreground"/>{stageDef.responsibleDepartment} - {stageDef.name}</h3>
         <Badge variant="secondary">{loans.length}</Badge>
       </div>
-      <ScrollArea className="h-[calc(100vh-20rem)] pr-2">
+      <ScrollArea className="h-[calc(100vh-24rem)] pr-2"> {/* Adjusted height slightly */}
         {loans.length === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-sm text-muted-foreground p-4 text-center">
             <p>No loan requests in this stage for this department.</p>
           </div>
         )}
         {loans.map((loan) => (
-          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} isManagerView={isManagerView} />
+          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} isManagerView={isManagerView} router={router}/>
         ))}
       </ScrollArea>
     </div>
   );
 }
 
-// Manager Promote Dialog - No longer needs stage selection by user
 interface ManagerPromoteDialogProps {
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
     selectedLoan: LoanRequest | null;
     currentStageName?: string;
     nextStageName?: string;
-    onConfirmPromotion: (loanId: string) => Promise<void>; // No nextStage param
+    onConfirmPromotion: (loanId: string) => Promise<void>;
     isProcessingAction: boolean;
 }
 
@@ -144,7 +143,6 @@ function ManagerPromoteDialog({
     
     const handleConfirm = async () => {
         if (!selectedLoan) return;
-        // Validation (like doc checks) should happen before opening this dialog or as part of onConfirmPromotion
         await onConfirmPromotion(selectedLoan.id);
     };
 
@@ -160,12 +158,11 @@ function ManagerPromoteDialog({
                         {nextStageName ? ` This will promote the loan to '${nextStageName}' and unassign it within the new department.` : " This is the final stage."}
                     </DialogDescription>
                 </DialogHeader>
-                {/* Removed stage selection UI */}
                 <DialogFooter className="pt-4">
                     <DialogClose asChild>
                         <Button type="button" variant="outline" disabled={isProcessingAction}>Cancel</Button>
                     </DialogClose>
-                    <Button type="button" onClick={handleConfirm} disabled={isProcessingAction || !nextStageName /* Disable if no next stage defined */}>
+                    <Button type="button" onClick={handleConfirm} disabled={isProcessingAction || !nextStageName}>
                         {isProcessingAction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Confirm & Promote
                     </Button>
@@ -175,10 +172,17 @@ function ManagerPromoteDialog({
     );
 }
 
+interface ActiveWorkflowPipeline {
+  definition: WorkflowDefinition;
+  activeVersion: WorkflowVersion;
+  stages: WorkflowStageDefinition[];
+}
+
 
 export default function LoanProcessPage() {
+  const router = useRouter(); // For LoanCard
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
-  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(mockWorkflowDefinitions); // Load mock workflows
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(mockWorkflowDefinitions);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -187,10 +191,20 @@ export default function LoanProcessPage() {
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false); 
 
-  const activeWorkflow = useMemo(() => {
-    const activeDef = workflowDefinitions.find(def => def.isActive);
-    if (!activeDef || activeDef.versions.length === 0) return null;
-    return activeDef.versions.sort((a,b) => b.versionNumber - a.versionNumber)[0]; // Use latest version of active def
+  const activeWorkflowPipelines = useMemo(() => {
+    if (!workflowDefinitions) return [];
+    const pipelines: ActiveWorkflowPipeline[] = [];
+    for (const def of workflowDefinitions) {
+      const activeVersion = def.versions.find(v => v.isActive);
+      if (activeVersion && activeVersion.stages && activeVersion.stages.length > 0) {
+        pipelines.push({
+          definition: def,
+          activeVersion: activeVersion,
+          stages: [...activeVersion.stages].sort((a, b) => a.order - b.order) // Ensure stages are sorted
+        });
+      }
+    }
+    return pipelines;
   }, [workflowDefinitions]);
 
   const getStageDefById = useCallback((versionId: string, stageId: string): WorkflowStageDefinition | null => {
@@ -221,13 +235,11 @@ export default function LoanProcessPage() {
         toast({title: "Error", description: "Cannot find stage definition.", variant: "destructive"});
         return false;
     }
-    // Check active info requests
     const activeInfoReq = [...loan.history].reverse().find(e => e.requiredFulfilment && !e.notes?.includes("[FULFILLED MOCK]"));
     if (activeInfoReq) {
         toast({ title: "Action Pending", description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
         return false;
     }
-    // Check documents
     const pendingDocs = stageDef.requiredDocumentNames.filter(name => !loan.documents.find(d => d.name === name && d.status === 'Verified'));
     if (pendingDocs.length > 0) {
         toast({ title: "Documents Pending", description: `Docs for stage '${stageDef.name}' must be verified: ${pendingDocs.join(', ')}.`, variant: "destructive", duration: 7000 });
@@ -236,7 +248,6 @@ export default function LoanProcessPage() {
     return true;
   }, [toast, getStageDefById]);
 
-  // This is called when an Officer clicks "Mark Complete" or a Manager clicks "Review & Promote"
   const handleCardActionClick = useCallback(async (loan: LoanRequest) => {
     setSelectedLoanForDialog(loan);
     const currentStageDef = getStageDefById(loan.workflowVersionId, loan.currentStageId);
@@ -245,13 +256,12 @@ export default function LoanProcessPage() {
         return;
     }
 
-    if (loan.isReadyForManagerReview) { // Manager action: Open promotion dialog
+    if (loan.isReadyForManagerReview) {
         if (!validateLoanForNextStep(loan)) return;
         setIsPromoteDialogOpen(true);
-    } else { // Officer action: Mark stage complete
+    } else { 
         if (!loan.assignedTo) {
             toast({title: "Assignment Needed", description: "Loan must be assigned to a staff member first.", variant: "info"});
-            // Optionally redirect to detail page: router.push(`/loan-requests/${loan.id}`);
             return;
         }
         if (!validateLoanForNextStep(loan)) return;
@@ -282,7 +292,7 @@ export default function LoanProcessPage() {
     }
   }, [toast, validateLoanForNextStep, fetchLoans, getStageDefById]);
 
-  const handleConfirmPromotion = useCallback(async (loanId: string) => { // Promotion logic now internal
+  const handleConfirmPromotion = useCallback(async (loanId: string) => {
     const loanToPromote = allLoans.find(l => l.id === loanId);
     if (!loanToPromote) { toast({ title: "Error", description: "Loan not found.", variant: "destructive"}); return; }
 
@@ -292,16 +302,14 @@ export default function LoanProcessPage() {
     const currentStageIndex = currentVersion.stages.findIndex(s => s.id === loanToPromote.currentStageId);
     if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) {
       toast({ title: "Workflow End", description: "This is the last stage.", variant: "info" });
-      // Handle loan completion logic if necessary (e.g. update status to "Closed")
-      setIsPromoteDialogOpen(false); // Close dialog even if it's the last stage
+      setIsPromoteDialogOpen(false);
       setSelectedLoanForDialog(null);
-      // Potentially add a history entry for "workflow completed"
       const finalHistoryEntry: LoanHistoryEntry = {
         id: `hist-final-${Date.now()}`, stageName: currentVersion.stages[currentStageIndex]?.name || 'Final Stage', timestamp: formatISO(new Date()),
         userId: 'mock-manager-user', userName: 'Manager (Mock)', notes: 'Loan reached final workflow stage. Process complete.',
       };
       await updateLoanRequest(loanId, { history: [...(loanToPromote.history || []), finalHistoryEntry], isReadyForManagerReview: false });
-      fetchLoans(); // Refresh to show changes
+      fetchLoans();
       return;
     }
 
@@ -309,7 +317,7 @@ export default function LoanProcessPage() {
     setIsProcessingAction(true);
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', userName: 'Manager (Mock)', // TODO: Capture actual manager
+      userId: 'mock-manager-user', userName: 'Manager (Mock)',
       notes: `Manager promoted from '${currentVersion.stages[currentStageIndex].name}' to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
@@ -337,9 +345,10 @@ export default function LoanProcessPage() {
     }
   }, [allLoans, toast, fetchLoans, workflowDefinitions]);
 
-  const loansByStageId = (stageId: string) => allLoans.filter((loan) => loan.currentStageId === stageId);
+  const loansByStageAndVersionId = useCallback((stageId: string, versionId: string) => {
+    return allLoans.filter(loan => loan.currentStageId === stageId && loan.workflowVersionId === versionId);
+  }, [allLoans]);
 
-  // Derived state for Manager Promote Dialog
   const currentStageNameForDialog = useMemo(() => {
     if (!selectedLoanForDialog) return '';
     const stageDef = getStageDefById(selectedLoanForDialog.workflowVersionId, selectedLoanForDialog.currentStageId);
@@ -351,33 +360,71 @@ export default function LoanProcessPage() {
     const currentVersion = workflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === selectedLoanForDialog.workflowVersionId);
     if (!currentVersion) return '';
     const currentStageIndex = currentVersion.stages.findIndex(s => s.id === selectedLoanForDialog.currentStageId);
-    if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) return ''; // No next stage or already last
+    if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) return '';
     return currentVersion.stages[currentStageIndex + 1]?.name || '';
   }, [selectedLoanForDialog, workflowDefinitions]);
 
 
-  if (isLoading && allLoans.length === 0) { /* ... loading UI ... */ return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p></div>); }
-  if (error && allLoans.length === 0) { /* ... error UI ... */ return (<Alert variant="destructive" className="max-w-2xl mx-auto"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
-  if (!activeWorkflow) { /* ... no active workflow UI ... */ return (<Alert variant="destructive" className="max-w-2xl mx-auto"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Configuration Error</AlertTitleShadCN><AlertDescShadCN>No active workflow found. Please configure an active workflow in settings.</AlertDescShadCN></Alert>); }
+  if (isLoading && allLoans.length === 0) { return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines...</p></div>); }
+  if (error && allLoans.length === 0) { return (<Alert variant="destructive" className="max-w-2xl mx-auto"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
+  
+  if (activeWorkflowPipelines.length === 0 && !isLoading) { 
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
+            <p className="text-muted-foreground">Visualize and manage loans through their lifecycle.</p>
+          </div>
+          <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
+        </div>
+        <Alert variant="default" className="max-w-2xl mx-auto">
+          <AlertTriangle className="h-5 w-5" />
+          <AlertTitleShadCN>No Active Loan Pipelines</AlertTitleShadCN>
+          <AlertDescShadCN>
+            There are no workflow definitions with an active version that also has stages configured.
+            Please go to Settings to configure your loan workflows and ensure at least one version per loan type is active and has stages.
+          </AlertDescShadCN>
+        </Alert>
+      </div>
+    );
+  }
 
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
-          <p className="text-muted-foreground">Active Workflow: {workflowDefinitions.find(d=>d.isActive)?.name} (V{activeWorkflow.versionNumber})</p>
+          <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
+          <p className="text-muted-foreground">Visualize and manage loans through their lifecycle for each active workflow.</p>
         </div>
         <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
       </div>
-      <ScrollArea className="w-full whitespace-nowrap pb-4">
-        <div className="flex gap-4">
-          {activeWorkflow.stages.map((stageDef) => (
-            <KanbanColumn key={stageDef.id} stageDef={stageDef} loans={loansByStageId(stageDef.id)} onCardActionClick={handleCardActionClick} isManagerView={false} /* Pipeline is typically officer view */ />
-          ))}
+
+      {activeWorkflowPipelines.map(pipeline => (
+        <div key={pipeline.definition.id} className="mb-10 p-4 border rounded-lg shadow-md">
+          <h2 className="text-2xl font-semibold mb-1 text-primary">
+             {pipeline.definition.name} ({pipeline.definition.loanType})
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">Active Version: {pipeline.activeVersion.versionNumber} | Stages: {pipeline.stages.length}</p>
+          <ScrollArea className="w-full whitespace-nowrap pb-4">
+            <div className="flex gap-4">
+              {pipeline.stages.map((stageDef) => (
+                <KanbanColumn
+                  key={stageDef.id}
+                  stageDef={stageDef}
+                  loans={loansByStageAndVersionId(stageDef.id, pipeline.activeVersion.id)}
+                  onCardActionClick={handleCardActionClick}
+                  isManagerView={false} 
+                  router={router}
+                />
+              ))}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
         </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      ))}
+
       <ManagerPromoteDialog
         isOpen={isPromoteDialogOpen}
         onOpenChange={(isOpen) => { setIsPromoteDialogOpen(isOpen); if (!isOpen) setSelectedLoanForDialog(null); }}
@@ -390,3 +437,4 @@ export default function LoanProcessPage() {
     </div>
   );
 }
+
