@@ -31,7 +31,6 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 4. Initialize 'seen' set for cycle detection for the current path of recursion if not already provided.
-  // Use a different name for the parameter to avoid conflict with the local variable.
   const currentSeenSet = seenObjectsParam || new Set();
 
   // 5. Circular reference / max depth checks for general objects that are not handled above.
@@ -63,15 +62,13 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
         }
       }
     }
-  } else if (typeof data.toDate === 'function') {
-    // This handles other objects that have a toDate method (e.g., from older SDK versions or mocks).
-    try {
-      res = formatISO(data.toDate());
-    } catch (e) {
-      res = "[Invalid Timestamp-like Object]";
-    }
-  } else {
-    // Unhandled complex object type. Return as is.
+  }
+  // NOTE: The general `else if (typeof data.toDate === 'function')` block has been removed.
+  // Objects that would have fallen here and are not plain objects or arrays
+  // will now be caught by the final 'else' case.
+  else {
+    // Unhandled complex object type (not Array, not plain Object, not Timestamp/Date, not SDK object).
+    // Return as is. Cycle/depth checks on `data` itself should prevent issues.
     res = data;
   }
 
@@ -79,3 +76,4 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   currentSeenSet.delete(data);
   return res;
 }
+
