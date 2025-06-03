@@ -66,7 +66,7 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }:
     <Card className="mb-3 shadow-md hover:shadow-lg transition-shadow">
       <CardHeader className="p-4">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="text-base font-semibold truncate">
             <Link href={`/loan-requests/${loan.id}`} className="hover:underline">
               {loan.customerName}
             </Link>
@@ -75,11 +75,11 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }:
             <TooltipProvider delayDuration={100}><Tooltip><TooltipTrigger><AlertTriangle className="h-5 w-5 text-destructive" /></TooltipTrigger><TooltipContent><p>Overdue!</p></TooltipContent></Tooltip></TooltipProvider>
           )}
         </div>
-        <CardDescription className="text-xs">{loan.loanNumber} / Dept: {loan.assignedDepartment || "N/A"}</CardDescription>
+        <CardDescription className="text-xs truncate">{loan.loanNumber} / Dept: {loan.assignedDepartment || "N/A"}</CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0 text-sm space-y-2">
-        <p>Amount: ${loan.loanAmount.toLocaleString()}</p>
-        <p>Assigned: {loan.assignedTo ? mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown' : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
+        <p className="truncate">Amount: ${loan.loanAmount.toLocaleString()}</p>
+        <p className="truncate">Assigned: {loan.assignedTo ? mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown' : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
         {loan.stageDeadline && (<div className="flex items-center text-xs text-muted-foreground"><Clock className="h-3 w-3 mr-1" />Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}</div>)}
         
         {loan.isReadyForManagerReview && canTakeAction && (
@@ -108,9 +108,16 @@ interface KanbanColumnProps {
 function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, router }: KanbanColumnProps) {
   return (
     <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
-      <div className="flex justify-between items-center p-2 mb-2">
-        <h3 className="font-semibold text-foreground flex items-center"><Building className="h-4 w-4 mr-2 text-muted-foreground"/>{stageDef.responsibleDepartment} - {stageDef.name}</h3>
-        <Badge variant="secondary">{loans.length}</Badge>
+      <div className="flex justify-between items-center p-2 mb-2 gap-2">
+        <div className="flex items-center min-w-0"> {/* Container for icon and text, allows shrinking */}
+            <Building className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0"/>
+            <h3 className="font-semibold text-foreground truncate"> 
+            {stageDef.responsibleDepartment} - {stageDef.name}
+            </h3>
+        </div>
+        <Badge variant="secondary" className="flex-shrink-0 rounded-full px-2.5 py-0.5 text-xs h-6 min-w-[1.5rem] flex items-center justify-center">
+            {loans.length}
+        </Badge>
       </div>
       <ScrollArea className="h-[calc(100vh-24rem)] pr-2">
         {loans.length === 0 && (
@@ -207,8 +214,8 @@ export default function LoanProcessPage() {
     return pipelines;
   }, [fetchedWorkflowDefinitions]);
 
-  const getStageDefById = useCallback((versionId: string, stageId: string): WorkflowStageDefinition | null => {
-    if (!fetchedWorkflowDefinitions) return null;
+  const getStageDefById = useCallback((versionId?: string, stageId?: string): WorkflowStageDefinition | null => {
+    if (!versionId || !stageId || !fetchedWorkflowDefinitions) return null;
     const wfDef = fetchedWorkflowDefinitions.find(def => def.versions.some(v => v.id === versionId));
     if (!wfDef) return null;
     const version = wfDef.versions.find(v => v.id === versionId);
@@ -285,7 +292,7 @@ export default function LoanProcessPage() {
         const officerName = mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Officer';
         const newHistoryEntry: LoanHistoryEntry = {
             id: `hist-officer-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: loan.assignedTo, userName: officerName,
+            userId: loan.assignedTo || 'mock-user-id', userName: officerName,
             notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
         };
         const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { 
@@ -456,3 +463,4 @@ export default function LoanProcessPage() {
     </div>
   );
 }
+
