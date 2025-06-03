@@ -45,6 +45,7 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 6. Add current object to 'seen' set before recursing into its properties/elements.
+  // This is crucial for objects we are about to iterate/recurse into.
   currentSeenSet.add(data);
 
   let res: any;
@@ -52,26 +53,52 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   try {
     // 7. Recursive processing based on object type for objects that made it past earlier checks.
     if (Array.isArray(data)) {
-      res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
-    } else if (Object.getPrototypeOf(data) === Object.prototype) {
-      // Plain JavaScript object (direct prototype is Object.prototype)
-      res = {};
-      for (const key in data) {
-        if (Object.prototype.hasOwnProperty.call(data, key)) {
-          // Explicitly skip DocumentReference fields which should not be deeply converted
-          if (key === 'workflowVersionRef' || key === 'currentStageRef') {
-            res[key] = data[key]; // Assign as-is
-          } else {
-            res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
+      res = data.map(item => {
+        // Re-apply checks to array items before recursive call
+        if (item === null || typeof item !== 'object') return item;
+        if (item instanceof Timestamp) return formatISO(item.toDate());
+        if (item instanceof Date) return formatISO(item);
+        if (typeof item.firestore === 'object' && item.firestore !== null) return item;
+        if (typeof item.path === 'string' && typeof item.id === 'string') return item;
+        if (typeof item._delegate === 'object' && item._delegate !== null) return item;
+        return convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet);
+      });
+    } else {
+      const proto = Object.getPrototypeOf(data);
+      if (proto === Object.prototype || proto === null) {
+        // Plain JavaScript object (direct prototype is Object.prototype or null)
+        res = {};
+        for (const key in data) {
+          if (Object.prototype.hasOwnProperty.call(data, key)) {
+            // Explicitly skip DocumentReference fields which should not be deeply converted
+            if (key === 'workflowVersionRef' || key === 'currentStageRef') {
+              res[key] = data[key]; // Assign as-is
+            } else {
+              const value = data[key];
+              // Re-apply checks to property values before recursive call
+              if (value === null || typeof value !== 'object') {
+                res[key] = value;
+              } else if (value instanceof Timestamp) {
+                res[key] = formatISO(value.toDate());
+              } else if (value instanceof Date) {
+                res[key] = formatISO(value);
+              } else if (typeof value.firestore === 'object' && value.firestore !== null) {
+                res[key] = value;
+              } else if (typeof value.path === 'string' && typeof value.id === 'string') {
+                res[key] = value;
+              } else if (typeof value._delegate === 'object' && value._delegate !== null) {
+                res[key] = value;
+              } else {
+                res[key] = convertTimestampsToISO(value, depth + 1, maxDepth, currentSeenSet);
+              }
+            }
           }
         }
+      } else {
+        // Unhandled complex object type. Return a placeholder string to stop recursion.
+        // console.warn(`[convertTimestampsToISO] Unhandled complex object type at depth ${depth}:`, data?.constructor?.name, data);
+        res = `[Unhandled Complex Object: ${data?.constructor?.name || 'UnknownType'}]`;
       }
-    } else {
-      // Unhandled complex object type (not Timestamp, Date, SDK heuristic, Array, or plain Object as checked above).
-      // Aggressively return a placeholder string to prevent recursion into unknown structures.
-      // If debugging, uncomment the console.warn below to identify these types.
-      // console.warn(`[convertTimestampsToISO] Unhandled complex object type at depth ${depth}:`, data?.constructor?.name, data);
-      res = `[Unhandled Complex Object: ${data?.constructor?.name || 'UnknownType'}]`;
     }
   } finally {
     // 8. Remove current object from 'seen' set after its processing is complete for this path.
@@ -79,4 +106,3 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
   return res;
 }
-
