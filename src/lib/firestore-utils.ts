@@ -29,8 +29,9 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
   // Check for _delegate, common in some Firestore SDK internal objects
   if (typeof data._delegate === 'object' && data._delegate !== null) {
-    return data; 
+    return data;
   }
+
 
   // 4. Initialize 'seen' set for cycle detection for the current path of recursion if not already provided.
   const currentSeenSet = seenObjectsParam || new Set();
@@ -48,30 +49,34 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
 
   let res: any;
 
-  // 7. Recursive processing based on object type for objects that made it past earlier checks.
-  if (Array.isArray(data)) {
-    res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
-  } else if (data.constructor === Object) { 
-    // Plain JavaScript object
-    res = {};
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        // Explicitly skip DocumentReference fields which should not be deeply converted
-        if (key === 'workflowVersionRef' || key === 'currentStageRef') {
-          res[key] = data[key]; // Assign as-is
-        } else {
-          res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
+  try {
+    // 7. Recursive processing based on object type for objects that made it past earlier checks.
+    if (Array.isArray(data)) {
+      res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
+    } else if (data.constructor === Object) {
+      // Plain JavaScript object
+      res = {};
+      for (const key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          // Explicitly skip DocumentReference fields which should not be deeply converted
+          if (key === 'workflowVersionRef' || key === 'currentStageRef') {
+            res[key] = data[key]; // Assign as-is
+          } else {
+            res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
+          }
         }
       }
+    } else {
+      // Unhandled complex object type (not primitive, not Timestamp/Date, not known SDK object, not Array, not plain Object).
+      // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should have caught
+      // issues if this object itself was part of a cycle or too deep.
+      res = data;
     }
-  } else {
-    // Unhandled complex object type (not primitive, not Timestamp/Date, not known SDK object, not Array, not plain Object).
-    // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should have caught
-    // issues if this object itself was part of a cycle or too deep.
-    res = data;
+  } finally {
+    // 8. Remove current object from 'seen' set after its processing is complete for this path.
+    // This is in 'finally' to ensure it runs even if an error occurs during recursion.
+    currentSeenSet.delete(data);
   }
-
-  // 8. Remove current object from 'seen' set after its processing is complete for this path.
-  currentSeenSet.delete(data);
   return res;
 }
+

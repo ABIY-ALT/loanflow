@@ -9,7 +9,7 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, writeBatch, serverTimestamp, Timestamp, runTransaction, limit, deleteDoc } from 'firebase/firestore';
 
 import { formatISO, parseISO, addDays, isBefore } from 'date-fns';
-import { convertTimestampsToISO } from '@/lib/firestore-utils'; // Import from the new location
+import { convertTimestampsToISO } from '@/lib/firestore-utils';
 
 // Mock data imports for users are still present as user management is not yet Firestore-backed
 import { mockUsers } from '@/lib/mock-data';
@@ -25,9 +25,6 @@ const createErrorResult = (message: string, context?: string, originalError?: an
   console.error(`[Service:${context || 'Unknown'}] Error:`, detailedMessage, originalError);
   return { error: detailedMessage };
 };
-
-// convertTimestampsToISO function is now imported from '@/lib/firestore-utils'
-
 
 const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ workflowDef: WorkflowDefinition, activeVersion: WorkflowVersion, stages: WorkflowStageDefinition[] } | null> => {
   console.log(`--- GET ACTIVE WORKFLOW VERSION FOR LOAN TYPE (loanType: "${loanType}") ---`);
@@ -285,13 +282,15 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     const loansFromFirestore: LoanRequest[] = [];
     for (const loanDoc of querySnapshot.docs) {
       const rawData = loanDoc.data();
-      const stageRelatedData = await resolveLoanStageData(rawData);
+      const fullyConvertedData = convertTimestampsToISO(rawData);
+      const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
+
       const loan: LoanRequest = {
         id: loanDoc.id,
-        ...convertTimestampsToISO(rawData),
+        ...fullyConvertedData,
         ...stageRelatedData,
-        history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
-        documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+        history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
+        documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
         assignedTo: rawData.assignedToUserId || undefined, 
       } as LoanRequest;
       loansFromFirestore.push(loan);
@@ -310,14 +309,15 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
 
     if (loanDocSnap.exists()) {
       const rawData = loanDocSnap.data();
-      const stageRelatedData = await resolveLoanStageData(rawData);
+      const fullyConvertedData = convertTimestampsToISO(rawData);
+      const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
 
       const loan: LoanRequest = {
         id: loanDocSnap.id,
-        ...convertTimestampsToISO(rawData),
+        ...fullyConvertedData,
         ...stageRelatedData,
-        history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
-        documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+        history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
+        documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
         assignedTo: rawData.assignedToUserId || undefined,
       } as LoanRequest;
 
@@ -346,6 +346,18 @@ export async function updateLoanRequest(
 
       const currentLoanData = loanDoc.data();
       const updatePayload: { [key: string]: any } = { ...dataToUpdate, lastUpdatedDate: serverTimestamp(), updatedAt: serverTimestamp() };
+
+      // Handle date string to Timestamp conversion for specific fields if they are present in dataToUpdate
+      if (typeof dataToUpdate.submittedDate === 'string') {
+        updatePayload.submittedDate = Timestamp.fromDate(parseISO(dataToUpdate.submittedDate));
+      }
+      if (typeof dataToUpdate.stageDeadline === 'string') {
+        updatePayload.stageDeadline = Timestamp.fromDate(parseISO(dataToUpdate.stageDeadline));
+      }
+       if (typeof dataToUpdate.lastUpdatedDate === 'string') { // Not typical, but defensive
+        delete updatePayload.lastUpdatedDate; // Will be set by serverTimestamp()
+      }
+
 
       const resolvedCurrentStageId = (await resolveLoanStageData(currentLoanData)).currentStageId;
 
@@ -379,7 +391,7 @@ export async function updateLoanRequest(
           updatePayload.currentStageRef = doc(db, newStageRefPath);
           updatePayload.assignedDepartment = newStageDef.responsibleDepartment;
           updatePayload.assignedToUserId = dataToUpdate.hasOwnProperty('assignedTo') ? (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null ? null : dataToUpdate.assignedTo) : currentLoanData.assignedToUserId;
-          updatePayload.stageEntryDate = serverTimestamp();
+          updatePayload.stageEntryDate = serverTimestamp(); // Timestamp for when stage was entered
           updatePayload.stageDeadline = Timestamp.fromDate(addDays(new Date(), newStageDef.defaultTimelineDays));
           updatePayload.isReadyForManagerReview = false; 
 
@@ -390,8 +402,12 @@ export async function updateLoanRequest(
 
       } else if (dataToUpdate.hasOwnProperty('assignedTo')) {
           updatePayload.assignedToUserId = dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null ? null : dataToUpdate.assignedTo;
-          delete updatePayload.assignedTo; 
       }
+       // Explicitly remove assignedTo from payload if it was only for internal logic
+      if (dataToUpdate.hasOwnProperty('assignedTo')) {
+         delete updatePayload.assignedTo;
+      }
+
 
       if (updatePayload.history && Array.isArray(updatePayload.history)) {
         updatePayload.history = updatePayload.history.map(entry => ({
@@ -406,7 +422,7 @@ export async function updateLoanRequest(
         }));
       }
       
-      const protectedFields = ['id', 'loanNumber', 'customerNumber', 'submittedDate', 'createdAt'];
+      const protectedFields = ['id', 'loanNumber', 'customerNumber', 'createdAt']; // submittedDate handled above
       protectedFields.forEach(field => delete updatePayload[field]);
       
       transaction.update(loanDocRef, updatePayload);
@@ -415,13 +431,15 @@ export async function updateLoanRequest(
     const updatedDocSnap = await getDoc(loanDocRef);
     if (updatedDocSnap.exists()) {
         const rawData = updatedDocSnap.data();
-        const stageRelatedData = await resolveLoanStageData(rawData);
+        const fullyConvertedData = convertTimestampsToISO(rawData);
+        const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
+
         const updatedLoanObject: LoanRequest = {
             id: updatedDocSnap.id,
-            ...convertTimestampsToISO(rawData),
+            ...fullyConvertedData,
             ...stageRelatedData,
-            history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
-            documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+            history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
+            documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
             assignedTo: rawData.assignedToUserId || undefined, 
         } as LoanRequest;
         return { success: true, updatedLoan: updatedLoanObject };
@@ -667,6 +685,8 @@ export async function getDepartments(): Promise<{ departments?: {id: string, nam
       const deptName = docSnap.data().name;
       if (typeof deptName === 'string' && deptName.trim() !== '') {
         departments.push({ id: docSnap.id, name: deptName as DepartmentType });
+      } else {
+        console.warn(`[Service:getDepartments] Firestore document ID ${docSnap.id} in 'departments' collection has missing or invalid 'name' field. Skipping.`);
       }
     });
 
