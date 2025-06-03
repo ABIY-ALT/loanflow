@@ -7,24 +7,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests } from '@/services/loan-service';
-import type { LoanRequest, WorkflowDefinition } from '@/types/loan'; // Workflow types not directly used here but good for context
+import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service';
+import type { LoanRequest, WorkflowDefinition } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect, useCallback, useMemo } from 'react'; // Added useCallback here
+import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { mockWorkflowDefinitions } from '@/lib/mock-data'; // To resolve stage names
 
 export default function DepartmentQueuePage() {
   const [unassignedLoans, setUnassignedLoans] = useState<LoanRequest[]>([]);
+  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Store static workflow definitions for resolving stage names
-  const [workflowDefs] = useState<WorkflowDefinition[]>(mockWorkflowDefinitions);
-
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
-    if (!workflowVersionId || !stageId) return "Unknown Stage";
-    for (const def of workflowDefs) {
+    if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
+    for (const def of fetchedWorkflowDefinitions) {
       const version = def.versions.find(v => v.id === workflowVersionId);
       if (version) {
         const stage = version.stages.find(s => s.id === stageId);
@@ -32,57 +29,70 @@ export default function DepartmentQueuePage() {
       }
     }
     return "Unknown Stage";
-  }, [workflowDefs]);
-
+  }, [fetchedWorkflowDefinitions]);
 
   useEffect(() => {
-    async function fetchUnassignedLoans() {
+    async function fetchPageData() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
-        if (result.error) {
-          setError(result.error);
+        const [loansResult, wfResult] = await Promise.all([
+          getLoanRequests(),
+          getWorkflowDefinitions()
+        ]);
+
+        if (loansResult.error) {
+          setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`));
           setUnassignedLoans([]);
-        } else if (result.loans) {
-          // A loan is "unassigned" if it has an assignedDepartment but no assignedTo (user)
-          const filteredLoans = result.loans.filter(loan =>
+        } else if (loansResult.loans) {
+          const filteredLoans = loansResult.loans.filter(loan =>
             loan.assignedDepartment && !loan.assignedTo && !loan.isReadyForManagerReview
-            // Also ensure it's not in a terminal-like state if those exist outside workflow
           );
           setUnassignedLoans(filteredLoans);
         } else {
-           setError("No loan data received for unassigned cases queue.");
+           setError(prev => (prev ? `${prev}\nLoans: No loan data received for unassigned queue.` : `Loans: No loan data received for unassigned queue.`));
            setUnassignedLoans([]);
         }
+
+        if (wfResult.error) {
+          setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`));
+          setFetchedWorkflowDefinitions([]);
+        } else if (wfResult.workflows) {
+          setFetchedWorkflowDefinitions(wfResult.workflows);
+        } else {
+           setError(prev => (prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`));
+           setFetchedWorkflowDefinitions([]);
+        }
+
       } catch (err: any) {
-        const errorMessage = err.message || "An unknown error occurred fetching unassigned cases.";
+        const errorMessage = err.message || "An unknown error occurred fetching page data.";
         setError(errorMessage);
         setUnassignedLoans([]);
+        setFetchedWorkflowDefinitions([]);
       } finally {
         setIsLoading(false);
       }
     }
-    fetchUnassignedLoans();
+    fetchPageData();
   }, []);
 
 
-  if (isLoading) { /* ... loading UI ... */
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="ml-3 text-lg">Loading unassigned cases...</p>
+        <p className="ml-3 text-lg">Loading unassigned cases & workflows...</p>
       </div>
     );
   }
-  if (error) { /* ... error UI ... */
+  if (error && (unassignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div><h1 className="text-3xl font-bold tracking-tight flex items-center"><FolderKanban className="mr-3 h-8 w-8 text-primary" />Department Queue (Unassigned Staff)</h1></div>
            <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
         </div>
-        <Alert variant="destructive" className="max-w-2xl mx-auto"><AlertCircle className="h-5 w-5" /><AlertTitleShadCN>Error</AlertTitleShadCN><AlertDescriptionShadCN>{error}</AlertDescriptionShadCN></Alert>
+        <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertCircle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescriptionShadCN>{error}</AlertDescriptionShadCN></Alert>
       </div>
     );
   }
@@ -101,6 +111,15 @@ export default function DepartmentQueuePage() {
         </div>
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
       </div>
+      
+      {error && !(unassignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0) && (
+         <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitleShadCN>Partial Data Error</AlertTitleShadCN>
+            <AlertDescriptionShadCN>There was an issue loading some data, but other parts may be available: {error}</AlertDescriptionShadCN>
+        </Alert>
+      )}
+
 
       <Card>
         <CardHeader>
