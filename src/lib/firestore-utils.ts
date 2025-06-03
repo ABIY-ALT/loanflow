@@ -45,6 +45,7 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 6. Add current object to 'seen' set before recursing into its properties/elements.
+  // This is crucial for objects we are about to iterate/recurse into.
   currentSeenSet.add(data);
 
   let res: any;
@@ -55,8 +56,9 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
       res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
     } else {
       const proto = Object.getPrototypeOf(data);
-      if (proto === Object.prototype || proto === null) {
-        // This is a plain object (prototype is Object.prototype) or an object with a null prototype.
+      // SIMPLIFIED PLAIN OBJECT CHECK
+      if (proto === Object.prototype) {
+        // Plain JavaScript object
         res = {};
         for (const key in data) {
           if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -69,9 +71,9 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
           }
         }
       } else {
-        // Unhandled complex object type (not primitive, not Timestamp/Date, not known SDK object, not Array, not plain Object).
-        // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should have caught
-        // issues if this object itself was part of a cycle or too deep.
+        // Unhandled complex object type (not Timestamp, Date, SDK heuristic, Array, or plain Object).
+        // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should prevent issues
+        // if this object contains internal cycles that would otherwise be problematic.
         res = data;
       }
     }
@@ -82,3 +84,4 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
   return res;
 }
+
