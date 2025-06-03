@@ -32,23 +32,37 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
     return data;
   }
 
-  // 2. Firestore SDK specific types or known convertible types
+  // 2. Handle specific convertible types FIRST
   if (data instanceof Timestamp) {
     return formatISO(data.toDate());
   }
   if (data instanceof Date) {
     return formatISO(data);
   }
-  // Heuristic for other Firestore SDK objects that shouldn't be deeply traversed
-  if (typeof data.firestore === 'object' && data.firestore !== null) {
-    return data; // Return SDK object as-is
-  }
-  // Heuristic for DocumentReference-like objects (path and id are good indicators)
-  if (typeof data.path === 'string' && typeof data.id === 'string') {
-      return data; // Return SDK object as-is (likely a DocumentReference)
+  // Check for other toDate()-able objects AFTER specific Timestamp/Date.
+  // This is crucial for objects that might have a toDate method but aren't direct instances.
+  if (typeof data.toDate === 'function') { 
+    try {
+      return formatISO(data.toDate());
+    } catch (e) {
+      // If toDate() exists but fails (e.g., it's not a valid timestamp-like structure),
+      // we'll return a string indicating an issue rather than letting it fall through
+      // to potentially cause deeper recursion issues or be returned as an uncoverted object.
+      return "[Invalid Timestamp-like Object]";
+    }
   }
 
-  // 3. Circular reference / max depth checks for general objects
+  // 3. Heuristics for Firestore SDK objects that should be returned AS-IS (not converted, not recursed into)
+  // These checks come after direct conversion attempts because some SDK objects might ALSO have toDate (like Timestamp itself).
+  if (typeof data.firestore === 'object' && data.firestore !== null) {
+    return data; // Likely a Firestore SDK object (e.g., Firestore instance, Query, CollectionRef)
+  }
+  if (typeof data.path === 'string' && typeof data.id === 'string') {
+    // This is a strong heuristic for DocumentReference or similar reference types.
+    return data; 
+  }
+
+  // 4. Circular reference / max depth checks for general objects that are not handled above
   seen = seen || new Set();
   if (seen.has(data)) {
     return `[Circular Reference: ${data.constructor?.name || 'UnknownType'}]`;
@@ -57,13 +71,14 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
     return `[Max Depth Exceeded: ${data.constructor?.name || 'UnknownType'}]`;
   }
   
-  seen.add(data);
+  seen.add(data); // Add to seen set *before* recursing into its properties
+  
   let res: any;
 
-  // 4. Recursive processing - prioritize known structures (Array, plain Object)
+  // 5. Recursive processing for Arrays and plain Objects
   if (Array.isArray(data)) {
     res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
-  } else if (data.constructor === Object) { // Only recurse properties for plain objects
+  } else if (data.constructor === Object) { // Check for plain objects (created with {} or new Object())
     res = {};
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -71,15 +86,13 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
       }
     }
   } else {
-    // For any other kind of object (custom classes, non-plain objects, etc.)
-    // that wasn't caught by earlier specific checks, return it as-is.
-    // This is the most conservative approach to prevent recursion into unknown structures.
-    // Timestamps within these objects might NOT be converted if they are not plain objects themselves.
-    // If it has a toDate method but isn't a Timestamp/Date instance, it also falls here.
+    // If it's an object but not Array or plain Object, and wasn't caught by specific handlers above,
+    // it's an unhandled complex type. Return it as-is.
+    // The 'seen' set and 'maxDepth' checks should prevent infinite loops if this object contains cycles.
     res = data; 
   }
 
-  seen.delete(data);
+  seen.delete(data); // Remove from seen set after its processing (and its children's processing) is complete
   return res;
 }
 
@@ -591,7 +604,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         if (!currentDefDoc.exists() || !currentDefDoc.data()?.createdAt) {
           defPayload.createdAt = serverTimestamp();
         } else if (currentDefDoc.exists() && currentDefDoc.data()?.createdAt) {
-          defPayload.createdAt = currentDefDoc.data()?.createdAt; // Preserve existing if not provided
+          defPayload.createdAt = currentDefDoc.data()?.createdAt;
         }
       }
       console.log(`BATCH.SET (Definition) Path: ${defRef.path}, Payload: ${JSON.stringify(defPayload)}`);
@@ -836,3 +849,5 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult(errorMessage, "getAvailableLoanTypesForWorkflow", e);
   }
 }
+
+    
