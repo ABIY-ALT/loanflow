@@ -186,14 +186,19 @@ export async function addLoanRequest(
   console.log('[Service:addLoanRequest] Called with data:', loanData);
   
   const activeWorkflowInfo = await getActiveWorkflowVersionForLoanType(loanData.loanType);
+  
   if (!activeWorkflowInfo || activeWorkflowInfo.stages.length === 0) {
-    return createErrorResult(`No active workflow version or version has no stages for loan type: ${loanData.loanType}. Configure in settings.`, "addLoanRequest");
+    const detail = activeWorkflowInfo 
+        ? `Active workflow version ${activeWorkflowInfo.activeVersion.id} (V${activeWorkflowInfo.activeVersion.versionNumber}) for definition '${activeWorkflowInfo.workflowDef.name}' (ID: ${activeWorkflowInfo.workflowDef.id}) was found but has no stages.`
+        : `No active workflow version (with stages) could be determined for loan type: ${loanData.loanType}.`;
+    return createErrorResult(`${detail} Please configure stages in Settings and ensure the version is active and saved.`, "addLoanRequest");
   }
+
   const { workflowDef, activeVersion, stages } = activeWorkflowInfo;
   const firstStage = stages.find(s => s.order === 0); 
 
   if (!firstStage) {
-    return createErrorResult(`First stage (order 0) not found for workflow: ${workflowDef.name} V${activeVersion.versionNumber}.`, "addLoanRequest");
+    return createErrorResult(`First stage (order 0) not found for workflow: '${workflowDef.name}' V${activeVersion.versionNumber} (Version ID: ${activeVersion.id}, Definition ID: ${workflowDef.id}). Please ensure the active version has stages with sequential order starting from 0.`, "addLoanRequest");
   }
 
   // Determine manager assignment
@@ -522,40 +527,59 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
   const batch = writeBatch(db);
   try {
     for (const definition of definitions) {
-      const definitionId = definition.id || doc(collection(db, 'workflowDefinitions')).id; // Ensure ID for new defs
+      const definitionId = definition.id; // ID should exist if fetched or previously added
+      if (!definitionId) {
+        console.error("[Service:saveWorkflowDefinitions] CRITICAL: Definition found without an ID during save:", definition);
+        throw new Error(`Workflow definition "${definition.name}" is missing an ID.`);
+      }
       console.log("[Service:saveWorkflowDefinitions] Processing Definition for save:", { id: definitionId, name: definition.name, loanType: definition.loanType });
       
       const defRef = doc(db, "workflowDefinitions", definitionId);
+      // Exclude versions, id, and createdAt from direct set if they are managed by subcollections or are immutable
       const { versions, id: defIdToExclude, createdAt: defCreatedAtFromUI, ...defDataFromUI } = definition; 
       
       const defData: any = { ...defDataFromUI, updatedAt: serverTimestamp() };
-      if (!defCreatedAtFromUI && !definition.createdAt) { // Only set createdAt if it's truly new
-        defData.createdAt = serverTimestamp();
-      } else if (defCreatedAtFromUI) {
-        defData.createdAt = defCreatedAtFromUI; // Preserve existing string or convert if needed
+      // Only set createdAt if it's a new definition (i.e., no defCreatedAtFromUI)
+      // If defCreatedAtFromUI exists, it means it's an existing doc, so we preserve its original createdAt
+      if (defCreatedAtFromUI) {
+        defData.createdAt = typeof defCreatedAtFromUI === 'string' ? Timestamp.fromDate(parseISO(defCreatedAtFromUI)) : defCreatedAtFromUI;
+      } else {
+         // This case should ideally be handled by addWorkflowDefinitionToFirestore for brand new definitions
+         // If a definition somehow reaches here without a createdAt and without an ID, it's an anomaly.
+         // For safety, if it's an existing doc missing createdAt (unlikely), we don't overwrite.
+         // If it was a NEW definition being saved through here (not recommended), it needs createdAt.
+         // The current flow: New defs go via addWorkflowDefinitionToFirestore. Updates come here.
+         // So, def.createdAt should exist.
+         if (definition.createdAt) defData.createdAt = definition.createdAt;
+         else defData.createdAt = serverTimestamp(); // Fallback, should not be common for updates.
       }
 
 
-      batch.set(defRef, defData, { merge: true });
+      batch.set(defRef, defData, { merge: true }); // merge:true is crucial for updates
 
       const existingVersionIdsForDef = new Set<string>();
       const versionsSnapshot = await getDocs(collection(defRef, "versions"));
       versionsSnapshot.forEach(docSnap => existingVersionIdsForDef.add(docSnap.id));
       const incomingVersionIds = new Set<string>();
 
-      for (const version of versions) {
-        const versionId = version.id || doc(collection(defRef, 'versions')).id; // Ensure ID for new versions
-        console.log("[Service:saveWorkflowDefinitions]   Processing Version for save:", { id: versionId, verNum: version.versionNumber, defId: definitionId, isActive: version.isActive });
+      for (const version of versions) { // versions is from definition.versions
+        const versionId = version.id; // Assume ID exists if coming from UI state after creation/fetch
+        if (!versionId) {
+            console.error("[Service:saveWorkflowDefinitions] CRITICAL: Version found without an ID during save:", version, "for definition:", definitionId);
+            throw new Error(`Version number "${version.versionNumber}" for definition "${definition.name}" is missing an ID.`);
+        }
         incomingVersionIds.add(versionId);
-
+        console.log("[Service:saveWorkflowDefinitions]   Processing Version for save:", { id: versionId, verNum: version.versionNumber, defId: definitionId, isActive: version.isActive, stagesCount: version.stages.length });
+        
         const versionRef = doc(collection(defRef, "versions"), versionId);
-        const { stages, id: verIdToExclude, createdAt: verCreatedAtFromUI, workflowDefinitionId: _wfDefId, ...versionDataFromUI } = version; 
+        // Exclude stages, id, and workflowDefinitionId from direct set
+        const { stages, id: verIdToExclude, workflowDefinitionId: _wfDefId, createdAt: verCreatedAtFromUI, ...versionDataFromUI } = version; 
         
         const versionData: any = {...versionDataFromUI, workflowDefinitionId: definitionId, updatedAt: serverTimestamp() };
-        if (!verCreatedAtFromUI && !version.createdAt) {
-           versionData.createdAt = serverTimestamp();
-        } else if (verCreatedAtFromUI) {
-            versionData.createdAt = verCreatedAtFromUI;
+        if (verCreatedAtFromUI) {
+            versionData.createdAt = typeof verCreatedAtFromUI === 'string' ? Timestamp.fromDate(parseISO(verCreatedAtFromUI)) : verCreatedAtFromUI;
+        } else {
+            versionData.createdAt = serverTimestamp(); // New version being added
         }
         batch.set(versionRef, versionData, { merge: true });
         
@@ -564,22 +588,27 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         stagesSnapshot.forEach(docSnap => existingStageIdsForVersion.add(docSnap.id));
         const incomingStageIds = new Set<string>();
 
-        for (const stage of stages) {
-          const stageId = stage.id || doc(collection(versionRef, 'stages')).id; // Ensure ID for new stages
-          console.log("[Service:saveWorkflowDefinitions]     Processing Stage for save:", { id: stageId, name: stage.name, order: stage.order, verId: versionId });
+        for (const stage of stages) { // stages is from version.stages
+          const stageId = stage.id; // Assume ID exists
+          if (!stageId) {
+            console.error("[Service:saveWorkflowDefinitions] CRITICAL: Stage found without an ID during save:", stage, "for version:", versionId);
+            throw new Error(`Stage "${stage.name}" for version "${version.versionNumber}" is missing an ID.`);
+          }
           incomingStageIds.add(stageId);
-
+          console.log("[Service:saveWorkflowDefinitions]     Processing Stage for save:", { id: stageId, name: stage.name, order: stage.order, verId: versionId });
+          
           const stageRef = doc(collection(versionRef, "stages"), stageId);
           const { id: stageIdToExclude, createdAt: stageCreatedAtFromUI, ...stageDataFromUI } = stage; 
           
           const stageData: any = {...stageDataFromUI, updatedAt: serverTimestamp() };
-           if(!stageCreatedAtFromUI && !stage.createdAt){ 
-              stageData.createdAt = serverTimestamp();
-           } else if (stageCreatedAtFromUI) {
-               stageData.createdAt = stageCreatedAtFromUI;
+           if(stageCreatedAtFromUI){ 
+               stageData.createdAt = typeof stageCreatedAtFromUI === 'string' ? Timestamp.fromDate(parseISO(stageCreatedAtFromUI)) : stageCreatedAtFromUI;
+           } else {
+               stageData.createdAt = serverTimestamp(); // New stage being added
            }
           batch.set(stageRef, stageData, { merge: true });
         }
+        // Delete stages not in the incoming UI data for this version
         existingStageIdsForVersion.forEach(stageId => {
           if (!incomingStageIds.has(stageId)) {
             console.log(`[Service:saveWorkflowDefinitions] DELETING stage ${stageId} from version ${versionId}`);
@@ -587,9 +616,13 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
           }
         });
       }
+       // Delete versions not in the incoming UI data for this definition
        existingVersionIdsForDef.forEach(versionId => {
         if (!incomingVersionIds.has(versionId)) {
           console.log(`[Service:saveWorkflowDefinitions] DELETING version ${versionId} and its stages from definition ${definitionId}`);
+          // Need to delete stages subcollection if Firebase rules don't do it automatically on version delete
+          // For simplicity here, assuming stages are few or handled by rules/manual cleanup if versions are deleted.
+          // A more robust solution would iterate and delete stages of the version first.
           batch.delete(doc(collection(defRef, "versions"), versionId));
         }
       });
