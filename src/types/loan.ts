@@ -78,6 +78,7 @@ export interface LoanRequest {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  customerBranch?: string; // Added field
   loanAmount: number;
   loanType: string;
   loanPurpose: string;

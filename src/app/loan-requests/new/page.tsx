@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter } from 'lucide-react'; 
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react'; 
 import React, { useState, useEffect } from 'react';
 import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service'; 
 import type { LoanRequest } from '@/types/loan'; 
@@ -40,15 +40,20 @@ const loanRequestFormSchema = z.object({
   loanAmount: z.coerce.number().positive({
     message: 'Loan amount must be a positive number.',
   }),
-  loanType: z.string().min(1, { // Ensure a loan type is selected
+  loanType: z.string().min(1, {
     message: 'Loan type is required.',
   }),
   loanPurpose: z.string().min(10, {
     message: 'Loan purpose must be at least 10 characters.',
   }),
+  customerBranch: z.string().min(1, {
+    message: 'Customer branch is required.'
+  }),
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
+
+const MOCK_BRANCHES = ['Main Office', 'North Branch', 'South Branch', 'Online Origination'];
 
 export default function NewLoanRequestPage() {
   const { toast } = useToast();
@@ -90,14 +95,16 @@ export default function NewLoanRequestPage() {
       customerEmail: '',
       customerPhone: '',
       loanAmount: 0,
-      loanType: '', // Will be set by Select
+      loanType: '', 
       loanPurpose: '',
+      customerBranch: '',
     },
   });
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
+      // Ensure all fields from LoanRequestFormValues are included if they are part of the core loan data
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -105,6 +112,7 @@ export default function NewLoanRequestPage() {
         loanAmount: data.loanAmount,
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
+        customerBranch: data.customerBranch, // Added customerBranch
       };
       
       const result = await addLoanRequest(loanDataForService); 
@@ -151,7 +159,7 @@ export default function NewLoanRequestPage() {
       <Card>
         <CardHeader>
           <CardTitle>Applicant & Loan Information</CardTitle>
-          <CardDescription>All fields are required. Select a loan type with an active workflow.</CardDescription>
+          <CardDescription>All fields are required. Select a loan type with an active workflow and the customer's branch.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -207,6 +215,35 @@ export default function NewLoanRequestPage() {
                 />
                 <FormField
                   control={form.control}
+                  name="customerBranch"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Customer Branch</FormLabel>
+                       <div className="relative">
+                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Select 
+                          onValueChange={field.onChange} 
+                          defaultValue={field.value} 
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="pl-10">
+                              <SelectValue placeholder="Select customer branch" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {MOCK_BRANCHES.map(branch => (
+                              <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                       </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="loanAmount"
                   render={({ field }) => (
                     <FormItem>
@@ -244,7 +281,7 @@ export default function NewLoanRequestPage() {
                               <SelectItem key={type} value={type}>{type}</SelectItem>
                             ))}
                              {availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
-                                <SelectItem value="no-types" disabled>No loan types with active workflows</SelectItem>
+                                <SelectItem value="no-types" disabled>No active loan types configured</SelectItem>
                              )}
                           </SelectContent>
                         </Select>
