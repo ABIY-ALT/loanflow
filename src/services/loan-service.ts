@@ -189,16 +189,25 @@ export async function addLoanRequest(
   const { workflowDef, activeVersion, stages } = activeWorkflowInfo;
 
   if (!stages || stages.length === 0) { 
-    const errorMessage = `Internal Error: Active workflow version V${activeVersion.versionNumber} (ID: ${activeVersion.id}) for loan type "${loanData.loanType}" (Def: "${workflowDef.name}") has no stages. This should have been caught by getActiveWorkflowVersionForLoanType.`;
+    // This check is slightly redundant if getActiveWorkflowVersionForLoanType guarantees stages, but good for safety.
+    const errorMessage = `Internal Error: Active workflow version V${activeVersion.versionNumber} (ID: ${activeVersion.id}) for loan type "${loanData.loanType}" (Def: "${workflowDef.name}") has no stages defined. Please configure in Settings.`;
     return createErrorResult(errorMessage, "addLoanRequest");
   }
 
-  const firstStage = stages.find(s => s.order === 0);
+  // Assuming stages are correctly ordered by `getActiveWorkflowVersionForLoanType`
+  const firstStage = stages[0];
 
-  if (!firstStage) {
-     const errorMessage = `First stage (order 0) not found for active workflow. Loan Type: "${loanData.loanType}", Definition: "${workflowDef.name}" (ID: ${workflowDef.id}), Active Version: V${activeVersion.versionNumber} (ID: ${activeVersion.id}). It has ${stages.length} stages. Ensure the active version has stages with sequential 'order' starting from 0 and is saved.`;
+  if (!firstStage || typeof firstStage.order !== 'number') {
+     const errorMessage = `First stage is missing or malformed for active workflow. Loan Type: "${loanData.loanType}", Definition: "${workflowDef.name}" (ID: ${workflowDef.id}), Active Version: V${activeVersion.versionNumber} (ID: ${activeVersion.id}). It has ${stages.length} stages. Expected stages to be ordered correctly.`;
      return createErrorResult(errorMessage, "addLoanRequest");
   }
+  
+  // Optional: More strict check if you absolutely require order to start at 0.
+  // if (firstStage.order !== 0) {
+  //    const errorMessage = `Data Integrity Issue: The first stage (Order: ${firstStage.order}, Name: "${firstStage.name}") in the active workflow for "${loanData.loanType}" (Def: "${workflowDef.name}", Ver: V${activeVersion.versionNumber}) does not have order 0. Please correct workflow configuration.`;
+  //    return createErrorResult(errorMessage, "addLoanRequest");
+  // }
+
 
   let assignedManagerId: string | undefined = undefined;
   let assignedManagerName: string | undefined = undefined;
@@ -289,7 +298,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
 
       const loan: LoanRequest = {
         id: loanDoc.id,
-        ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}), // Handle if conversion returns non-object
+        ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}), 
         ...stageRelatedData,
         history: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.history)) ? fullyConvertedData.history : [],
         documents: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.documents)) ? fullyConvertedData.documents : [],
@@ -354,8 +363,7 @@ export async function updateLoanRequest(
       if (typeof dataToUpdate.submittedDate === 'string') {
         updatePayload.submittedDate = Timestamp.fromDate(parseISO(dataToUpdate.submittedDate));
       } else if (dataToUpdate.submittedDate === null || dataToUpdate.submittedDate === undefined) {
-         // If explicitly set to null/undefined, ensure it's handled if Firestore expects null or field removal
-         updatePayload.submittedDate = null; // Or delete updatePayload.submittedDate;
+         updatePayload.submittedDate = null; 
       }
 
       if (typeof dataToUpdate.stageDeadline === 'string') {
