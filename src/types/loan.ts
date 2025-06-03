@@ -83,9 +83,22 @@ export interface LoanRequest {
   loanType: string;
   loanPurpose: string;
 
-  workflowDefinitionId: string; // Points to the parent WorkflowDefinition
-  workflowVersionId: string; // Points to the specific WorkflowVersion this loan follows
-  currentStageId: string; // Points to a WorkflowStageDefinition.id within the workflowVersionId
+  // Option 1: Keep these as primary data source if resolved on client/service read
+  workflowDefinitionId: string; 
+  workflowVersionId: string; 
+  currentStageId: string; 
+
+  // Option 2: Firestore specific storage fields (denormalized for querying/linking)
+  workflowDefinitionId_mirror?: string; 
+  workflowVersionId_mirror?: string; 
+  currentStageId_mirror?: string; 
+
+  workflowVersionRefPath?: string; // Path string e.g. "workflowDefinitions/defId/versions/verId"
+  currentStageRefPath?: string; // Path string e.g. "workflowDefinitions/defId/versions/verId/stages/stageId"
+  
+  // Optional: Keep old DocumentReference fields if needed during transition or specific server logic
+  workflowVersionRef?: any; 
+  currentStageRef?: any; 
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
@@ -104,11 +117,9 @@ export interface LoanRequest {
   currentStageName?: string;
   isTerminalStage?: boolean;
 
-  // Firestore specific technical fields (optional on client type if handled purely server-side on save)
-  workflowVersionRef?: any; // Firestore DocumentReference path or object
-  currentStageRef?: any; // Firestore DocumentReference path or object
-  workflowDefinitionId_mirror?: string; // Denormalized for easier querying
-  assignedToUserId?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
+  // Firestore specific technical fields
+  assignedToUserId?: string | null; // Store the actual assigned user ID in Firestore this way
+  createdAt?: string; // Firestore serverTimestamp on create, converted to ISO on read
+  updatedAt?: string; // Firestore serverTimestamp on update, converted to ISO on read
 }
+
