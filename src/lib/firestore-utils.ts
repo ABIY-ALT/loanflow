@@ -1,8 +1,6 @@
 
-// This file is intended for utility functions that can be used by server-side code
-// but are pure data transformations and do not themselves require the 'use server' context
-// for server-only APIs.
-
+// This function is NOT marked with 'use server' as it's a pure utility.
+// It's intended to be imported by server-side code.
 import { Timestamp } from 'firebase/firestore';
 import { formatISO } from 'date-fns';
 
@@ -29,6 +27,10 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
     // This is likely a DocumentReference or similar.
     return data;
   }
+  // Check for _delegate, common in some Firestore SDK internal objects
+  if (typeof data._delegate === 'object' && data._delegate !== null) {
+    return data; 
+  }
 
   // 4. Initialize 'seen' set for cycle detection for the current path of recursion if not already provided.
   const currentSeenSet = seenObjectsParam || new Set();
@@ -49,7 +51,8 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   // 7. Recursive processing based on object type for objects that made it past earlier checks.
   if (Array.isArray(data)) {
     res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
-  } else if (data.constructor === Object) { // Simplified plain object check
+  } else if (data.constructor === Object) { 
+    // Plain JavaScript object
     res = {};
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -62,8 +65,9 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
       }
     }
   } else {
-    // Unhandled complex object type (not Array, not plain Object, not Timestamp/Date, not SDK object).
-    // Return as is. Cycle/depth checks on `data` itself should prevent issues.
+    // Unhandled complex object type (not primitive, not Timestamp/Date, not known SDK object, not Array, not plain Object).
+    // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should have caught
+    // issues if this object itself was part of a cycle or too deep.
     res = data;
   }
 
