@@ -41,8 +41,6 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 5. Initialize 'seen' set for cycle detection.
-  // A new Set is created for each top-level call by the service layer.
-  // This set is passed down through recursive calls.
   const currentSeenSet = seenObjectsParam || new Set<any>();
 
   // 6. Circular reference check for THIS object before adding it to the set.
@@ -63,22 +61,30 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
       res = {};
       for (const key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key)) {
-          // For plain objects, recurse on their properties.
-          // The recursive call to convertTimestampsToISO for data[key]
-          // will be caught by the SDK/Timestamp/Date/etc. checks at the top
-          // of that new call if data[key] is one of those types.
-          res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
+          const value = data[key];
+          if (value instanceof Timestamp) {
+            res[key] = formatISO(value.toDate());
+          } else if (value instanceof Date) {
+            res[key] = formatISO(value);
+          } else if (Array.isArray(value)) {
+            // Recursive call ONLY for arrays found as property values
+            res[key] = convertTimestampsToISO(value, depth + 1, maxDepth, currentSeenSet);
+          } else {
+            // All other property types (including nested plain objects, SDK objects, etc.) are assigned as-is.
+            // If 'value' is an SDK object, the recursive call to convertTimestampsToISO made on it (if it were an array item for instance)
+            // would be caught by the SDK checks at the top of *that* new call.
+            res[key] = value;
+          }
         }
       }
     } else {
       // If it's an object but not a Timestamp, Date, Array, known SDK object, or plain JS object,
       // it's likely a custom class instance or some other complex type not meant for deep iteration here.
-      // console.warn('[convertTimestampsToISO] Returning non-plain object as-is:', data?.constructor?.name, data);
-      res = data; // Return as-is.
+      // console.warn('[convertTimestampsToISO] Returning unhandled complex object with placeholder:', data?.constructor?.name, data);
+      res = "[Unhandled Complex Object Conversion Result]";
     }
   } finally {
     // 9. Remove current object from 'seen' set after its processing (or attempted processing) is complete.
-    // This is crucial for the cycle detection to work correctly across different branches of the data structure.
     currentSeenSet.delete(data);
   }
   return res;
