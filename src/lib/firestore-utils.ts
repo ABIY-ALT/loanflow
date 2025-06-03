@@ -45,7 +45,6 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 6. Add current object to 'seen' set before recursing into its properties/elements.
-  // This is crucial for objects we are about to iterate/recurse into.
   currentSeenSet.add(data);
 
   let res: any;
@@ -54,32 +53,28 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
     // 7. Recursive processing based on object type for objects that made it past earlier checks.
     if (Array.isArray(data)) {
       res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
-    } else {
-      const proto = Object.getPrototypeOf(data);
-      // SIMPLIFIED PLAIN OBJECT CHECK
-      if (proto === Object.prototype) {
-        // Plain JavaScript object
-        res = {};
-        for (const key in data) {
-          if (Object.prototype.hasOwnProperty.call(data, key)) {
-            // Explicitly skip DocumentReference fields which should not be deeply converted
-            if (key === 'workflowVersionRef' || key === 'currentStageRef') {
-              res[key] = data[key]; // Assign as-is
-            } else {
-              res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
-            }
+    } else if (Object.getPrototypeOf(data) === Object.prototype) {
+      // Plain JavaScript object (direct prototype is Object.prototype)
+      res = {};
+      for (const key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          // Explicitly skip DocumentReference fields which should not be deeply converted
+          if (key === 'workflowVersionRef' || key === 'currentStageRef') {
+            res[key] = data[key]; // Assign as-is
+          } else {
+            res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
           }
         }
-      } else {
-        // Unhandled complex object type (not Timestamp, Date, SDK heuristic, Array, or plain Object).
-        // Return as is. The cycle/depth checks on `data` itself (steps 5 & 6) should prevent issues
-        // if this object contains internal cycles that would otherwise be problematic.
-        res = data;
       }
+    } else {
+      // Unhandled complex object type (not Timestamp, Date, SDK heuristic, Array, or plain Object as checked above).
+      // Aggressively return a placeholder string to prevent recursion into unknown structures.
+      // If debugging, uncomment the console.warn below to identify these types.
+      // console.warn(`[convertTimestampsToISO] Unhandled complex object type at depth ${depth}:`, data?.constructor?.name, data);
+      res = `[Unhandled Complex Object: ${data?.constructor?.name || 'UnknownType'}]`;
     }
   } finally {
     // 8. Remove current object from 'seen' set after its processing is complete for this path.
-    // This is in 'finally' to ensure it runs even if an error occurs during recursion.
     currentSeenSet.delete(data);
   }
   return res;
