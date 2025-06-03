@@ -9,7 +9,7 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, addDoc, updateDoc, writeBatch, serverTimestamp, Timestamp, runTransaction, limit, deleteDoc } from 'firebase/firestore';
 
 import { formatISO, parseISO, addDays, isBefore, subDays } from 'date-fns';
-import { convertTimestampsToISO } from '@/lib/firestore-utils'; // IMPORT FROM NEW LOCATION
+// Removed: import { convertTimestampsToISO } from '@/lib/firestore-utils';
 
 // Mock data imports for users are still present as user management is not yet Firestore-backed
 import { mockUsers } from '@/lib/mock-data';
@@ -26,7 +26,74 @@ const createErrorResult = (message: string, context?: string, originalError?: an
   return { error: detailedMessage };
 };
 
-// convertTimestampsToISO function is MOVED to src/lib/firestore-utils.ts
+// Definition of convertTimestampsToISO moved directly into this file
+function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<any>): any {
+  // 1. Base cases: null, non-object
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+
+  // 2. Firestore SDK specific types or known convertible types
+  // These should be checked before the 'seen' set or depth limit for these specific types.
+  if (data instanceof Timestamp) {
+    return formatISO(data.toDate());
+  }
+  if (data instanceof Date) {
+    return formatISO(data);
+  }
+  // Heuristic for other Firestore SDK objects that shouldn't be deeply traversed
+  // Check for a 'firestore' property which is common in many v8/v9 SDK objects
+  if (typeof data.firestore === 'object' && data.firestore !== null) {
+    return data; // Return SDK object as-is
+  }
+  // Heuristic for DocumentReference-like objects (path and id are good indicators)
+  if (typeof data.path === 'string' && typeof data.id === 'string') {
+      return data; // Return SDK object as-is (likely a DocumentReference)
+  }
+
+  // 3. Circular reference / max depth checks for general objects
+  seen = seen || new Set();
+  if (seen.has(data)) {
+    return `[Circular Reference: ${data.constructor?.name || 'UnknownType'}]`;
+  }
+  if (depth > maxDepth) {
+    return `[Max Depth Exceeded: ${data.constructor?.name || 'UnknownType'}]`;
+  }
+
+  // 4. Add to seen set *after* SDK object checks but *before* recursing into its properties
+  seen.add(data);
+
+  let res: any;
+  // 5. Recursive processing
+  if (Array.isArray(data)) {
+    res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
+  } else if (typeof data.toDate === 'function') { 
+    // This handles objects that have a toDate method but are not Timestamp or Date instances (e.g., from older SDK versions or mocks)
+    // This check is after `instanceof Timestamp` and `instanceof Date` to prioritize direct type checks.
+    try {
+      res = formatISO(data.toDate());
+    } catch (e) {
+      res = "[Invalid Timestamp-like Object]";
+    }
+  } else if (data.constructor === Object || Object.getPrototypeOf(data) === null || (typeof Object.getPrototypeOf(data) === 'object' && Object.getPrototypeOf(Object.getPrototypeOf(data)) === null) ) {
+    // Plain JavaScript object
+    res = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
+      }
+    }
+  } else {
+    // Unhandled complex object type. It's not a primitive, not a known Date/Timestamp,
+    // not an Array, not caught as a common SDK object, and not a plain JS object.
+    // We return it as-is and rely on the `seen` set or `maxDepth` to prevent infinite loops
+    // if this object itself contains further complex structures or cycles.
+    res = data;
+  }
+
+  seen.delete(data);
+  return res;
+}
 
 
 const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ workflowDef: WorkflowDefinition, activeVersion: WorkflowVersion, stages: WorkflowStageDefinition[] } | null> => {
@@ -755,3 +822,4 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult(errorMessage, "getAvailableLoanTypesForWorkflow", e);
   }
 }
+
