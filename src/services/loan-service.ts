@@ -103,7 +103,7 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
 };
 
 
-const getStageDefinitionByRef = async (stageRefPath: string): Promise<WorkflowStageDefinition | null> => {
+const getStageDefinitionByRef = async (stageRefPath: string, seenObjects: Set<any>): Promise<WorkflowStageDefinition | null> => {
   if (!stageRefPath || typeof stageRefPath !== 'string') {
       return null;
   }
@@ -111,7 +111,8 @@ const getStageDefinitionByRef = async (stageRefPath: string): Promise<WorkflowSt
     const stageDocRef = doc(db, stageRefPath);
     const stageDocSnap = await getDoc(stageDocRef);
     if (stageDocSnap.exists()) {
-      return { id: stageDocSnap.id, ...convertTimestampsToISO(stageDocSnap.data()) } as WorkflowStageDefinition;
+      // Pass the seenObjects set to convertTimestampsToISO
+      return { id: stageDocSnap.id, ...convertTimestampsToISO(stageDocSnap.data(), 0, 15, seenObjects) } as WorkflowStageDefinition;
     }
     return null;
   } catch (error) {
@@ -120,19 +121,20 @@ const getStageDefinitionByRef = async (stageRefPath: string): Promise<WorkflowSt
   }
 };
 
-const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>> => {
+const resolveLoanStageData = async (loanData: any, seenObjects: Set<any>): Promise<Partial<LoanRequest>> => {
   const resolvedData: Partial<LoanRequest> = {};
   const stageRefPath = loanData.currentStageRef?.path;
 
   if (typeof stageRefPath === 'string' && stageRefPath) {
-    const stageDef = await getStageDefinitionByRef(stageRefPath);
+    // Pass the seenObjects set to getStageDefinitionByRef
+    const stageDef = await getStageDefinitionByRef(stageRefPath, seenObjects);
     if (stageDef) {
       resolvedData.currentStageId = stageDef.id;
       resolvedData.currentStageName = stageDef.name;
       resolvedData.assignedDepartment = stageDef.responsibleDepartment;
 
       const pathSegments = stageRefPath.split('/');
-      if (pathSegments.length >= 5) { // e.g., workflowDefinitions/DEF_ID/versions/VER_ID/stages/STAGE_ID (5 segments for stage, 3 for version)
+      if (pathSegments.length >= 5) { 
         resolvedData.workflowDefinitionId = pathSegments[1];
         resolvedData.workflowVersionId = pathSegments[3];
       }
@@ -143,7 +145,6 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
       resolvedData.isTerminalStage = isTerminal;
 
       if (loanData.stageDeadline) {
-        // Ensure deadlineInput is a string before parsing
         const deadlineInput = loanData.stageDeadline instanceof Timestamp 
                               ? loanData.stageDeadline.toDate().toISOString() 
                               : (typeof loanData.stageDeadline === 'string' ? loanData.stageDeadline : null);
@@ -153,10 +154,10 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
                 resolvedData.isOverdue = isBefore(deadlineDate, new Date()) && !isTerminal;
             } catch (e) {
                 console.warn(`[Service:resolveLoanStageData] Error parsing stageDeadline "${deadlineInput}":`, e);
-                resolvedData.isOverdue = false; // Default to not overdue if parsing fails
+                resolvedData.isOverdue = false; 
             }
         } else {
-            resolvedData.isOverdue = false; // No valid deadline string
+            resolvedData.isOverdue = false; 
         }
       } else {
         resolvedData.isOverdue = false;
@@ -247,7 +248,7 @@ export async function addLoanRequest(
       history: [{
           id: `hist-fs-${Date.now()}`,
           stageName: firstStage.name,
-          timestamp: formatISO(currentDate),
+          timestamp: formatISO(currentDate), // Ensure ISO string for history
           userId: assignedManagerId || 'system-fs-auto',
           userName: assignedManagerName || 'System Automation',
           notes: initialHistoryNote,
@@ -281,16 +282,17 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
 
     const loansFromFirestore: LoanRequest[] = [];
     for (const loanDoc of querySnapshot.docs) {
+      const mainSeenSet = new Set<any>(); // Create a new set for each top-level document
       const rawData = loanDoc.data();
-      const fullyConvertedData = convertTimestampsToISO(rawData);
-      const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
+      const fullyConvertedData = convertTimestampsToISO(rawData, 0, 15, mainSeenSet);
+      const stageRelatedData = await resolveLoanStageData(rawData, mainSeenSet); // Pass the same set
 
       const loan: LoanRequest = {
         id: loanDoc.id,
-        ...fullyConvertedData,
+        ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}), // Handle if conversion returns non-object
         ...stageRelatedData,
-        history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
-        documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
+        history: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.history)) ? fullyConvertedData.history : [],
+        documents: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.documents)) ? fullyConvertedData.documents : [],
         assignedTo: rawData.assignedToUserId || undefined, 
       } as LoanRequest;
       loansFromFirestore.push(loan);
@@ -308,16 +310,17 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
     const loanDocSnap = await getDoc(loanDocRef);
 
     if (loanDocSnap.exists()) {
+      const mainSeenSet = new Set<any>(); // Create a new set for this document
       const rawData = loanDocSnap.data();
-      const fullyConvertedData = convertTimestampsToISO(rawData);
-      const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
+      const fullyConvertedData = convertTimestampsToISO(rawData, 0, 15, mainSeenSet);
+      const stageRelatedData = await resolveLoanStageData(rawData, mainSeenSet); // Pass the same set
 
       const loan: LoanRequest = {
         id: loanDocSnap.id,
-        ...fullyConvertedData,
+        ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}),
         ...stageRelatedData,
-        history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
-        documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
+        history: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.history)) ? fullyConvertedData.history : [],
+        documents: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.documents)) ? fullyConvertedData.documents : [],
         assignedTo: rawData.assignedToUserId || undefined,
       } as LoanRequest;
 
@@ -347,22 +350,32 @@ export async function updateLoanRequest(
       const currentLoanData = loanDoc.data();
       const updatePayload: { [key: string]: any } = { ...dataToUpdate, lastUpdatedDate: serverTimestamp(), updatedAt: serverTimestamp() };
 
-      // Handle date string to Timestamp conversion for specific fields if they are present in dataToUpdate
+      // Convert specific date strings to Timestamps if provided
       if (typeof dataToUpdate.submittedDate === 'string') {
         updatePayload.submittedDate = Timestamp.fromDate(parseISO(dataToUpdate.submittedDate));
+      } else if (dataToUpdate.submittedDate === null || dataToUpdate.submittedDate === undefined) {
+         // If explicitly set to null/undefined, ensure it's handled if Firestore expects null or field removal
+         updatePayload.submittedDate = null; // Or delete updatePayload.submittedDate;
       }
+
       if (typeof dataToUpdate.stageDeadline === 'string') {
         updatePayload.stageDeadline = Timestamp.fromDate(parseISO(dataToUpdate.stageDeadline));
+      } else if (dataToUpdate.stageDeadline === null || dataToUpdate.stageDeadline === undefined) {
+         updatePayload.stageDeadline = null;
       }
-       if (typeof dataToUpdate.lastUpdatedDate === 'string') { // Not typical, but defensive
-        delete updatePayload.lastUpdatedDate; // Will be set by serverTimestamp()
+      
+      if (typeof dataToUpdate.lastUpdatedDate === 'string') { 
+        delete updatePayload.lastUpdatedDate; 
       }
 
 
-      const resolvedCurrentStageId = (await resolveLoanStageData(currentLoanData)).currentStageId;
+      // Resolve current stage ID from currentLoanData (raw data)
+      const mainSeenSetForCurrentData = new Set<any>();
+      const resolvedCurrentStageInfo = await resolveLoanStageData(currentLoanData, mainSeenSetForCurrentData);
+      const resolvedCurrentStageId = resolvedCurrentStageInfo.currentStageId;
 
       if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== resolvedCurrentStageId) {
-          const wfDefId = dataToUpdate.workflowDefinitionId || currentLoanData.workflowDefinitionId_mirror || (await resolveLoanStageData(currentLoanData)).workflowDefinitionId;
+          const wfDefId = dataToUpdate.workflowDefinitionId || currentLoanData.workflowDefinitionId_mirror || resolvedCurrentStageInfo.workflowDefinitionId;
           
           let wfVerId = dataToUpdate.workflowVersionId;
           if (!wfVerId) {
@@ -370,7 +383,7 @@ export async function updateLoanRequest(
             if (currentWfVersionRefPath && typeof currentWfVersionRefPath === 'string') {
               wfVerId = currentWfVersionRefPath.split('/')[3];
             } else {
-                const resolvedWfVerId = (await resolveLoanStageData(currentLoanData)).workflowVersionId;
+                const resolvedWfVerId = resolvedCurrentStageInfo.workflowVersionId;
                 if(resolvedWfVerId) wfVerId = resolvedWfVerId;
             }
           }
@@ -383,29 +396,38 @@ export async function updateLoanRequest(
           updatePayload.workflowVersionRef = doc(db, `workflowDefinitions/${wfDefId}/versions/${wfVerId}`);
           
           const newStageRefPath = `workflowDefinitions/${wfDefId}/versions/${wfVerId}/stages/${dataToUpdate.currentStageId}`;
-          const newStageDef = await getStageDefinitionByRef(newStageRefPath);
+          // For getStageDefinitionByRef, we are fetching a new doc, so a new seenSet context starts here.
+          const newStageDef = await getStageDefinitionByRef(newStageRefPath, new Set<any>()); 
           if (!newStageDef) {
             throw new Error(`New stage definition not found for path: ${newStageRefPath}. Ensure stage ID "${dataToUpdate.currentStageId}" exists in version "${wfVerId}".`);
           }
 
           updatePayload.currentStageRef = doc(db, newStageRefPath);
           updatePayload.assignedDepartment = newStageDef.responsibleDepartment;
-          updatePayload.assignedToUserId = dataToUpdate.hasOwnProperty('assignedTo') ? (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null ? null : dataToUpdate.assignedTo) : currentLoanData.assignedToUserId;
-          updatePayload.stageEntryDate = serverTimestamp(); // Timestamp for when stage was entered
+          // Handle assignedToUserId based on incoming assignedTo
+          if (dataToUpdate.hasOwnProperty('assignedTo')) {
+            updatePayload.assignedToUserId = (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null) ? null : dataToUpdate.assignedTo;
+          } else {
+             // If assignedTo is not in dataToUpdate, but stage changes, it usually implies unassignment or system assignment
+             updatePayload.assignedToUserId = null; // Default to unassign when stage changes unless explicitly set
+          }
+          updatePayload.stageEntryDate = serverTimestamp(); 
           updatePayload.stageDeadline = Timestamp.fromDate(addDays(new Date(), newStageDef.defaultTimelineDays));
           updatePayload.isReadyForManagerReview = false; 
 
+          // Clean up client-side helper fields from payload
           delete updatePayload.currentStageId;
           delete updatePayload.workflowDefinitionId; 
           delete updatePayload.workflowVersionId;
           delete updatePayload.currentStageName; 
 
       } else if (dataToUpdate.hasOwnProperty('assignedTo')) {
-          updatePayload.assignedToUserId = dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null ? null : dataToUpdate.assignedTo;
+          // Only updating assignment, not stage
+          updatePayload.assignedToUserId = (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null) ? null : dataToUpdate.assignedTo;
       }
-       // Explicitly remove assignedTo from payload if it was only for internal logic
+      
       if (dataToUpdate.hasOwnProperty('assignedTo')) {
-         delete updatePayload.assignedTo;
+         delete updatePayload.assignedTo; // Remove the temporary 'assignedTo' used for logic
       }
 
 
@@ -422,7 +444,7 @@ export async function updateLoanRequest(
         }));
       }
       
-      const protectedFields = ['id', 'loanNumber', 'customerNumber', 'createdAt']; // submittedDate handled above
+      const protectedFields = ['id', 'loanNumber', 'customerNumber', 'createdAt']; 
       protectedFields.forEach(field => delete updatePayload[field]);
       
       transaction.update(loanDocRef, updatePayload);
@@ -430,16 +452,17 @@ export async function updateLoanRequest(
 
     const updatedDocSnap = await getDoc(loanDocRef);
     if (updatedDocSnap.exists()) {
+        const mainSeenSet = new Set<any>(); // New set for processing the updated document
         const rawData = updatedDocSnap.data();
-        const fullyConvertedData = convertTimestampsToISO(rawData);
-        const stageRelatedData = await resolveLoanStageData(rawData); // Pass original rawData
+        const fullyConvertedData = convertTimestampsToISO(rawData, 0, 15, mainSeenSet);
+        const stageRelatedData = await resolveLoanStageData(rawData, mainSeenSet); // Pass the same set
 
         const updatedLoanObject: LoanRequest = {
             id: updatedDocSnap.id,
-            ...fullyConvertedData,
+            ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}),
             ...stageRelatedData,
-            history: Array.isArray(fullyConvertedData.history) ? fullyConvertedData.history : [],
-            documents: Array.isArray(fullyConvertedData.documents) ? fullyConvertedData.documents : [],
+            history: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.history)) ? fullyConvertedData.history : [],
+            documents: (typeof fullyConvertedData === 'object' && fullyConvertedData !== null && Array.isArray(fullyConvertedData.documents)) ? fullyConvertedData.documents : [],
             assignedTo: rawData.assignedToUserId || undefined, 
         } as LoanRequest;
         return { success: true, updatedLoan: updatedLoanObject };
@@ -513,10 +536,10 @@ export async function addWorkflowDefinitionToFirestore(
   definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt'>
 ): Promise<{ id?: string; error?: string }> {
   try {
-    const existingQuery = query(collection(db, "workflowDefinitions"), where("loanType", "==", definitionData.loanType));
-    const existingSnapshot = await getDocs(existingQuery);
-    if (!existingSnapshot.empty) {
-      const existingDef = existingSnapshot.docs[0].data();
+    const q = query(collection(db, "workflowDefinitions"), where("loanType", "==", definitionData.loanType));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const existingDef = querySnapshot.docs[0].data();
       return createErrorResult(`A workflow definition for loan type "${definitionData.loanType}" already exists (Name: "${existingDef.name}"). Each loan type can only have one definition container. Add versions to it instead.`, "addWorkflowDefinitionToFirestore");
     }
 
@@ -553,14 +576,14 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             defPayload.createdAt = Timestamp.fromDate(parseISO(defCreatedAtFromUI));
         } catch (dateParseError) {
             console.warn(`[Service:saveWfDefs] Could not parse def createdAt string "${defCreatedAtFromUI}" for ${definitionId}. Using serverTimestamp.`);
-            defPayload.createdAt = serverTimestamp(); // Fallback
+            defPayload.createdAt = serverTimestamp(); 
         }
-      } else if(!defPayload.createdAt) { // Ensure createdAt is set if not provided and not existing
+      } else if(!defPayload.createdAt) { 
         const currentDefDoc = await getDoc(defRef); 
         if (!currentDefDoc.exists() || !currentDefDoc.data()?.createdAt) {
           defPayload.createdAt = serverTimestamp();
         } else if (currentDefDoc.exists() && currentDefDoc.data()?.createdAt) {
-          defPayload.createdAt = currentDefDoc.data()?.createdAt; // Preserve existing if UI doesn't provide
+          defPayload.createdAt = currentDefDoc.data()?.createdAt; 
         }
       }
       batch.set(defRef, defPayload, { merge: true }); 
@@ -592,14 +615,14 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 versionPayload.createdAt = Timestamp.fromDate(parseISO(verCreatedAtFromUI));
             } catch (dateParseError) {
                 console.warn(`[Service:saveWfDefs] Could not parse version createdAt string "${verCreatedAtFromUI}" for ${versionId}. Using serverTimestamp.`);
-                versionPayload.createdAt = serverTimestamp(); // Fallback
+                versionPayload.createdAt = serverTimestamp(); 
             }
-        } else if (!versionPayload.createdAt) { // Ensure createdAt is set
+        } else if (!versionPayload.createdAt) { 
            const currentVerDoc = await getDoc(versionRef);
            if (!currentVerDoc.exists() || !currentVerDoc.data()?.createdAt) {
              versionPayload.createdAt = serverTimestamp();
            } else if (currentVerDoc.exists() && currentVerDoc.data()?.createdAt) {
-             versionPayload.createdAt = currentVerDoc.data()?.createdAt; // Preserve
+             versionPayload.createdAt = currentVerDoc.data()?.createdAt; 
            }
         }
         batch.set(versionRef, versionPayload, { merge: true });
@@ -629,20 +652,19 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 stagePayload.createdAt = Timestamp.fromDate(parseISO(stageCreatedAtFromUI));
             } catch (dateParseError) {
                 console.warn(`[Service:saveWfDefs] Could not parse stage createdAt string "${stageCreatedAtFromUI}" for ${stageId}. Using serverTimestamp.`);
-                stagePayload.createdAt = serverTimestamp(); // Fallback
+                stagePayload.createdAt = serverTimestamp(); 
             }
-          } else if (!stagePayload.createdAt) { // Ensure createdAt is set
+          } else if (!stagePayload.createdAt) { 
             const currentStageDoc = await getDoc(stageRef);
             if (!currentStageDoc.exists() || !currentStageDoc.data()?.createdAt) {
               stagePayload.createdAt = serverTimestamp();
             } else if (currentStageDoc.exists() && currentStageDoc.data()?.createdAt) {
-                stagePayload.createdAt = currentStageDoc.data()?.createdAt; //Preserve
+                stagePayload.createdAt = currentStageDoc.data()?.createdAt; 
             }
           }
           batch.set(stageRef, stagePayload, { merge: true });
         }
         
-        // Delete stages from Firestore that are not in the incoming UI stages for this version
         existingStageIdsInFirestore.forEach(idInFirestore => {
           if (!incomingStageIdsFromUI.has(idInFirestore)) {
             const stageToDeleteRef = doc(collection(versionRef, "stages"), idInFirestore);
@@ -651,13 +673,9 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         });
       }
       
-       // Delete versions from Firestore that are not in the incoming UI versions for this definition
        existingVersionIdsInFirestore.forEach(idInFirestore => {
         if (!incomingVersionIdsFromUI.has(idInFirestore)) {
           const versionToDeleteRef = doc(collection(defRef, "versions"), idInFirestore);
-          // Note: Deleting a version document via batch does not automatically delete its subcollection of stages in Firestore.
-          // This requires a more complex solution (e.g., Cloud Function trigger) for full cleanup if versions with stages are deleted.
-          // For now, stages of deleted versions might become orphaned.
           batch.delete(versionToDeleteRef); 
         }
       });
@@ -682,11 +700,12 @@ export async function getDepartments(): Promise<{ departments?: {id: string, nam
 
     const departments: {id: string, name: DepartmentType}[] = [];
     querySnapshot.forEach((docSnap) => {
-      const deptName = docSnap.data().name;
+      const deptData = docSnap.data();
+      const deptName = deptData.name;
       if (typeof deptName === 'string' && deptName.trim() !== '') {
         departments.push({ id: docSnap.id, name: deptName as DepartmentType });
       } else {
-        console.warn(`[Service:getDepartments] Firestore document ID ${docSnap.id} in 'departments' collection has missing or invalid 'name' field. Skipping.`);
+        console.warn(`[Service:getDepartments] Firestore document ID ${docSnap.id} in 'departments' collection has missing or invalid 'name' field. Data:`, deptData);
       }
     });
 
@@ -799,3 +818,4 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult(errorMessage, "getAvailableLoanTypesForWorkflow", e);
   }
 }
+
