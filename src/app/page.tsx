@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service';
+// Removed: import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
-import { subDays, parseISO, isAfter } from 'date-fns';
+// Removed: import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 // Firestore connection test imports
@@ -23,9 +23,17 @@ interface DashboardStats {
   overdueTasksCount: number;
 }
 
+// Default empty stats
+const defaultStats: DashboardStats = {
+  activeLoansCount: 0,
+  newApplicationsCount: 0,
+  approvalRate: "N/A",
+  overdueTasksCount: 0,
+};
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(defaultStats);
+  const [isLoading, setIsLoading] = useState(false); // Set to false as we are not loading data
   const [error, setError] = useState<string | null>(null);
 
   // Firestore Connection Test Effect
@@ -33,9 +41,6 @@ export default function DashboardPage() {
     const testFirestoreConnection = async () => {
       console.log("Attempting Firestore connection test...");
       try {
-        // Try to read the first document from the 'departments' collection
-        // If 'departments' doesn't exist or is empty, this will still "succeed" with an empty snapshot
-        // If you have a specific test collection/document, use that.
         const departmentsColRef = collection(db, "departments");
         const q = firestoreQuery(departmentsColRef, limit(1));
         const querySnapshot = await getDocs(q);
@@ -58,19 +63,20 @@ export default function DashboardPage() {
         alert(`Firestore Connection Failed. Check browser console & Firebase setup. Error: ${e.message}`);
       }
     };
-    // Run the test only once on component mount for debugging
-    if (process.env.NODE_ENV === 'development') { // Only run in development
+    if (process.env.NODE_ENV === 'development') {
         testFirestoreConnection();
     }
   }, []);
 
 
+  // Dashboard data fetching is temporarily disabled
+  /*
   useEffect(() => {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
+        const result = await getLoanRequests(); // This call is suspected to cause issues
 
         if (result.error) {
           console.error("Error from getLoanRequests service in Dashboard:", result.error, result);
@@ -107,6 +113,7 @@ export default function DashboardPage() {
     }
     fetchDashboardData();
   }, []);
+  */
 
   const StatCard = ({ title, value, icon: Icon, description, link, isErrorSource }: { title: string, value: string | number, icon: React.ElementType, description?: string, link?: string, isErrorSource?: boolean }) => {
     const content = (
@@ -116,7 +123,7 @@ export default function DashboardPage() {
           <Icon className={cn("h-4 w-4 text-muted-foreground", isErrorSource && "text-destructive")} />
         </CardHeader>
         <CardContent>
-          {isLoading && title === "Active Loans" ? ( // Show loader only for one card or a general loading state
+          {isLoading && title === "Active Loans" ? (
             <Loader2 className="h-6 w-6 animate-spin" />
           ) : error && title === "Active Loans" ? ( 
              <div className="flex items-center text-destructive">
@@ -139,7 +146,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !stats && !isLoading) {
+  if (error && !stats && !isLoading) { // This block might still be relevant if other errors occur
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -208,7 +215,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Welcome to LoanFlow</h1>
-          <p className="text-muted-foreground">Your central hub for managing loan applications.</p>
+          <p className="text-muted-foreground">Your central hub for managing loan applications. (Dashboard data temporarily disabled)</p>
         </div>
         <Link href="/loan-requests/new" passHref>
           <Button>New Loan Request</Button>
