@@ -19,12 +19,14 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
   }
 
   // 3. Heuristics for other Firestore SDK objects that shouldn't be deeply traversed.
-  // These objects are returned as-is and also terminate recursion for this branch.
-  if (typeof data.firestore === 'object' && data.firestore !== null) {
-    return data; // e.g., Firestore instance, Query, CollectionReference
+  // These are checked BEFORE cycle detection and depth checks for THIS object.
+  // DocumentReference and CollectionReference check:
+  if (typeof data.firestore === 'object' && data.firestore !== null && typeof data.path === 'string' && typeof data.id === 'string') {
+    return data; // It's a DocumentReference or CollectionReference, return as-is.
   }
-  if (typeof data.path === 'string' && typeof data.id === 'string') {
-    // This is likely a DocumentReference or similar.
+  // Broader check for other SDK internal objects if the above is not specific enough
+  // This might catch Firestore instance itself or Query objects.
+  if (typeof data.firestore === 'object' && data.firestore !== null) {
     return data;
   }
   // Check for _delegate, common in some Firestore SDK internal objects
@@ -32,54 +34,51 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
     return data;
   }
 
+  // 4. Max depth check
+  if (depth > maxDepth) {
+    // console.warn(`[convertTimestampsToISO] Max depth (${maxDepth}) exceeded for object:`, data);
+    return `[Max Depth Exceeded (${depth})]`;
+  }
 
-  // 4. Initialize 'seen' set for cycle detection for the current path of recursion if not already provided.
-  const currentSeenSet = seenObjectsParam || new Set();
+  // 5. Initialize 'seen' set for cycle detection.
+  // A new Set is created for each top-level call by the service layer.
+  // This set is passed down through recursive calls.
+  const currentSeenSet = seenObjectsParam || new Set<any>();
 
-  // 5. Circular reference / max depth checks for general objects that are not handled above.
+  // 6. Circular reference check for THIS object before adding it to the set.
   if (currentSeenSet.has(data)) {
+    // console.warn('[convertTimestampsToISO] Circular reference detected for object:', data);
     return `[Circular Reference Detected]`;
   }
-  if (depth > maxDepth) {
-    return `[Max Depth Exceeded]`;
-  }
 
-  // 6. Add current object to 'seen' set before recursing into its properties/elements.
+  // 7. Add current object to 'seen' set before recursing into its properties/elements.
   currentSeenSet.add(data);
 
   let res: any;
-
   try {
-    // 7. Recursive processing based on object type
+    // 8. Recursive processing based on object type
     if (Array.isArray(data)) {
       res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
-    } else {
-      // For objects (that are not Timestamps, Dates, or caught SDK objects at the top of this function call):
-      // Convert direct Timestamp/Date properties.
-      // Recurse on Array properties.
-      // For all other properties (including nested non-array objects), assign as-is.
+    } else if (Object.prototype.toString.call(data) === '[object Object]') { // Robust plain object check
       res = {};
       for (const key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key)) {
-          const value = data[key];
-          if (value instanceof Timestamp) {
-            res[key] = formatISO(value.toDate());
-          } else if (value instanceof Date) {
-            res[key] = formatISO(value);
-          } else if (Array.isArray(value)) {
-            // If a property is an array, recurse on it
-            res[key] = convertTimestampsToISO(value, depth + 1, maxDepth, currentSeenSet);
-          }
-          else {
-            // For all other properties (including nested non-array objects), assign as-is.
-            // This is the key change to stop deep recursion into objects.
-            res[key] = value;
-          }
+          // For plain objects, recurse on their properties.
+          // The recursive call to convertTimestampsToISO for data[key]
+          // will be caught by the SDK/Timestamp/Date/etc. checks at the top
+          // of that new call if data[key] is one of those types.
+          res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, currentSeenSet);
         }
       }
+    } else {
+      // If it's an object but not a Timestamp, Date, Array, known SDK object, or plain JS object,
+      // it's likely a custom class instance or some other complex type not meant for deep iteration here.
+      // console.warn('[convertTimestampsToISO] Returning non-plain object as-is:', data?.constructor?.name, data);
+      res = data; // Return as-is.
     }
   } finally {
-    // 8. Remove current object from 'seen' set after its processing is complete for this path.
+    // 9. Remove current object from 'seen' set after its processing (or attempted processing) is complete.
+    // This is crucial for the cycle detection to work correctly across different branches of the data structure.
     currentSeenSet.delete(data);
   }
   return res;
