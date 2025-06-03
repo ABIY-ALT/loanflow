@@ -49,20 +49,25 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-const createNewStage = (name: string, department: Department, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
+const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
   id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Client-side ID for new stages before full save
   name,
-  responsibleDepartment: department,
+  responsibleDepartment: departmentName,
   defaultTimelineDays: timeline,
   requiredDocumentNames: [],
   percentageWeight: weight,
   order: order,
 });
 
+interface DepartmentObject {
+  id: string;
+  name: Department; // Department type is string
+}
+
 interface WorkflowStageConfigItemProps {
   stage: WorkflowStageDefinition;
   workflowVersionId: string;
-  departments: Department[];
+  departments: DepartmentObject[];
   onStageChange: (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => void;
   onRemoveStage: (versionId: string, stageId: string) => void;
   onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
@@ -115,7 +120,7 @@ function WorkflowStageConfigItem({
                 </SelectTrigger>
                 <SelectContent>
                     {departments.length === 0 && <SelectItem value="no-depts" disabled>No departments found</SelectItem>}
-                    {departments.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                    {departments.map(dept => <SelectItem key={`s-dept-item-${stage.id}-${dept.id}`} value={dept.name}>{dept.name}</SelectItem>)}
                 </SelectContent>
             </Select>
           </div>
@@ -154,7 +159,7 @@ interface EditWorkflowVersionDialogProps {
   onOpenChange: (isOpen: boolean) => void;
   workflowDefinition: WorkflowDefinition | null;
   versionToEdit: WorkflowVersion | null;
-  departments: Department[];
+  departments: DepartmentObject[];
   onSaveVersion: (definitionId: string, version: WorkflowVersion) => void;
 }
 
@@ -166,18 +171,20 @@ function EditWorkflowVersionDialog({
   const { toast } = useToast();
 
   const [newStageName, setNewStageName] = useState('');
-  const [newStageDept, setNewStageDept] = useState<Department>(departments[0] || '');
+  const [newStageDept, setNewStageDept] = useState<string>(departments.length > 0 ? departments[0].name : '');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [newStageWeight, setNewStageWeight] = useState(10);
 
   useEffect(() => {
     if (versionToEdit) {
-      // Deep copy to prevent direct mutation of props
       setEditedVersion(JSON.parse(JSON.stringify(versionToEdit)));
+      if (departments.length > 0 && !newStageDept) {
+        setNewStageDept(departments[0].name);
+      }
     } else {
       setEditedVersion(null);
     }
-  }, [versionToEdit, isOpen]);
+  }, [versionToEdit, isOpen, departments, newStageDept]);
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
     return stages.map((stage, index) => ({ ...stage, order: index }));
@@ -201,27 +208,25 @@ function EditWorkflowVersionDialog({
   };
   const handleInternalAddStageToVersion = () => {
     if (!editedVersion) return;
-    if(!newStageName.trim() || !newStageDept.trim()){
-        toast({ title: "Error", description: "New stage name and department are required.", variant: "destructive"});
+    if(!newStageName.trim()){
+        toast({ title: "Error", description: "New stage name is required.", variant: "destructive"});
         return;
     }
-    if(departments.length === 0 && !newStageDept.trim()){
-        toast({ title: "Error", description: "No departments configured. Please add departments or select one.", variant: "destructive"});
-        return;
-    }
-    const currentDeptToUse = newStageDept || (departments.length > 0 ? departments[0] : "");
-    if(!currentDeptToUse){
+    if(!newStageDept.trim()){
         toast({ title: "Error", description: "A department must be selected for the new stage.", variant: "destructive"});
         return;
     }
 
     const newOrder = editedVersion.stages.length;
-    const newStage = createNewStage(newStageName, currentDeptToUse, newStageTimeline, newStageWeight, newOrder);
+    const newStage = createNewStage(newStageName, newStageDept, newStageTimeline, newStageWeight, newOrder);
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
     });
-    setNewStageName(''); setNewStageDept(departments[0] || ''); setNewStageTimeline(3); setNewStageWeight(10);
+    setNewStageName(''); 
+    setNewStageDept(departments.length > 0 ? departments[0].name : ''); 
+    setNewStageTimeline(3); 
+    setNewStageWeight(10);
   };
   const handleInternalReorderStages = (event: DragEndEvent) => {
     if (!editedVersion) return;
@@ -263,9 +268,8 @@ function EditWorkflowVersionDialog({
         toast({ title: "Validation Error", description: `Total stage weight (${totalWeight}%) exceeds 100%. Please adjust.`, variant: "destructive"});
         return;
       }
-      onSaveVersion(workflowDefinition.id, editedVersion); // This updates the local state in SettingsPage
-      onOpenChange(false); // Close the dialog
-      // The actual save to Firestore happens when "Save All Settings" is clicked on SettingsPage
+      onSaveVersion(workflowDefinition.id, editedVersion);
+      onOpenChange(false); 
     }
   };
 
@@ -312,11 +316,11 @@ function EditWorkflowVersionDialog({
                     <div><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
                     <div>
                         <Label htmlFor="new-s-dept">Responsible Dept.</Label>
-                        <Select value={newStageDept} onValueChange={(value) => setNewStageDept(value as Department)}>
+                        <Select value={newStageDept} onValueChange={(value) => setNewStageDept(value)}>
                             <SelectTrigger id="new-s-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
                             <SelectContent>
                                 {departments.length === 0 && <SelectItem value="no-depts-new" disabled>No departments found</SelectItem>}
-                                {departments.map(dept => <SelectItem key={`new-${dept}`} value={dept}>{dept}</SelectItem>)}
+                                {departments.map(dept => <SelectItem key={`new-stage-dept-option-${dept.id}`} value={dept.name}>{dept.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
@@ -324,7 +328,7 @@ function EditWorkflowVersionDialog({
                     <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
                     <Button onClick={handleInternalAddStageToVersion} size="sm" className="sm:col-span-2" disabled={departments.length === 0 && !newStageDept.trim()}><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
                 </div>
-                 {departments.length === 0 && <p className="text-xs text-destructive mt-1">Cannot add stage: No departments are configured. Please add departments in Firestore.</p>}
+                 {departments.length === 0 && <p className="text-xs text-destructive mt-1">Cannot add stage: No departments are configured. Please add departments via Settings &gt; Manage Departments.</p>}
             </div>
         </div>
         <DialogFooter className="mt-auto pt-4 border-t">
@@ -342,7 +346,7 @@ export default function SettingsPage() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSavingData, setIsSavingData] = useState(false);
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departments, setDepartments] = useState<DepartmentObject[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
@@ -424,16 +428,15 @@ export default function SettingsPage() {
       if (def.id === definitionId) {
         const latestVersionNum = def.versions.length > 0 ? Math.max(...def.versions.map(v => v.versionNumber)) : 0;
         const newVersion: WorkflowVersion = {
-          id: `wfver-custom-${Date.now()}-${Math.random().toString(36).substring(2,5)}`, // More unique client ID
+          id: `wfver-custom-${Date.now()}-${Math.random().toString(36).substring(2,5)}`, 
           workflowDefinitionId: def.id,
           versionNumber: latestVersionNum + 1,
-          createdAt: new Date().toISOString(), // Client-side timestamp, Firestore will use serverTimestamp on save
+          createdAt: new Date().toISOString(), 
           stages: [],
           isActive: false, 
         };
         
         let makeNewActive = newVersion.isActive;
-        // If no version is currently active for THIS loan type, make the new one active
         if (!def.versions.some(v => v.isActive)) {
             makeNewActive = true;
         }
@@ -451,11 +454,10 @@ export default function SettingsPage() {
      setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
        if (def.id === definitionId) {
          let versionsToUpdate = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
-         // If this version being saved is marked active, ensure others for the same loan type are inactive
          if (updatedVersion.isActive) {
             versionsToUpdate = versionsToUpdate.map(v => ({
                 ...v,
-                isActive: v.id === updatedVersion.id // Only this version is active within this definition
+                isActive: v.id === updatedVersion.id 
             }));
          }
          return { ...def, versions: versionsToUpdate.sort((a,b) => b.versionNumber - a.versionNumber) };
@@ -493,8 +495,8 @@ export default function SettingsPage() {
             id: result.id,
             ...definitionData,
             versions: [],
-            createdAt: new Date().toISOString(), // Placeholder, Firestore value is source of truth
-            updatedAt: new Date().toISOString(), // Placeholder
+            createdAt: new Date().toISOString(), 
+            updatedAt: new Date().toISOString(), 
         };
         setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
         setNewWorkflowName('');
@@ -513,7 +515,6 @@ export default function SettingsPage() {
             throw new Error(result.error);
         }
         toast({ title: "All Settings Saved to Firestore", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        // Re-fetch to ensure local state matches DB state after potential complex updates (like ID changes if they were Firestore-generated)
         await fetchInitialData(); 
     } catch (err: any) {
         setError(err.message || "Failed to save settings to Firestore.");
@@ -551,7 +552,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground">
           Define workflow definitions for loan types. Each definition can have multiple versions.
           Only one version per loan type can be active for new applications.
-          Ensure departments are set up in Firestore for stage assignment.
+          Ensure departments are set up via Settings &gt; Manage Departments for stage assignment.
         </p>
       </div>
 
@@ -659,4 +660,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
