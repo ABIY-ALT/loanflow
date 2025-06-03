@@ -38,66 +38,44 @@ export function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen
 
   // 5. Circular reference / max depth checks for general objects that are not handled above.
   if (currentSeenSet.has(data)) {
-    return `[Circular Reference: ${data.constructor?.name || 'UnknownType'}]`;
+    return `[Circular Reference Detected]`;
   }
   if (depth > maxDepth) {
-    return `[Max Depth Exceeded: ${data.constructor?.name || 'UnknownType'}]`;
+    return `[Max Depth Exceeded]`;
   }
 
   // 6. Add current object to 'seen' set before recursing into its properties/elements.
-  // This is crucial for objects we are about to iterate/recurse into.
   currentSeenSet.add(data);
 
   let res: any;
 
   try {
-    // 7. Recursive processing based on object type for objects that made it past earlier checks.
+    // 7. Recursive processing based on object type
     if (Array.isArray(data)) {
-      res = data.map(item => {
-        // Re-apply checks to array items before recursive call
-        if (item === null || typeof item !== 'object') return item;
-        if (item instanceof Timestamp) return formatISO(item.toDate());
-        if (item instanceof Date) return formatISO(item);
-        if (typeof item.firestore === 'object' && item.firestore !== null) return item;
-        if (typeof item.path === 'string' && typeof item.id === 'string') return item;
-        if (typeof item._delegate === 'object' && item._delegate !== null) return item;
-        return convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet);
-      });
+      res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, currentSeenSet));
     } else {
-      const proto = Object.getPrototypeOf(data);
-      if (proto === Object.prototype || proto === null) {
-        // Plain JavaScript object (direct prototype is Object.prototype or null)
-        res = {};
-        for (const key in data) {
-          if (Object.prototype.hasOwnProperty.call(data, key)) {
-            // Explicitly skip DocumentReference fields which should not be deeply converted
-            if (key === 'workflowVersionRef' || key === 'currentStageRef') {
-              res[key] = data[key]; // Assign as-is
-            } else {
-              const value = data[key];
-              // Re-apply checks to property values before recursive call
-              if (value === null || typeof value !== 'object') {
-                res[key] = value;
-              } else if (value instanceof Timestamp) {
-                res[key] = formatISO(value.toDate());
-              } else if (value instanceof Date) {
-                res[key] = formatISO(value);
-              } else if (typeof value.firestore === 'object' && value.firestore !== null) {
-                res[key] = value;
-              } else if (typeof value.path === 'string' && typeof value.id === 'string') {
-                res[key] = value;
-              } else if (typeof value._delegate === 'object' && value._delegate !== null) {
-                res[key] = value;
-              } else {
-                res[key] = convertTimestampsToISO(value, depth + 1, maxDepth, currentSeenSet);
-              }
-            }
+      // For objects (that are not Timestamps, Dates, or caught SDK objects at the top of this function call):
+      // Convert direct Timestamp/Date properties.
+      // Recurse on Array properties.
+      // For all other properties (including nested non-array objects), assign as-is.
+      res = {};
+      for (const key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          const value = data[key];
+          if (value instanceof Timestamp) {
+            res[key] = formatISO(value.toDate());
+          } else if (value instanceof Date) {
+            res[key] = formatISO(value);
+          } else if (Array.isArray(value)) {
+            // If a property is an array, recurse on it
+            res[key] = convertTimestampsToISO(value, depth + 1, maxDepth, currentSeenSet);
+          }
+          else {
+            // For all other properties (including nested non-array objects), assign as-is.
+            // This is the key change to stop deep recursion into objects.
+            res[key] = value;
           }
         }
-      } else {
-        // Unhandled complex object type. Return a placeholder string to stop recursion.
-        // console.warn(`[convertTimestampsToISO] Unhandled complex object type at depth ${depth}:`, data?.constructor?.name, data);
-        res = `[Unhandled Complex Object: ${data?.constructor?.name || 'UnknownType'}]`;
       }
     }
   } finally {
