@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-// Removed: import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service';
 import type { LoanRequest } from '@/types/loan';
-// Removed: import { subDays, parseISO, isAfter } from 'date-fns';
+import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 // Firestore connection test imports
@@ -32,8 +32,8 @@ const defaultStats: DashboardStats = {
 };
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(defaultStats);
-  const [isLoading, setIsLoading] = useState(false); // Set to false as we are not loading data
+  const [stats, setStats] = useState<DashboardStats | null>(null); // Initialize to null to show loading
+  const [isLoading, setIsLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
   // Firestore Connection Test Effect
@@ -69,18 +69,17 @@ export default function DashboardPage() {
   }, []);
 
 
-  // Dashboard data fetching is temporarily disabled
-  /*
   useEffect(() => {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); // This call is suspected to cause issues
+        const result = await getLoanRequests();
 
         if (result.error) {
           console.error("Error from getLoanRequests service in Dashboard:", result.error, result);
           setError(result.error);
+          setStats(defaultStats); // Set to default stats on error
         } else if (result.loans) {
           const loans = result.loans;
           
@@ -102,18 +101,20 @@ export default function DashboardPage() {
           });
         } else {
           setError("No loan data received for dashboard.");
+          setStats(defaultStats); // Set to default stats if no data
         }
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
         const errorMessage = err.message || "An unexpected error occurred fetching dashboard data.";
         setError(errorMessage);
+        setStats(defaultStats); // Set to default stats on catch
       } finally {
         setIsLoading(false);
       }
     }
     fetchDashboardData();
   }, []);
-  */
+
 
   const StatCard = ({ title, value, icon: Icon, description, link, isErrorSource }: { title: string, value: string | number, icon: React.ElementType, description?: string, link?: string, isErrorSource?: boolean }) => {
     const content = (
@@ -123,9 +124,9 @@ export default function DashboardPage() {
           <Icon className={cn("h-4 w-4 text-muted-foreground", isErrorSource && "text-destructive")} />
         </CardHeader>
         <CardContent>
-          {isLoading && title === "Active Loans" ? (
+          {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" ? ( 
+          ) : error && title === "Active Loans" ? ( // Show error specifically on one card if needed, or more generally
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -133,8 +134,8 @@ export default function DashboardPage() {
           ) : (
             <div className={cn("text-2xl font-bold", isErrorSource && "text-destructive")}>{value}</div>
           )}
-          {description && !isLoading && !error && <p className="text-xs text-muted-foreground">{description}</p>}
-          {isLoading && title === "Active Loans" && <p className="text-xs text-muted-foreground">Loading...</p>}
+          {description && !isLoading && (!error || title !== "Active Loans") && <p className="text-xs text-muted-foreground">{description}</p>}
+          {isLoading && <p className="text-xs text-muted-foreground">Loading...</p>}
         </CardContent>
       </Card>
     );
@@ -146,7 +147,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !stats && !isLoading) { // This block might still be relevant if other errors occur
+  if (error && !stats && isLoading) { // Initial load fails critically
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -215,37 +216,47 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Welcome to LoanFlow</h1>
-          <p className="text-muted-foreground">Your central hub for managing loan applications. (Dashboard data temporarily disabled)</p>
+          <p className="text-muted-foreground">Your central hub for managing loan applications.</p>
         </div>
         <Link href="/loan-requests/new" passHref>
           <Button>New Loan Request</Button>
         </Link>
       </div>
 
+      {error && !isLoading && ( // Display a non-blocking error message if fetching finished with an error
+          <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <CardTitle>Dashboard Update Error</CardTitle>
+              <CardDescription>{error} Some statistics might not be up-to-date.</CardDescription>
+          </Alert>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Active Loans"
-          value={stats?.activeLoansCount ?? (isLoading && !error ? '' : 0)}
+          value={isLoading ? "-" : (stats?.activeLoansCount ?? 0)}
           icon={Briefcase}
+          description={isLoading ? "Loading..." : `${stats?.activeLoansCount ?? 0} loans currently being processed`}
         />
         <StatCard
           title="New Applications (7 days)"
-          value={stats?.newApplicationsCount ?? (isLoading && !error ? '' : 0)}
+          value={isLoading ? "-" : (stats?.newApplicationsCount ?? 0)}
           icon={Users}
+          description={isLoading ? "Loading..." : `${stats?.newApplicationsCount ?? 0} new loans in the last week`}
         />
         <StatCard
           title="Approval Rate"
-          value={stats?.approvalRate ?? (isLoading && !error ? '' : "N/A")}
+          value={isLoading ? "-" : (stats?.approvalRate ?? "N/A")}
           icon={TrendingUp}
-          description={isLoading ? "" : "vs last month (placeholder)"}
+          description={isLoading ? "Loading..." : "vs last month (placeholder)"}
         />
         <StatCard
           title="Overdue Tasks"
-          value={stats?.overdueTasksCount ?? (isLoading && !error ? '' : 0)}
+          value={isLoading ? "-" : (stats?.overdueTasksCount ?? 0)}
           icon={AlertTriangle}
-          description={isLoading ? "" : "Require immediate attention"}
+          description={isLoading ? "Loading..." : (stats?.overdueTasksCount ?? 0) > 0 ? "Require immediate attention" : "All tasks on schedule"}
           link="/overdue-tasks"
-          isErrorSource={stats ? (stats.overdueTasksCount > 0 && !error) : false}
+          isErrorSource={!isLoading && !error && stats ? (stats.overdueTasksCount > 0) : false}
         />
       </div>
 
@@ -284,3 +295,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
