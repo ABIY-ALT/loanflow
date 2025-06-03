@@ -13,6 +13,7 @@ import {
   UserCheck,
   FolderKanban,
   Building,
+  ClipboardUser, // Added for My Assigned Cases
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -25,6 +26,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
   { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
   { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 },
+  { href: '/my-assigned-cases', label: 'My Assigned Cases', icon: ClipboardUser }, // New Item
   { href: '/manager-review', label: 'Manager Review Queue', icon: UserCheck },
   { href: '/department-queue', label: 'Unassigned Cases', icon: FolderKanban },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
