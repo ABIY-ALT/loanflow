@@ -206,8 +206,8 @@ export async function addLoanRequest(
     return createErrorResult(errorMessage, "addLoanRequest");
   }
 
-  const firstStage = stages[0]; // Assumes stages are ordered by 'order' from getActiveWorkflowVersionForLoanType
-  if (!firstStage || typeof firstStage.order !== 'number' /* || firstStage.order !== 0 */) { // Optional: enforce order starts at 0
+  const firstStage = stages[0]; 
+  if (!firstStage || typeof firstStage.order !== 'number' ) { 
      const errorMessage = `First stage is missing, malformed, or not ordered correctly for active workflow. Loan Type: "${loanData.loanType}", Definition: "${workflowDef.name}" (ID: ${workflowDef.id}), Active Version: V${activeVersion.versionNumber} (ID: ${activeVersion.id}). Expected stages[0] to be the initial stage. It has ${stages.length} stages.`;
      return createErrorResult(errorMessage, "addLoanRequest");
   }
@@ -259,7 +259,7 @@ export async function addLoanRequest(
       assignedDepartment: firstStage.responsibleDepartment, 
       assignedToUserId: assignedManagerId || null, 
       submittedDate: Timestamp.fromDate(currentDate),
-      lastUpdatedDate: serverTimestamp(), // Firestore will set this
+      lastUpdatedDate: serverTimestamp(), 
       stageEntryDate: Timestamp.fromDate(currentDate), 
       stageDeadline: Timestamp.fromDate(stageDeadlineDate),
       history: [{
@@ -267,7 +267,7 @@ export async function addLoanRequest(
           stageName: firstStage.name,
           timestamp: formatISO(currentDate), 
           userId: assignedManagerId || 'system-fs-auto',
-          userName: assignedManagerName || 'System Automation',
+          userName: assignedManagerName || 'LoanFlow System Event', // Updated userName
           notes: initialHistoryNote,
         },
       ],
@@ -307,8 +307,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
       const loan: LoanRequest = {
         id: loanDoc.id,
         ...(typeof fullyConvertedData === 'object' && fullyConvertedData !== null ? fullyConvertedData : {}), 
-        ...stageRelatedData, // This will provide resolved IDs and name/department
-        // Explicitly use mirror IDs from fullyConvertedData if available, otherwise rely on stageRelatedData
+        ...stageRelatedData, 
         workflowDefinitionId: fullyConvertedData?.workflowDefinitionId_mirror || stageRelatedData.workflowDefinitionId || '',
         workflowVersionId: fullyConvertedData?.workflowVersionId_mirror || stageRelatedData.workflowVersionId || '',
         currentStageId: fullyConvertedData?.currentStageId_mirror || stageRelatedData.currentStageId || '',
@@ -419,18 +418,18 @@ export async function updateLoanRequest(
           updatePayload.stageDeadline = Timestamp.fromDate(addDays(new Date(), newStageDef.defaultTimelineDays));
           updatePayload.isReadyForManagerReview = false; 
 
-          // If assignedTo is explicitly in dataToUpdate, use it, otherwise default to unassign for stage change
+          
           if (dataToUpdate.hasOwnProperty('assignedTo')) {
             updatePayload.assignedToUserId = (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null) ? null : dataToUpdate.assignedTo;
           } else {
              updatePayload.assignedToUserId = null; 
           }
       } else if (dataToUpdate.hasOwnProperty('assignedTo')) {
-          // Only updating assignment, not stage
+          
           updatePayload.assignedToUserId = (dataToUpdate.assignedTo === undefined || dataToUpdate.assignedTo === null) ? null : dataToUpdate.assignedTo;
       }
       
-      // Remove client-side/transient fields from the payload to be written to Firestore
+      
       delete updatePayload.currentStageId;
       delete updatePayload.workflowDefinitionId; 
       delete updatePayload.workflowVersionId;
@@ -438,7 +437,7 @@ export async function updateLoanRequest(
       delete updatePayload.assignedTo; 
       delete updatePayload.isOverdue;
       delete updatePayload.isTerminalStage;
-      // Ensure old DocumentReference fields are not accidentally re-introduced
+      
       delete updatePayload.workflowVersionRef;
       delete updatePayload.currentStageRef;
 
