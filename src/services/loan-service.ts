@@ -13,67 +13,70 @@ import { formatISO, parseISO, addDays, isBefore, subDays } from 'date-fns';
 // Mock data imports for users are still present as user management is not yet Firestore-backed
 import { mockUsers } from '@/lib/mock-data';
 
+console.log("--- loan-service.ts loaded ---"); // Top-level log to confirm file execution
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   let detailedMessage = `Loan Service Error (Context: ${context || 'Unknown'}): ${message}.`;
   if (originalError) {
-    const errorDetails = (typeof originalError === 'object' && originalError !== null) ? JSON.stringify(originalError, Object.getOwnPropertyNames(originalError)) : String(originalError);
+    const errorDetails = (typeof originalError === 'object' && originalError !== null && typeof originalError.message === 'string') ? originalError.message : String(originalError);
     detailedMessage += ` Raw: ${errorDetails}`;
   }
   console.error(`[Service:${context || 'Unknown'}] Error:`, detailedMessage, originalError);
   return { error: detailedMessage };
 };
 
-const convertTimestampsToISO = (data: any, depth = 0, maxDepth = 15, seen = new Set()): any => {
+const convertTimestampsToISO = (data: any, depth = 0, maxDepth = 20, seen = new Set()): any => { // Increased maxDepth slightly as a precaution
   if (depth > maxDepth) {
-    console.warn('[Service:convertTimestampsToISO] Max recursion depth reached. Returning original data for this branch to prevent stack overflow. Path might be too deep or circular.');
-    return data; // or return a placeholder like "[Max Depth Exceeded]"
+    console.warn(`[Service:convertTimestampsToISO] Max recursion depth (${maxDepth}) reached. Returning placeholder. Path might be too deep or circular.`);
+    return "[Max Depth Exceeded]";
   }
 
-  if (typeof data === 'object' && data !== null) {
-    if (seen.has(data)) {
-      console.warn('[Service:convertTimestampsToISO] Circular reference detected. Returning placeholder for this branch.');
-      return "[Circular Reference]";
+  if (data === null || typeof data !== 'object') {
+    return data; // Primitives, null
+  }
+
+  if (seen.has(data)) {
+    // console.warn(`[Service:convertTimestampsToISO] Circular reference detected at depth ${depth}.`);
+    return "[Circular Reference]";
+  }
+
+  if (data instanceof Timestamp) {
+    return formatISO(data.toDate());
+  }
+  // Handle Firestore-like Timestamp objects if not direct instance (less common with modern SDK but good fallback)
+  if (typeof data.toDate === 'function' && !(data instanceof Date)) {
+    try {
+      return formatISO(data.toDate());
+    } catch (e) {
+      console.warn('[Service:convertTimestampsToISO] Error calling toDate on a Timestamp-like object:', e);
+      return "[Invalid Timestamp-like Object]";
     }
-    seen.add(data);
   }
   
-  if (data instanceof Timestamp) {
-    const converted = formatISO(data.toDate());
-    if (typeof data === 'object' && data !== null) seen.delete(data);
-    return converted;
+  // Check for DocumentReference-like objects (duck-typing) BEFORE adding to 'seen' or iterating
+  // Common properties: 'path' (string), 'id' (string). Also check for specific methods if possible or constructor name.
+  if (typeof data.path === 'string' && typeof data.id === 'string') {
+      // console.log(`[Service:convertTimestampsToISO] Duck-typed DocumentReference at depth ${depth}, path: ${data.path}. Returning as is.`);
+      return data; // Return DocumentReference-like objects as they are
   }
-  if (data && typeof data.toDate === 'function' && !(data instanceof Date)) { // Handle Firestore-like Timestamp objects if not direct instance
-    const converted = formatISO(data.toDate());
-     if (typeof data === 'object' && data !== null) seen.delete(data);
-    return converted;
-  }
-  if (Array.isArray(data)) {
-    const res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
-    if (typeof data === 'object' && data !== null) seen.delete(data);
-    return res;
-  }
-  if (typeof data === 'object' && data !== null) {
-    // Explicitly exclude Firestore DocumentReference objects from deep conversion
-    // Check for path and id, common properties of DocumentReference, or a specific type if available/imported
-    if (data.constructor && (data.constructor.name === 'DocumentReference' || (typeof data.path === 'string' && typeof data.id === 'string'))) {
-      // console.log(`[Service:convertTimestampsToISO] Found DocumentReference at depth ${depth}, path: ${data.path}. Returning as is.`);
-      seen.delete(data);
-      return data; // Return DocumentReference objects as they are, without converting their internal properties.
-    }
 
-    const res: { [key: string]: any } = {};
+
+  seen.add(data); // Add current object/array to seen set for its processing scope
+
+  let res: any;
+  if (Array.isArray(data)) {
+    res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
+  } else { // General object iteration
+    res = {};
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
         res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
       }
     }
-    seen.delete(data);
-    return res;
   }
-  
-  if (typeof data === 'object' && data !== null) seen.delete(data);
-  return data;
+
+  seen.delete(data); // Remove current object/array from seen set after its scope is processed
+  return res;
 };
 
 
@@ -95,30 +98,31 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
 
     const workflowDefinition: WorkflowDefinition = { id: wfDefDoc.id, ...wfDefData, versions: [] };
 
-    console.log(`[Service:getActiveWfVer] FIRESTORE DEBUG: Querying STRICTLY ACTIVE versions (isActive:true) for workflowDefinitions/${wfDefDoc.id}/versions, ordered by versionNumber desc.`);
+    console.log(`[Service:getActiveWfVer] FIRESTORE DEBUG: Querying STRICTLY ACTIVE versions (isActive:true) for workflowDefinitions/${wfDefDoc.id}/versions.`);
     const activeVersionsQuery = query(
       collection(db, `workflowDefinitions/${wfDefDoc.id}/versions`),
       where("isActive", "==", true),
-      orderBy("versionNumber", "desc"),
-      limit(1)
+      limit(1) // There should only be one active version
     );
     const versionsSnapshot = await getDocs(activeVersionsQuery);
     
+    let activeVersionDoc: any; // Firestore QueryDocumentSnapshot
+
     if (versionsSnapshot.empty) {
-      console.warn(`[Service:getActiveWfVer] No version marked 'isActive: true' found for Definition ID: ${wfDefDoc.id} (Loan Type: "${loanType}"). This loan type cannot be used for new requests.`);
-      return null;
+      console.warn(`[Service:getActiveWfVer] No version explicitly marked 'isActive: true' found for Definition ID: ${wfDefDoc.id} (Loan Type: "${loanType}"). THIS LOAN TYPE CANNOT BE USED FOR NEW REQUESTS.`);
+      return null; // Strict: only proceed if an explicitly active version is found
+    } else {
+      activeVersionDoc = versionsSnapshot.docs[0];
+      console.log(`[Service:getActiveWfVer] Found EXPLICITLY ACTIVE Version ID: ${activeVersionDoc.id}, Number: V${activeVersionDoc.data().versionNumber}, IsActiveInDB: ${activeVersionDoc.data().isActive}`);
     }
     
-    const activeVersionDoc = versionsSnapshot.docs[0];
-    console.log(`[Service:getActiveWfVer] Found EXPLICITLY ACTIVE Version ID: ${activeVersionDoc.id}, Number: V${activeVersionDoc.data().versionNumber}`);
-
     const activeVersionData = convertTimestampsToISO(activeVersionDoc.data()) as Omit<WorkflowVersion, 'id' | 'stages' | 'workflowDefinitionId'>;
     const activeVersion: WorkflowVersion = {
         id: activeVersionDoc.id,
         workflowDefinitionId: wfDefDoc.id,
         ...activeVersionData,
         stages: [], 
-        isActive: true 
+        isActive: true // We queried for isActive: true
     };
     console.log(`[Service:getActiveWfVer] Chosen Version for processing: ID ${activeVersion.id}, V${activeVersion.versionNumber}, IsActiveInDB: ${activeVersion.isActive}`);
 
@@ -133,14 +137,16 @@ const getActiveWorkflowVersionForLoanType = async (loanType: string): Promise<{ 
     console.log(`[Service:getActiveWfVer] Found ${stagesSnapshot.docs.length} stage documents for Version ID: ${activeVersion.id}`);
 
     if (stagesSnapshot.empty) {
-        console.warn(`[Service:getActiveWfVer] FIRESTORE WARNING: The stages query for path "${stagesPath}" (Active Version ID: ${activeVersion.id}) returned an EMPTY snapshot.`);
+        console.warn(`[Service:getActiveWfVer] FIRESTORE WARNING: The stages query for path "${stagesPath}" (Active Version ID: ${activeVersion.id}) returned an EMPTY snapshot. This active version has no stages.`);
+        activeVersion.stages = []; // Ensure stages is an empty array
+    } else {
+      activeVersion.stages = stagesSnapshot.docs.map(stageDoc => {
+          const stageData = { id: stageDoc.id, ...(convertTimestampsToISO(stageDoc.data()) as Omit<WorkflowStageDefinition, 'id'>) };
+          console.log(`[Service:getActiveWfVer]   Mapping stage: ID ${stageData.id}, Name: "${stageData.name}", Order: ${stageData.order}`);
+          return stageData;
+      });
     }
 
-    activeVersion.stages = stagesSnapshot.docs.map(stageDoc => {
-        const stageData = { id: stageDoc.id, ...(convertTimestampsToISO(stageDoc.data()) as Omit<WorkflowStageDefinition, 'id'>) };
-        console.log(`[Service:getActiveWfVer]   Mapping stage: ID ${stageData.id}, Name: "${stageData.name}", Order: ${stageData.order}`);
-        return stageData;
-    });
 
     if (activeVersion.stages.length === 0) {
         console.warn(`[Service:getActiveWfVer] CRITICAL: Active Version ID ${activeVersion.id} (V${activeVersion.versionNumber}) for loan type "${loanType}" (Def: ${workflowDefinition.name}) resolved to 0 stages after query. This version is unusable for new loans.`);
@@ -209,8 +215,16 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
       resolvedData.isTerminalStage = isTerminal;
 
       if (loanData.stageDeadline) {
-        const deadlineDate = loanData.stageDeadline instanceof Timestamp ? loanData.stageDeadline.toDate() : parseISO(loanData.stageDeadline);
-        resolvedData.isOverdue = isBefore(deadlineDate, new Date()) && !isTerminal;
+        // Ensure stageDeadline is converted from Timestamp if necessary before parsing
+        const deadlineInput = loanData.stageDeadline instanceof Timestamp ? loanData.stageDeadline.toDate().toISOString() : loanData.stageDeadline;
+        try {
+            const deadlineDate = parseISO(deadlineInput);
+            resolvedData.isOverdue = isBefore(deadlineDate, new Date()) && !isTerminal;
+        } catch (e) {
+            console.warn(`[Service:resolveLoanStageData] Invalid stageDeadline format: ${deadlineInput}`, e);
+            resolvedData.isOverdue = false;
+        }
+
       } else {
         resolvedData.isOverdue = false;
       }
@@ -245,9 +259,11 @@ export async function addLoanRequest(
   
   const { workflowDef, activeVersion, stages } = activeWorkflowInfo;
 
-  if (!stages || stages.length === 0) { // This check should be redundant if getActiveWorkflowVersionForLoanType works correctly
+  // This check is now technically redundant due to changes in getActiveWorkflowVersionForLoanType,
+  // but kept as a safeguard.
+  if (!stages || stages.length === 0) { 
     const errorMessage = `Cannot create loan (Internal Error). Loan Type: "${loanData.loanType}", Definition: "${workflowDef.name}" (ID: ${workflowDef.id}), Active Version: V${activeVersion.versionNumber} (ID: ${activeVersion.id}). The active workflow version has no stages. This should have been caught by getActiveWorkflowVersionForLoanType.`;
-    console.error(`ADDLOANREQUEST_ERROR_DEBUG: activeWorkflowInfo.stages was empty. Definition: ${workflowDef.name}, Active Version: V${activeVersion.versionNumber}`);
+    console.error(`ADDLOANREQUEST_ERROR_DEBUG: activeWorkflowInfo.stages was empty or null. Definition: ${workflowDef.name}, Active Version: V${activeVersion.versionNumber}`);
     return createErrorResult(errorMessage, "addLoanRequest");
   }
 
@@ -350,13 +366,13 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     const loansFromFirestore: LoanRequest[] = [];
     for (const loanDoc of querySnapshot.docs) {
       const rawData = loanDoc.data();
-      const stageRelatedData = await resolveLoanStageData(rawData);
+      const stageRelatedData = await resolveLoanStageData(rawData); // This involves more Firestore reads
       const loan: LoanRequest = {
         id: loanDoc.id,
-        ...convertTimestampsToISO(rawData),
+        ...convertTimestampsToISO(rawData), // Call 1
         ...stageRelatedData,
-        history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [],
-        documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [],
+        history: Array.isArray(rawData.history) ? convertTimestampsToISO(rawData.history) : [], // Call 2
+        documents: Array.isArray(rawData.documents) ? convertTimestampsToISO(rawData.documents) : [], // Call 3
         assignedTo: rawData.assignedToUserId || undefined, 
       } as LoanRequest;
       loansFromFirestore.push(loan);
@@ -876,4 +892,3 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
 }
 
 // --- END OF FILE ---
-
