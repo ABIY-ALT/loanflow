@@ -40,16 +40,6 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
   if (data instanceof Date) {
     return formatISO(data);
   }
-  // Check for other toDate()-able objects AFTER specific Timestamp/Date.
-  if (typeof data.toDate === 'function' && 
-      !(data instanceof Timestamp) && 
-      !(data instanceof Date)) { 
-    try {
-      return formatISO(data.toDate());
-    } catch (e) {
-      return "[Invalid Timestamp-like Object]";
-    }
-  }
   // Heuristic for other Firestore SDK objects that shouldn't be deeply traversed
   // Check for a 'firestore' property which is common in many v8/v9 SDK objects
   if (typeof data.firestore === 'object' && data.firestore !== null) {
@@ -61,7 +51,7 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
   }
 
   // 3. Circular reference / max depth checks for general objects
-  seen = seen || new Set();
+  seen = seen || new Set(); // Initialize 'seen' if it's the first call in this branch
   if (seen.has(data)) {
     return `[Circular Reference: ${data.constructor?.name || 'UnknownType'}]`;
   }
@@ -76,22 +66,27 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
   // 5. Recursive processing
   if (Array.isArray(data)) {
     res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
-  } else if (data.constructor === Object) {
+  } else if (typeof data.toDate === 'function') {
+    // This handles objects that have a toDate method but are not Timestamp or Date instances (e.g., from older SDK versions or mocks)
+    // This check is after `instanceof Timestamp` and `instanceof Date` to prioritize direct type checks.
+    try {
+      res = formatISO(data.toDate());
+    } catch (e) {
+      res = "[Invalid Timestamp-like Object]";
+    }
+  } else if (data.constructor === Object ) {
     // Plain JavaScript object
     res = {};
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
-        // Explicitly skip known reference fields to prevent recursion into their internals
-        if (key === 'workflowVersionRef' || key === 'currentStageRef') {
-          res[key] = data[key]; // Assign the reference as-is
-        } else {
-          res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
-        }
+        // The SDK heuristics for DocumentReference should catch `data[key]` if it's a ref.
+        res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
       }
     }
   } else {
-    // Unhandled complex object type. It's not a primitive, not a known Date/Timestamp,
-    // not an Array, not caught as a common SDK object, and not a plain JS object.
+    // Unhandled complex object type.
+    // It's not a primitive, not a known Date/Timestamp, not an Array,
+    // not caught as a common SDK object, and not a plain JS object.
     // We return it as-is and rely on the `seen` set or `maxDepth` to prevent infinite loops
     // if this object itself contains further complex structures or cycles.
     res = data;
@@ -208,7 +203,7 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
       resolvedData.assignedDepartment = stageDef.responsibleDepartment;
 
       const pathSegments = stageRefPath.split('/');
-      if (pathSegments.length >= 5) {
+      if (pathSegments.length >= 5) { // e.g., workflowDefinitions/DEF_ID/versions/VER_ID/stages/STAGE_ID (5 segments for stage, 3 for version)
         resolvedData.workflowDefinitionId = pathSegments[1];
         resolvedData.workflowVersionId = pathSegments[3];
       }
@@ -219,14 +214,21 @@ const resolveLoanStageData = async (loanData: any): Promise<Partial<LoanRequest>
       resolvedData.isTerminalStage = isTerminal;
 
       if (loanData.stageDeadline) {
-        const deadlineInput = loanData.stageDeadline instanceof Timestamp ? loanData.stageDeadline.toDate().toISOString() : loanData.stageDeadline;
-        try {
-            const deadlineDate = parseISO(deadlineInput);
-            resolvedData.isOverdue = isBefore(deadlineDate, new Date()) && !isTerminal;
-        } catch (e) {
-            resolvedData.isOverdue = false;
+        // Ensure deadlineInput is a string before parsing
+        const deadlineInput = loanData.stageDeadline instanceof Timestamp 
+                              ? loanData.stageDeadline.toDate().toISOString() 
+                              : (typeof loanData.stageDeadline === 'string' ? loanData.stageDeadline : null);
+        if (deadlineInput) {
+            try {
+                const deadlineDate = parseISO(deadlineInput);
+                resolvedData.isOverdue = isBefore(deadlineDate, new Date()) && !isTerminal;
+            } catch (e) {
+                console.warn(`[Service:resolveLoanStageData] Error parsing stageDeadline "${deadlineInput}":`, e);
+                resolvedData.isOverdue = false; // Default to not overdue if parsing fails
+            }
+        } else {
+            resolvedData.isOverdue = false; // No valid deadline string
         }
-
       } else {
         resolvedData.isOverdue = false;
       }
@@ -589,7 +591,6 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
       const definitionId = definition.id; 
       if (!definitionId) {
         console.error(`[Service:saveWfDefs] Workflow definition "${definition.name}" is missing an ID. Skipping save for this definition.`);
-        // Optionally, return an error or collect errors, for now, just log and skip.
         continue; 
       }
 
@@ -602,14 +603,14 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             defPayload.createdAt = Timestamp.fromDate(parseISO(defCreatedAtFromUI));
         } catch (dateParseError) {
             console.warn(`[Service:saveWfDefs] Could not parse def createdAt string "${defCreatedAtFromUI}" for ${definitionId}. Using serverTimestamp.`);
-            defPayload.createdAt = serverTimestamp();
+            defPayload.createdAt = serverTimestamp(); // Fallback
         }
-      } else if(!defPayload.createdAt) { 
-        const currentDefDoc = await getDoc(defRef); // Fetch only if createdAt is missing in payload
+      } else if(!defPayload.createdAt) { // Ensure createdAt is set if not provided and not existing
+        const currentDefDoc = await getDoc(defRef); 
         if (!currentDefDoc.exists() || !currentDefDoc.data()?.createdAt) {
           defPayload.createdAt = serverTimestamp();
         } else if (currentDefDoc.exists() && currentDefDoc.data()?.createdAt) {
-          defPayload.createdAt = currentDefDoc.data()?.createdAt;
+          defPayload.createdAt = currentDefDoc.data()?.createdAt; // Preserve existing if UI doesn't provide
         }
       }
       batch.set(defRef, defPayload, { merge: true }); 
@@ -619,7 +620,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         const versionsSnapshot = await getDocs(collection(defRef, "versions"));
         existingVersionIdsInFirestore = new Set<string>(versionsSnapshot.docs.map(d => d.id));
       } catch (versionsFetchError: any) {
-        return createErrorResult(`Failed to fetch existing versions for definition ${definition.name} (ID: ${definitionId}). Save aborted to prevent data loss. Raw: ${versionsFetchError.message}`, "saveWorkflowDefinitions_fetchVersions", versionsFetchError);
+        return createErrorResult(`Failed to fetch existing versions for definition ${definition.name} (ID: ${definitionId}). Save aborted. Raw: ${versionsFetchError.message}`, "saveWorkflowDefinitions_fetchVersions", versionsFetchError);
       }
       
       const incomingVersionIdsFromUI = new Set<string>();
@@ -627,13 +628,13 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
       for (const version of versions) {
         const versionId = version.id; 
         if (!versionId) {
-          console.error(`[Service:saveWfDefs] Version number "${version.versionNumber}" for definition "${definition.name}" (ID: ${definitionId}) is missing an ID. Skipping save for this version.`);
+          console.error(`[Service:saveWfDefs] Version number "${version.versionNumber}" for def "${definition.name}" (ID: ${definitionId}) is missing its own ID. Skipping this version.`);
           continue;
         }
         incomingVersionIdsFromUI.add(versionId);
 
         const versionRef = doc(collection(defRef, "versions"), versionId);
-        const { stages, id: _verIdToExclude, workflowDefinitionId: _wfDefIdToExclude, createdAt: verCreatedAtFromUI, updatedAt: _verUpdatedAtFromUI, ...versionDataFromUI } = version;
+        const { stages, id: _verIdToExclude, workflowDefinitionId: _wfDefIdToExcludeFromVersion, createdAt: verCreatedAtFromUI, updatedAt: _verUpdatedAtFromUI, ...versionDataFromUI } = version;
         
         const versionPayload: any = {...versionDataFromUI, workflowDefinitionId: definitionId, isActive: versionDataFromUI.isActive === true, updatedAt: serverTimestamp() };
         if (verCreatedAtFromUI && typeof verCreatedAtFromUI === 'string') {
@@ -641,14 +642,14 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 versionPayload.createdAt = Timestamp.fromDate(parseISO(verCreatedAtFromUI));
             } catch (dateParseError) {
                 console.warn(`[Service:saveWfDefs] Could not parse version createdAt string "${verCreatedAtFromUI}" for ${versionId}. Using serverTimestamp.`);
-                versionPayload.createdAt = serverTimestamp();
+                versionPayload.createdAt = serverTimestamp(); // Fallback
             }
-        } else if (!versionPayload.createdAt) {
+        } else if (!versionPayload.createdAt) { // Ensure createdAt is set
            const currentVerDoc = await getDoc(versionRef);
            if (!currentVerDoc.exists() || !currentVerDoc.data()?.createdAt) {
              versionPayload.createdAt = serverTimestamp();
            } else if (currentVerDoc.exists() && currentVerDoc.data()?.createdAt) {
-             versionPayload.createdAt = currentVerDoc.data()?.createdAt;
+             versionPayload.createdAt = currentVerDoc.data()?.createdAt; // Preserve
            }
         }
         batch.set(versionRef, versionPayload, { merge: true });
@@ -665,7 +666,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         for (const stage of stages) {
           const stageId = stage.id; 
           if (!stageId) {
-            console.error(`[Service:saveWfDefs] Stage "${stage.name}" for version "${version.versionNumber}" (ID: ${versionId}) is missing an ID. Skipping save for this stage.`);
+            console.error(`[Service:saveWfDefs] Stage "${stage.name}" for version "${version.versionNumber}" (ID: ${versionId}) is missing its own ID. Skipping this stage.`);
             continue;
           }
           incomingStageIdsFromUI.add(stageId);
@@ -678,19 +679,20 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 stagePayload.createdAt = Timestamp.fromDate(parseISO(stageCreatedAtFromUI));
             } catch (dateParseError) {
                 console.warn(`[Service:saveWfDefs] Could not parse stage createdAt string "${stageCreatedAtFromUI}" for ${stageId}. Using serverTimestamp.`);
-                stagePayload.createdAt = serverTimestamp();
+                stagePayload.createdAt = serverTimestamp(); // Fallback
             }
-          } else if (!stagePayload.createdAt) {
+          } else if (!stagePayload.createdAt) { // Ensure createdAt is set
             const currentStageDoc = await getDoc(stageRef);
             if (!currentStageDoc.exists() || !currentStageDoc.data()?.createdAt) {
               stagePayload.createdAt = serverTimestamp();
             } else if (currentStageDoc.exists() && currentStageDoc.data()?.createdAt) {
-                stagePayload.createdAt = currentStageDoc.data()?.createdAt;
+                stagePayload.createdAt = currentStageDoc.data()?.createdAt; //Preserve
             }
           }
           batch.set(stageRef, stagePayload, { merge: true });
         }
         
+        // Delete stages from Firestore that are not in the incoming UI stages for this version
         existingStageIdsInFirestore.forEach(idInFirestore => {
           if (!incomingStageIdsFromUI.has(idInFirestore)) {
             const stageToDeleteRef = doc(collection(versionRef, "stages"), idInFirestore);
@@ -699,12 +701,13 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         });
       }
       
+       // Delete versions from Firestore that are not in the incoming UI versions for this definition
        existingVersionIdsInFirestore.forEach(idInFirestore => {
         if (!incomingVersionIdsFromUI.has(idInFirestore)) {
           const versionToDeleteRef = doc(collection(defRef, "versions"), idInFirestore);
-          // Note: Deleting a version here does not automatically delete its subcollection of stages in Firestore
-          // using a client-side batch. This would require more complex logic, potentially a Cloud Function.
-          // For now, stages of deleted versions will become orphaned if not handled separately.
+          // Note: Deleting a version document via batch does not automatically delete its subcollection of stages in Firestore.
+          // This requires a more complex solution (e.g., Cloud Function trigger) for full cleanup if versions with stages are deleted.
+          // For now, stages of deleted versions might become orphaned.
           batch.delete(versionToDeleteRef); 
         }
       });
@@ -844,5 +847,3 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult(errorMessage, "getAvailableLoanTypesForWorkflow", e);
   }
 }
-
-    
