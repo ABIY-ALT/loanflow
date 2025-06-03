@@ -72,31 +72,55 @@ export default function ManageDepartmentsPage() {
       return;
     }
     setIsSaving(true);
-    const result = await addDepartment(newDepartmentName.trim());
-    if (result.error || !result.id) {
-      toast({ title: "Error", description: result.error || "Failed to add department.", variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: `Department "${newDepartmentName.trim()}" added.` });
-      setNewDepartmentName('');
-      // Refetch or add to local state optimistically
-      // For simplicity and consistency with Firestore IDs, refetch:
-      await fetchDepartmentsCallback();
+    try {
+        const result = await addDepartment(newDepartmentName.trim());
+        if (result.error || !result.id) {
+          toast({ title: "Error Adding Department", description: result.error || "Failed to add department.", variant: "destructive", duration: 9000 });
+        } else {
+          toast({ title: "Success", description: `Department "${newDepartmentName.trim()}" added.` });
+          setNewDepartmentName('');
+          await fetchDepartmentsCallback();
+        }
+    } catch (error: any) {
+        let errorMessage = "An unexpected error occurred while adding department.";
+        if (error && typeof error.message === 'string') {
+            errorMessage = error.message;
+        }
+        toast({
+            title: "Action Failed",
+            description: `Error: ${errorMessage}`,
+            variant: "destructive",
+            duration: 9000,
+        });
+    } finally {
+        setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleDeleteDepartment = async (departmentId: string, departmentName: string) => {
-    setIsSaving(true); // Use general saving for delete as well
-    // TODO: Add check if department is in use by any workflow stage
-    // For now, direct delete
-    const result = await deleteDepartmentService(departmentId);
-    if (result.error) {
-      toast({ title: "Error", description: result.error || `Failed to delete department "${departmentName}".`, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: `Department "${departmentName}" deleted.` });
-      await fetchDepartmentsCallback();
+    setIsSaving(true);
+    try {
+        const result = await deleteDepartmentService(departmentId);
+        if (result.error) {
+          toast({ title: "Error Deleting Department", description: result.error || `Failed to delete department "${departmentName}".`, variant: "destructive", duration: 9000 });
+        } else {
+          toast({ title: "Success", description: `Department "${departmentName}" deleted.` });
+          await fetchDepartmentsCallback();
+        }
+    } catch (error: any) {
+        let errorMessage = "An unexpected error occurred while deleting department.";
+        if (error && typeof error.message === 'string') {
+            errorMessage = error.message;
+        }
+        toast({
+            title: "Action Failed",
+            description: `Error: ${errorMessage}`,
+            variant: "destructive",
+            duration: 9000,
+        });
+    } finally {
+        setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
 
@@ -218,3 +242,5 @@ export default function ManageDepartmentsPage() {
     </div>
   );
 }
+
+    

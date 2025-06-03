@@ -61,7 +61,7 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
 
 interface DepartmentObject {
   id: string;
-  name: Department; // Department type is string
+  name: Department;
 }
 
 interface WorkflowStageConfigItemProps {
@@ -223,9 +223,9 @@ function EditWorkflowVersionDialog({
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
     });
-    setNewStageName(''); 
-    setNewStageDept(departments.length > 0 ? departments[0].name : ''); 
-    setNewStageTimeline(3); 
+    setNewStageName('');
+    setNewStageDept(departments.length > 0 ? departments[0].name : '');
+    setNewStageTimeline(3);
     setNewStageWeight(10);
   };
   const handleInternalReorderStages = (event: DragEndEvent) => {
@@ -269,7 +269,7 @@ function EditWorkflowVersionDialog({
         return;
       }
       onSaveVersion(workflowDefinition.id, editedVersion);
-      onOpenChange(false); 
+      onOpenChange(false);
     }
   };
 
@@ -382,7 +382,7 @@ export default function SettingsPage() {
         setError(errorMessage);
         setWorkflowDefinitions([]);
         setDepartments([]);
-        toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive"});
+        toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive", duration: 9000});
       } finally {
         setIsLoadingData(false);
       }
@@ -400,16 +400,16 @@ export default function SettingsPage() {
 
     setWorkflowDefinitions(prevDefs =>
       prevDefs.map(def => {
-        if (def.loanType === targetDef.loanType) { 
+        if (def.loanType === targetDef.loanType) {
           return {
             ...def,
             versions: def.versions.map(v => ({
               ...v,
-              isActive: (v.id === versionIdToActivate && def.id === definitionIdToActivate) 
+              isActive: (v.id === versionIdToActivate && def.id === definitionIdToActivate)
             }))
           };
         }
-        return def; 
+        return def;
       })
     );
     const activatedVersion = targetDef.versions.find(v => v.id === versionIdToActivate);
@@ -428,21 +428,21 @@ export default function SettingsPage() {
       if (def.id === definitionId) {
         const latestVersionNum = def.versions.length > 0 ? Math.max(...def.versions.map(v => v.versionNumber)) : 0;
         const newVersion: WorkflowVersion = {
-          id: `wfver-custom-${Date.now()}-${Math.random().toString(36).substring(2,5)}`, 
+          id: `wfver-custom-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
           workflowDefinitionId: def.id,
           versionNumber: latestVersionNum + 1,
-          createdAt: new Date().toISOString(), 
+          createdAt: new Date().toISOString(),
           stages: [],
-          isActive: false, 
+          isActive: false,
         };
-        
+
         let makeNewActive = newVersion.isActive;
         if (!def.versions.some(v => v.isActive)) {
             makeNewActive = true;
         }
-        
+
         const updatedVersions = def.versions.map(v => ({...v, isActive: makeNewActive && v.id === newVersion.id ? true : (makeNewActive ? false : v.isActive) }));
-        
+
         return { ...def, versions: [...updatedVersions, {...newVersion, isActive: makeNewActive}].sort((a,b) => b.versionNumber - a.versionNumber) };
       }
       return def;
@@ -457,7 +457,7 @@ export default function SettingsPage() {
          if (updatedVersion.isActive) {
             versionsToUpdate = versionsToUpdate.map(v => ({
                 ...v,
-                isActive: v.id === updatedVersion.id 
+                isActive: v.id === updatedVersion.id
             }));
          }
          return { ...def, versions: versionsToUpdate.sort((a,b) => b.versionNumber - a.versionNumber) };
@@ -469,12 +469,12 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!newWorkflowName.trim() || !newWorkflowLoanType.trim()) {
-        toast({ title: "Error", description: "Workflow name and loan type are required.", variant: "destructive" });
+        toast({ title: "Validation Error", description: "Workflow name and loan type are required.", variant: "destructive", duration: 9000 });
         return;
     }
     const existingForLoanType = workflowDefinitions.find(wd => wd.loanType.trim().toLowerCase() === newWorkflowLoanType.trim().toLowerCase());
     if(existingForLoanType){
-        toast({ title: "Error", description: `A workflow definition for loan type '${newWorkflowLoanType}' already exists: '${existingForLoanType.name}'. Each loan type should have one definition container. Add versions to it.`, variant: "destructive", duration: 7000 });
+        toast({ title: "Validation Error", description: `A workflow definition for loan type '${newWorkflowLoanType}' already exists: '${existingForLoanType.name}'. Each loan type should have one definition container. Add versions to it.`, variant: "destructive", duration: 9000 });
         return;
     }
 
@@ -485,24 +485,37 @@ export default function SettingsPage() {
         description: newWorkflowDescription,
     };
 
-    const result = await addWorkflowDefinitionToFirestore(definitionData);
-    setIsSavingData(false);
-
-    if (result.error || !result.id) {
-        toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Firestore.", variant: "destructive" });
-    } else {
-        const newDefinitionFromDb: WorkflowDefinition = {
-            id: result.id,
-            ...definitionData,
-            versions: [],
-            createdAt: new Date().toISOString(), 
-            updatedAt: new Date().toISOString(), 
-        };
-        setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
-        setNewWorkflowName('');
-        setNewWorkflowLoanType('');
-        setNewWorkflowDescription('');
-        toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to Firestore.` });
+    try {
+      const result = await addWorkflowDefinitionToFirestore(definitionData);
+      if (result.error || !result.id) {
+          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Firestore.", variant: "destructive", duration: 9000 });
+      } else {
+          const newDefinitionFromDb: WorkflowDefinition = {
+              id: result.id,
+              ...definitionData,
+              versions: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+          };
+          setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
+          setNewWorkflowName('');
+          setNewWorkflowLoanType('');
+          setNewWorkflowDescription('');
+          toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to Firestore.` });
+      }
+    } catch (error: any) {
+        let errorMessage = "An unexpected error occurred while adding workflow definition.";
+        if (error && typeof error.message === 'string') {
+            errorMessage = error.message;
+        }
+        toast({
+            title: "Action Failed",
+            description: `Error: ${errorMessage}`,
+            variant: "destructive",
+            duration: 9000,
+        });
+    } finally {
+        setIsSavingData(false);
     }
   };
 
@@ -515,10 +528,17 @@ export default function SettingsPage() {
             throw new Error(result.error);
         }
         toast({ title: "All Settings Saved to Firestore", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData(); 
+        await fetchInitialData();
     } catch (err: any) {
-        setError(err.message || "Failed to save settings to Firestore.");
-        toast({ title: "Error Saving Settings", description: err.message, variant: "destructive" });
+        let errorMessage = "Failed to save settings to Firestore.";
+        if (err && typeof err.message === 'string') {
+            errorMessage = err.message;
+             if (err.message.includes("query requires an index")) {
+                errorMessage += " Please check Firestore console for index creation link.";
+            }
+        }
+        setError(errorMessage);
+        toast({ title: "Saving Failed", description: `Error: ${errorMessage}`, variant: "destructive", duration: 9000 });
     } finally {
         setIsSavingAll(false);
     }
@@ -660,3 +680,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    

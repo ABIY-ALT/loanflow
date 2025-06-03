@@ -19,10 +19,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react'; 
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service'; 
-import type { LoanRequest } from '@/types/loan'; 
+import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service';
+import type { LoanRequest } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 
@@ -90,12 +90,12 @@ export default function NewLoanRequestPage() {
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
-    defaultValues: { 
+    defaultValues: {
       customerName: '',
       customerEmail: '',
       customerPhone: '',
       loanAmount: 0,
-      loanType: '', 
+      loanType: '',
       loanPurpose: '',
       customerBranch: '',
     },
@@ -104,7 +104,6 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      // Ensure all fields from LoanRequestFormValues are included if they are part of the core loan data
       const loanDataForService: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage'> = {
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -112,16 +111,17 @@ export default function NewLoanRequestPage() {
         loanAmount: data.loanAmount,
         loanType: data.loanType,
         loanPurpose: data.loanPurpose,
-        customerBranch: data.customerBranch, // Added customerBranch
+        customerBranch: data.customerBranch,
       };
-      
-      const result = await addLoanRequest(loanDataForService); 
+
+      const result = await addLoanRequest(loanDataForService);
 
       if (result.error) {
         toast({
           title: "Submission Error",
-          description: `Failed to save loan request: ${result.error}`,
+          description: result.error, // Directly use the error from the service
           variant: "destructive",
+          duration: 9000,
         });
       } else if (result.id) {
         toast({
@@ -135,13 +135,19 @@ export default function NewLoanRequestPage() {
           title: "Submission Error",
           description: "An unexpected issue occurred with submission.",
           variant: "destructive",
+          duration: 9000,
         });
       }
-    } catch (error: any) { 
+    } catch (error: any) {
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      if (error && typeof error.message === 'string') {
+        errorMessage = error.message;
+      }
       toast({
-        title: "Submission System Error",
-        description: `A client-side error occurred: ${error?.message || 'Please try again.'}.`,
+        title: "Submission Failed",
+        description: `Error: ${errorMessage}`,
         variant: "destructive",
+        duration: 9000,
       });
     } finally {
       setIsSubmitting(false);
@@ -221,9 +227,9 @@ export default function NewLoanRequestPage() {
                       <FormLabel>Customer Branch</FormLabel>
                        <div className="relative">
                         <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select 
-                          onValueChange={field.onChange} 
-                          defaultValue={field.value} 
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
                           disabled={isSubmitting}
                         >
                           <FormControl>
@@ -266,9 +272,9 @@ export default function NewLoanRequestPage() {
                       <FormLabel>Loan Type</FormLabel>
                        <div className="relative">
                         <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select 
-                          onValueChange={field.onChange} 
-                          defaultValue={field.value} 
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
                           disabled={isLoadingLoanTypes || isSubmitting || availableLoanTypes.length === 0}
                         >
                           <FormControl>
@@ -295,7 +301,7 @@ export default function NewLoanRequestPage() {
                   )}
                 />
               </div>
-              
+
               <FormField
                 control={form.control}
                 name="loanPurpose"
@@ -320,10 +326,10 @@ export default function NewLoanRequestPage() {
                   </FormItem>
                 )}
               />
-              <Button 
-                type="submit" 
-                className="w-full sm:w-auto" 
-                disabled={isSubmitting || isLoadingLoanTypes || availableLoanTypes.length === 0}
+              <Button
+                type="submit"
+                className="w-full sm:w-auto"
+                disabled={isSubmitting || isLoadingLoanTypes || availableLoanTypes.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}
               >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isSubmitting ? 'Submitting...' : 'Submit Loan Request'}
@@ -335,3 +341,5 @@ export default function NewLoanRequestPage() {
     </div>
   );
 }
+
+    

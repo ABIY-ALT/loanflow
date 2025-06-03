@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useState } from 'react';
-import { Loader2, Search, BotMessageSquare, ListChecks } from 'lucide-react';
+import { Loader2, Search, BotMessageSquare, ListChecks, AlertCircle } from 'lucide-react';
 import { loanStatusLookup, LoanStatusLookupInput, LoanStatusLookupOutput } from '@/ai/flows/loan-status-lookup';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -46,35 +47,34 @@ export default function LoanStatusPage() {
     setLookupResult(null);
     setError(null);
 
-    const input: LoanStatusLookupInput = data.type === 'loanNumber' 
-      ? { loanNumber: data.identifier } 
+    const input: LoanStatusLookupInput = data.type === 'loanNumber'
+      ? { loanNumber: data.identifier }
       : { customerNumber: data.identifier };
 
     try {
-      // Simulate AI call if needed, or directly call if server action setup is robust
-      // For now, let's assume loanStatusLookup can be called client-side if it's a server action module
-      // If it's not directly callable, this needs to be wrapped in a server action
-      const result = await loanStatusLookup(input);
-      
-      // Simulate a delay for AI processing
-      // await new Promise(resolve => setTimeout(resolve, 1500));
-      // const result: LoanStatusLookupOutput = { // Mock result
-      //   status: "Under Review",
-      //   details: `Loan for ${data.identifier} is currently under review by the credit department. Expected decision by EOD tomorrow. Documents A, B are verified. Document C is pending customer submission.`
-      // };
+      const result = await loanStatusLookup(input); // This is a Server Action call
+
+      // Assuming loanStatusLookup returns LoanStatusLookupOutput or throws an error
+      // Server actions typically don't return { error: string } like our custom service might
+      // They either succeed and return data, or the promise rejects with an error.
+
       setLookupResult(result);
       toast({
         title: "Loan Status Retrieved",
         description: `Status for ${data.identifier} found.`,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Loan status lookup error:", err);
-      const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
-      setError(errorMessage);
+      let errorMessage = "An unexpected error occurred during lookup.";
+      if (err && typeof err.message === 'string') {
+        errorMessage = err.message;
+      }
+      setError(errorMessage); // Set local error state for Alert display
       toast({
-        title: "Lookup Error",
-        description: errorMessage,
+        title: "Lookup Failed",
+        description: `Error: ${errorMessage}`,
         variant: "destructive",
+        duration: 9000,
       });
     } finally {
       setIsLoading(false);
@@ -120,7 +120,6 @@ export default function LoanStatusPage() {
                   <FormItem className="space-y-3">
                     <FormLabel>Identifier Type</FormLabel>
                     <FormControl>
-                       {/* Using Buttons as Radio Group items for better styling */}
                       <div className="flex gap-2">
                         <Button
                           type="button"
@@ -167,10 +166,10 @@ export default function LoanStatusPage() {
         </Alert>
       )}
 
-      {error && (
+      {error && !isLoading && ( // Show local error Alert if not loading
         <Alert variant="destructive">
           <AlertCircle className="h-5 w-5" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>Lookup Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -206,3 +205,5 @@ export default function LoanStatusPage() {
     </div>
   );
 }
+
+    
