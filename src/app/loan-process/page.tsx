@@ -10,7 +10,7 @@ import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Bui
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getLoanRequests, updateLoanRequest } from '@/services/loan-service';
+import { getLoanRequests, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service';
 import {
   Tooltip,
   TooltipContent,
@@ -29,15 +29,15 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { mockWorkflowDefinitions, mockUsers } from '@/lib/mock-data'; // For stage names & user names
-import { useRouter } from 'next/navigation'; // Added for router push in LoanCard
+import { mockUsers } from '@/lib/mock-data'; // For user names
+import { useRouter } from 'next/navigation';
 
 interface LoanCardProps {
   loan: LoanRequest;
   stageName: string;
   onCardActionClick: (loan: LoanRequest) => void;
   isManagerView: boolean;
-  router: ReturnType<typeof useRouter>; // Pass router instance
+  router: ReturnType<typeof useRouter>;
 }
 
 function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }: LoanCardProps) {
@@ -102,7 +102,7 @@ interface KanbanColumnProps {
   loans: LoanRequest[];
   onCardActionClick: (loan: LoanRequest) => void;
   isManagerView: boolean;
-  router: ReturnType<typeof useRouter>; // Pass router
+  router: ReturnType<typeof useRouter>;
 }
 
 function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, router }: KanbanColumnProps) {
@@ -112,7 +112,7 @@ function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, route
         <h3 className="font-semibold text-foreground flex items-center"><Building className="h-4 w-4 mr-2 text-muted-foreground"/>{stageDef.responsibleDepartment} - {stageDef.name}</h3>
         <Badge variant="secondary">{loans.length}</Badge>
       </div>
-      <ScrollArea className="h-[calc(100vh-24rem)] pr-2"> {/* Adjusted height slightly */}
+      <ScrollArea className="h-[calc(100vh-24rem)] pr-2">
         {loans.length === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-sm text-muted-foreground p-4 text-center">
             <p>No loan requests in this stage for this department.</p>
@@ -180,9 +180,9 @@ interface ActiveWorkflowPipeline {
 
 
 export default function LoanProcessPage() {
-  const router = useRouter(); // For LoanCard
+  const router = useRouter();
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
-  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>(mockWorkflowDefinitions);
+  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -192,42 +192,56 @@ export default function LoanProcessPage() {
   const [isProcessingAction, setIsProcessingAction] = useState(false); 
 
   const activeWorkflowPipelines = useMemo(() => {
-    if (!workflowDefinitions) return [];
+    if (!fetchedWorkflowDefinitions || fetchedWorkflowDefinitions.length === 0) return [];
     const pipelines: ActiveWorkflowPipeline[] = [];
-    for (const def of workflowDefinitions) {
+    for (const def of fetchedWorkflowDefinitions) {
       const activeVersion = def.versions.find(v => v.isActive);
       if (activeVersion && activeVersion.stages && activeVersion.stages.length > 0) {
         pipelines.push({
           definition: def,
           activeVersion: activeVersion,
-          stages: [...activeVersion.stages].sort((a, b) => a.order - b.order) // Ensure stages are sorted
+          stages: [...activeVersion.stages].sort((a, b) => a.order - b.order)
         });
       }
     }
     return pipelines;
-  }, [workflowDefinitions]);
+  }, [fetchedWorkflowDefinitions]);
 
   const getStageDefById = useCallback((versionId: string, stageId: string): WorkflowStageDefinition | null => {
-    const wfDef = workflowDefinitions.find(def => def.versions.some(v => v.id === versionId));
+    if (!fetchedWorkflowDefinitions) return null;
+    const wfDef = fetchedWorkflowDefinitions.find(def => def.versions.some(v => v.id === versionId));
     if (!wfDef) return null;
     const version = wfDef.versions.find(v => v.id === versionId);
     return version?.stages.find(s => s.id === stageId) || null;
-  }, [workflowDefinitions]);
+  }, [fetchedWorkflowDefinitions]);
 
 
-  const fetchLoans = useCallback(async () => {
+  const fetchPageData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getLoanRequests();
-      if (result.error) { setError(result.error); setAllLoans([]); }
-      else if (result.loans) { setAllLoans(result.loans); }
-      else { setError("No loan data received."); setAllLoans([]); }
-    } catch (err: any) { setError(err.message || "Error fetching loans."); setAllLoans([]); }
+      const [loansResult, wfResult] = await Promise.all([
+        getLoanRequests(),
+        getWorkflowDefinitions()
+      ]);
+
+      if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
+      else if (loansResult.loans) { setAllLoans(loansResult.loans); }
+      else { setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
+
+      if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); setFetchedWorkflowDefinitions([]); }
+      else if (wfResult.workflows) { setFetchedWorkflowDefinitions(wfResult.workflows); }
+      else { setError(prev => (prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`)); setFetchedWorkflowDefinitions([]); }
+
+    } catch (err: any) { 
+      setError(prev => (prev ? `${prev}\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
+      setAllLoans([]);
+      setFetchedWorkflowDefinitions([]);
+    }
     finally { setIsLoading(false); }
   }, []);
 
-  useEffect(() => { fetchLoans(); }, [fetchLoans]);
+  useEffect(() => { fetchPageData(); }, [fetchPageData]);
 
   const validateLoanForNextStep = useCallback((loan: LoanRequest): boolean => {
     const stageDef = getStageDefById(loan.workflowVersionId, loan.currentStageId);
@@ -262,6 +276,7 @@ export default function LoanProcessPage() {
     } else { 
         if (!loan.assignedTo) {
             toast({title: "Assignment Needed", description: "Loan must be assigned to a staff member first.", variant: "info"});
+            router.push(`/loan-requests/${loan.id}`); // Navigate to detail page for assignment
             return;
         }
         if (!validateLoanForNextStep(loan)) return;
@@ -279,24 +294,24 @@ export default function LoanProcessPage() {
             lastUpdatedDate: formatISO(new Date()) 
         };
         
-        setAllLoans(prev => prev.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l));
+        setAllLoans(prev => prev.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l)); // Optimistic update
         const serviceResult = await updateLoanRequest(loan.id, updatedFields);
         setIsProcessingAction(false);
 
         if (serviceResult.error || !serviceResult.success) {
             toast({ title: "Error", description: serviceResult.error || "Failed to mark stage complete.", variant: "destructive" });
-            fetchLoans(); 
+            fetchPageData(); // Revert optimistic update by re-fetching
         } else {
             toast({ title: "Success", description: `${loan.customerName}'s stage '${currentStageDef.name}' marked complete. Awaiting manager review.` });
         }
     }
-  }, [toast, validateLoanForNextStep, fetchLoans, getStageDefById]);
+  }, [toast, validateLoanForNextStep, fetchPageData, getStageDefById, router]);
 
   const handleConfirmPromotion = useCallback(async (loanId: string) => {
     const loanToPromote = allLoans.find(l => l.id === loanId);
     if (!loanToPromote) { toast({ title: "Error", description: "Loan not found.", variant: "destructive"}); return; }
 
-    const currentVersion = workflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === loanToPromote.workflowVersionId);
+    const currentVersion = fetchedWorkflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === loanToPromote.workflowVersionId);
     if (!currentVersion) { toast({ title: "Error", description: "Workflow version not found.", variant: "destructive"}); return; }
     
     const currentStageIndex = currentVersion.stages.findIndex(s => s.id === loanToPromote.currentStageId);
@@ -308,8 +323,9 @@ export default function LoanProcessPage() {
         id: `hist-final-${Date.now()}`, stageName: currentVersion.stages[currentStageIndex]?.name || 'Final Stage', timestamp: formatISO(new Date()),
         userId: 'mock-manager-user', userName: 'Manager (Mock)', notes: 'Loan reached final workflow stage. Process complete.',
       };
-      await updateLoanRequest(loanId, { history: [...(loanToPromote.history || []), finalHistoryEntry], isReadyForManagerReview: false });
-      fetchLoans();
+      // Mark as not needing manager review anymore
+      const updateResult = await updateLoanRequest(loanId, { history: [...(loanToPromote.history || []), finalHistoryEntry], isReadyForManagerReview: false, lastUpdatedDate: formatISO(new Date()) });
+      if (updateResult.success) fetchPageData(); // Re-fetch to update state
       return;
     }
 
@@ -328,9 +344,12 @@ export default function LoanProcessPage() {
       isReadyForManagerReview: false,
       lastUpdatedDate: formatISO(new Date()),
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
+      // Ensure these mirror fields are also set, updateLoanRequest service should handle this based on currentStageId now
+      workflowDefinitionId: loanToPromote.workflowDefinitionId,
+      workflowVersionId: loanToPromote.workflowVersionId,
     };
 
-    setAllLoans(prev => prev.map(l => l.id === loanId ? { ...l, ...updatedFields } : l));
+    setAllLoans(prev => prev.map(l => l.id === loanId ? { ...l, ...updatedFields } : l)); // Optimistic
     setIsPromoteDialogOpen(false);
     setSelectedLoanForDialog(null);
 
@@ -339,11 +358,11 @@ export default function LoanProcessPage() {
 
     if (serviceResult.error || !serviceResult.success) {
       toast({ title: "Promotion Error", description: serviceResult.error || "Failed to promote.", variant: "destructive" });
-      fetchLoans();
+      fetchPageData(); // Revert
     } else {
       toast({ title: "Promotion Successful", description: `${loanToPromote.customerName} moved to ${nextStageDef.name}.` });
     }
-  }, [allLoans, toast, fetchLoans, workflowDefinitions]);
+  }, [allLoans, toast, fetchPageData, fetchedWorkflowDefinitions]);
 
   const loansByStageAndVersionId = useCallback((stageId: string, versionId: string) => {
     return allLoans.filter(loan => loan.currentStageId === stageId && loan.workflowVersionId === versionId);
@@ -356,17 +375,17 @@ export default function LoanProcessPage() {
   }, [selectedLoanForDialog, getStageDefById]);
 
   const nextStageNameForDialog = useMemo(() => {
-    if (!selectedLoanForDialog) return '';
-    const currentVersion = workflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === selectedLoanForDialog.workflowVersionId);
+    if (!selectedLoanForDialog || !fetchedWorkflowDefinitions) return '';
+    const currentVersion = fetchedWorkflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === selectedLoanForDialog.workflowVersionId);
     if (!currentVersion) return '';
     const currentStageIndex = currentVersion.stages.findIndex(s => s.id === selectedLoanForDialog.currentStageId);
     if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) return '';
     return currentVersion.stages[currentStageIndex + 1]?.name || '';
-  }, [selectedLoanForDialog, workflowDefinitions]);
+  }, [selectedLoanForDialog, fetchedWorkflowDefinitions]);
 
 
-  if (isLoading && allLoans.length === 0) { return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines...</p></div>); }
-  if (error && allLoans.length === 0) { return (<Alert variant="destructive" className="max-w-2xl mx-auto"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
+  if (isLoading && (allLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) { return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines & workflows...</p></div>); }
+  if (error && (allLoans.length === 0 || activeWorkflowPipelines.length === 0) ) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
   
   if (activeWorkflowPipelines.length === 0 && !isLoading) { 
     return (
@@ -380,10 +399,10 @@ export default function LoanProcessPage() {
         </div>
         <Alert variant="default" className="max-w-2xl mx-auto">
           <AlertTriangle className="h-5 w-5" />
-          <AlertTitleShadCN>No Active Loan Pipelines</AlertTitleShadCN>
+          <AlertTitleShadCN>No Active Loan Pipelines Found</AlertTitleShadCN>
           <AlertDescShadCN>
-            There are no workflow definitions with an active version that also has stages configured.
-            Please go to Settings to configure your loan workflows and ensure at least one version per loan type is active and has stages.
+            There are no workflow definitions with an active version that also has stages configured in Firestore.
+            Please go to Settings to define your loan workflows, ensure at least one version per loan type is marked active, and that it has stages defined. Then, click "Save All Settings to Firestore".
           </AlertDescShadCN>
         </Alert>
       </div>
@@ -437,4 +456,3 @@ export default function LoanProcessPage() {
     </div>
   );
 }
-
