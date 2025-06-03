@@ -32,7 +32,8 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
     return data;
   }
 
-  // 2. Handle specific convertible types FIRST
+  // 2. Firestore SDK specific types or known convertible types
+  // These should be checked before the 'seen' set or depth limit for these specific types.
   if (data instanceof Timestamp) {
     return formatISO(data.toDate());
   }
@@ -40,29 +41,26 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
     return formatISO(data);
   }
   // Check for other toDate()-able objects AFTER specific Timestamp/Date.
-  // This is crucial for objects that might have a toDate method but aren't direct instances.
-  if (typeof data.toDate === 'function') { 
+  if (typeof data.toDate === 'function' && 
+      !(data instanceof Timestamp) && 
+      !(data instanceof Date)) { 
     try {
       return formatISO(data.toDate());
     } catch (e) {
-      // If toDate() exists but fails (e.g., it's not a valid timestamp-like structure),
-      // we'll return a string indicating an issue rather than letting it fall through
-      // to potentially cause deeper recursion issues or be returned as an uncoverted object.
       return "[Invalid Timestamp-like Object]";
     }
   }
-
-  // 3. Heuristics for Firestore SDK objects that should be returned AS-IS (not converted, not recursed into)
-  // These checks come after direct conversion attempts because some SDK objects might ALSO have toDate (like Timestamp itself).
+  // Heuristic for other Firestore SDK objects that shouldn't be deeply traversed
+  // Check for a 'firestore' property which is common in many v8/v9 SDK objects
   if (typeof data.firestore === 'object' && data.firestore !== null) {
-    return data; // Likely a Firestore SDK object (e.g., Firestore instance, Query, CollectionRef)
+    return data; // Return SDK object as-is
   }
+  // Heuristic for DocumentReference-like objects (path and id are good indicators)
   if (typeof data.path === 'string' && typeof data.id === 'string') {
-    // This is a strong heuristic for DocumentReference or similar reference types.
-    return data; 
+      return data; // Return SDK object as-is (likely a DocumentReference)
   }
 
-  // 4. Circular reference / max depth checks for general objects that are not handled above
+  // 3. Circular reference / max depth checks for general objects
   seen = seen || new Set();
   if (seen.has(data)) {
     return `[Circular Reference: ${data.constructor?.name || 'UnknownType'}]`;
@@ -70,29 +68,36 @@ function convertTimestampsToISO(data: any, depth = 0, maxDepth = 15, seen?: Set<
   if (depth > maxDepth) {
     return `[Max Depth Exceeded: ${data.constructor?.name || 'UnknownType'}]`;
   }
-  
-  seen.add(data); // Add to seen set *before* recursing into its properties
-  
-  let res: any;
 
-  // 5. Recursive processing for Arrays and plain Objects
+  // 4. Add to seen set *after* SDK object checks but *before* recursing into its properties
+  seen.add(data);
+
+  let res: any;
+  // 5. Recursive processing
   if (Array.isArray(data)) {
     res = data.map(item => convertTimestampsToISO(item, depth + 1, maxDepth, seen));
-  } else if (data.constructor === Object) { // Check for plain objects (created with {} or new Object())
+  } else if (data.constructor === Object) {
+    // Plain JavaScript object
     res = {};
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
-        res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
+        // Explicitly skip known reference fields to prevent recursion into their internals
+        if (key === 'workflowVersionRef' || key === 'currentStageRef') {
+          res[key] = data[key]; // Assign the reference as-is
+        } else {
+          res[key] = convertTimestampsToISO(data[key], depth + 1, maxDepth, seen);
+        }
       }
     }
   } else {
-    // If it's an object but not Array or plain Object, and wasn't caught by specific handlers above,
-    // it's an unhandled complex type. Return it as-is.
-    // The 'seen' set and 'maxDepth' checks should prevent infinite loops if this object contains cycles.
-    res = data; 
+    // Unhandled complex object type. It's not a primitive, not a known Date/Timestamp,
+    // not an Array, not caught as a common SDK object, and not a plain JS object.
+    // We return it as-is and rely on the `seen` set or `maxDepth` to prevent infinite loops
+    // if this object itself contains further complex structures or cycles.
+    res = data;
   }
 
-  seen.delete(data); // Remove from seen set after its processing (and its children's processing) is complete
+  seen.delete(data);
   return res;
 }
 
@@ -607,14 +612,12 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
           defPayload.createdAt = currentDefDoc.data()?.createdAt;
         }
       }
-      console.log(`BATCH.SET (Definition) Path: ${defRef.path}, Payload: ${JSON.stringify(defPayload)}`);
       batch.set(defRef, defPayload, { merge: true }); 
 
       let existingVersionIdsInFirestore = new Set<string>();
       try {
         const versionsSnapshot = await getDocs(collection(defRef, "versions"));
         existingVersionIdsInFirestore = new Set<string>(versionsSnapshot.docs.map(d => d.id));
-        console.log(`[Service:saveWfDefs] Definition ${definitionId}: Existing Version IDs in Firestore: [${Array.from(existingVersionIdsInFirestore).join(', ')}]`);
       } catch (versionsFetchError: any) {
         return createErrorResult(`Failed to fetch existing versions for definition ${definition.name} (ID: ${definitionId}). Save aborted to prevent data loss. Raw: ${versionsFetchError.message}`, "saveWorkflowDefinitions_fetchVersions", versionsFetchError);
       }
@@ -648,14 +651,12 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
              versionPayload.createdAt = currentVerDoc.data()?.createdAt;
            }
         }
-        console.log(`BATCH.SET (Version) Path: ${versionRef.path}, Payload: ${JSON.stringify(versionPayload)}`);
         batch.set(versionRef, versionPayload, { merge: true });
 
         let existingStageIdsInFirestore = new Set<string>();
         try {
             const stagesSnapshot = await getDocs(collection(versionRef, "stages"));
             existingStageIdsInFirestore = new Set<string>(stagesSnapshot.docs.map(d => d.id));
-            console.log(`[Service:saveWfDefs] Version ${versionId}: Existing Stage IDs in Firestore: [${Array.from(existingStageIdsInFirestore).join(', ')}]`);
         } catch (stagesFetchError: any)            {
             return createErrorResult(`Failed to fetch existing stages for version ${version.versionNumber} (ID: ${versionId}). Save aborted. Raw: ${stagesFetchError.message}`, "saveWorkflowDefinitions_fetchStages", stagesFetchError);
         }
@@ -687,29 +688,23 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 stagePayload.createdAt = currentStageDoc.data()?.createdAt;
             }
           }
-          console.log(`BATCH.SET (Stage) Path: ${stageRef.path}, Payload: ${JSON.stringify(stagePayload)}`);
           batch.set(stageRef, stagePayload, { merge: true });
         }
         
-        console.log(`[Service:saveWfDefs] Version ${versionId}: Incoming Stage IDs from UI: [${Array.from(incomingStageIdsFromUI).join(', ')}]`);
         existingStageIdsInFirestore.forEach(idInFirestore => {
           if (!incomingStageIdsFromUI.has(idInFirestore)) {
             const stageToDeleteRef = doc(collection(versionRef, "stages"), idInFirestore);
-            console.log(`BATCH.DELETE (Stage) Path: ${stageToDeleteRef.path}`);
             batch.delete(stageToDeleteRef);
           }
         });
       }
       
-       console.log(`[Service:saveWfDefs] Definition ${definitionId}: Incoming Version IDs from UI: [${Array.from(incomingVersionIdsFromUI).join(', ')}]`);
        existingVersionIdsInFirestore.forEach(idInFirestore => {
         if (!incomingVersionIdsFromUI.has(idInFirestore)) {
           const versionToDeleteRef = doc(collection(defRef, "versions"), idInFirestore);
-          console.log(`BATCH.DELETE (Version) Path: ${versionToDeleteRef.path}`);
-          // Also need to delete all stages under this version being deleted
-          // This part is complex with batching and requires fetching stages of the version to delete them first.
-          // For simplicity in this step, we'll assume stages are handled if version is re-added, or this needs more robust delete logic.
-          // A more robust approach would be a separate transaction or cloud function for cascading deletes.
+          // Note: Deleting a version here does not automatically delete its subcollection of stages in Firestore
+          // using a client-side batch. This would require more complex logic, potentially a Cloud Function.
+          // For now, stages of deleted versions will become orphaned if not handled separately.
           batch.delete(versionToDeleteRef); 
         }
       });
