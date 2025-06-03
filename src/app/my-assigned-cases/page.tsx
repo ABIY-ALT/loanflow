@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardUser, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react'; // Changed ClipboardUser to ClipboardList
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -108,7 +108,7 @@ export default function MyAssignedCasesPage() {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div><h1 className="text-3xl font-bold tracking-tight flex items-center"><ClipboardUser className="mr-3 h-8 w-8 text-primary" />My Assigned Cases</h1></div>
+          <div><h1 className="text-3xl font-bold tracking-tight flex items-center"><ClipboardList className="mr-3 h-8 w-8 text-primary" />My Assigned Cases</h1></div>
            <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
         </div>
          <Alert variant="default" className="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-600 dark:text-blue-300">
@@ -129,7 +129,7 @@ export default function MyAssignedCasesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
-            <ClipboardUser className="mr-3 h-8 w-8 text-primary" />
+            <ClipboardList className="mr-3 h-8 w-8 text-primary" /> {/* Changed ClipboardUser to ClipboardList */}
             My Assigned Cases
           </h1>
           <p className="text-muted-foreground">
@@ -215,3 +215,5 @@ export default function MyAssignedCasesPage() {
     </div>
   );
 }
+
+    
