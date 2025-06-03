@@ -7,11 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-// Removed LoanStage, loanStages imports that are no longer central
-import { mockUsers } from '@/lib/mock-data'; // Assuming mockWorkflowDefinitions are fetched if needed or part of loan
+import { mockUsers } from '@/lib/mock-data';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest } from '@/services/loan-service';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service'; // Added getWorkflowDefinitions
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -24,7 +23,6 @@ import { LoanHistoryTimeline } from '@/components/loan/detail/LoanHistoryTimelin
 import { EditLoanDetailsDialog, UNASSIGNED_DIALOG_OPTION_VALUE } from '@/components/loan/dialogs/EditLoanDetailsDialog';
 import { AddNoteToLoanDialog } from '@/components/loan/dialogs/AddNoteToLoanDialog';
 import { LogInfoRequestForLoanDialog } from '@/components/loan/dialogs/LogInfoRequestForLoanDialog';
-// PromoteLoanStageDialog might need to be removed or heavily refactored as promotion is automatic
 import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanForReworkDialog';
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
 
@@ -49,15 +47,14 @@ export default function LoanDetailPage() {
   const [currentDocumentToUpload, setCurrentDocumentToUpload] = useState<string | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
   
-  // --- Workflow related derived state ---
   const currentWorkflowVersion = useMemo(() => {
-    if (!loan || !workflowDefinitions) return null;
+    if (!loan || !workflowDefinitions || !loan.workflowDefinitionId || !loan.workflowVersionId) return null;
     const definition = workflowDefinitions.find(def => def.id === loan.workflowDefinitionId);
     return definition?.versions.find(v => v.id === loan.workflowVersionId) || null;
   }, [loan, workflowDefinitions]);
 
   const currentStageDef = useMemo(() => {
-    if (!loan || !currentWorkflowVersion) return null;
+    if (!loan || !currentWorkflowVersion || !loan.currentStageId) return null;
     return currentWorkflowVersion.stages.find(s => s.id === loan.currentStageId) || null;
   }, [loan, currentWorkflowVersion]);
 
@@ -66,22 +63,35 @@ export default function LoanDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getLoanRequestById(loanId);
-      if (result.error) {
-        setError(result.error);
+      const [loanResult, wfResult] = await Promise.all([
+        getLoanRequestById(loanId),
+        getWorkflowDefinitions() 
+      ]);
+
+      if (loanResult.error) {
+        setError(prev => prev ? `${prev}\nLoan: ${loanResult.error}` : `Loan: ${loanResult.error}`);
         setLoan(null);
-      } else if (result.loan) {
-        setLoan(result.loan);
-        setUsers(result.users || mockUsers);
-        setWorkflowDefinitions(result.workflows || []); // Assuming workflows are fetched with loan
+      } else if (loanResult.loan) {
+        setLoan(loanResult.loan);
+        setUsers(loanResult.users || mockUsers); // Users might be part of loanResult or still mock
       } else {
-        setError(`Loan request with ID "${loanId}" not found.`);
+        setError(prev => prev ? `${prev}\nLoan: Loan request with ID "${loanId}" not found.` : `Loan: Loan request with ID "${loanId}" not found.`);
         setLoan(null);
       }
+
+      if (wfResult.error) {
+        setError(prev => prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`);
+        // Do not nullify loan if only workflow fetch fails, page might still be usable
+      } else if (wfResult.workflows) {
+        setWorkflowDefinitions(wfResult.workflows);
+      } else {
+         setError(prev => prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`);
+      }
+
     } catch (err: any) {
-      const errorMessage = err.message || "An unexpected error occurred while fetching loan data.";
+      const errorMessage = err.message || "An unexpected error occurred while fetching page data.";
       setError(errorMessage);
-      setLoan(null);
+      setLoan(null); // If fundamental fetch error, set loan to null
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +107,6 @@ export default function LoanDetailPage() {
   ): Promise<boolean> => {
     if (!loan) return false;
     setIsSaving(true);
-    console.log("[LoanDetailPage] Updating local component state with:", updatedFields);
     
     const newLoanState: LoanRequest = {
       ...loan,
@@ -109,14 +118,13 @@ export default function LoanDetailPage() {
     setLoan(newLoanState);
 
     try {
-      const serviceResult = await updateLoanRequest(loan.id, newLoanState); // Pass full new state
+      const serviceResult = await updateLoanRequest(loan.id, newLoanState);
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
-        await fetchLoanData(); // Revert optimistic update
+        await fetchLoanData(); 
         return false;
       }
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
-      // If service returns updated loan, use it:
       if(serviceResult.updatedLoan) setLoan(serviceResult.updatedLoan);
       return true;
     } catch (err: any) {
@@ -129,8 +137,8 @@ export default function LoanDetailPage() {
   }, [loan, toast, fetchLoanData]);
 
 
-  const onEditLoanSubmit = async (data: any) => { // Data type from EditLoanDetailsDialog
-    if (!loan || !currentStageDef) return;
+  const onEditLoanSubmit = async (data: any) => { 
+    if (!loan) return; // currentStageDef no longer strictly required here for basic edit
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
     
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
@@ -138,11 +146,11 @@ export default function LoanDetailPage() {
         const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.name : 'Unassigned';
         historyUpdate.push({
             id: `hist-assign-${Date.now()}`,
-            stageName: currentStageDef.name,
+            stageName: currentStageDef?.name || loan.currentStageName || 'Current Stage',
             timestamp: formatISO(new Date()),
-            userId: 'mock-manager-user', // Assuming manager assigns
+            userId: 'mock-manager-user', 
             userName: 'Manager (Mock)',
-            notes: `Case assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment} department.`
+            notes: `Case assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department.`
         });
     }
 
@@ -154,19 +162,19 @@ export default function LoanDetailPage() {
       loanType: data.loanType,
       loanPurpose: data.loanPurpose,
       assignedTo: finalAssignedTo,
-      // assignedDepartment is set by stage, not directly editable here unless specific logic added
       history: historyUpdate,
     }, "Loan details updated.");
     if (success) setIsEditLoanDialogOpen(false);
   };
 
   const onAddNoteSubmit = async (noteContent: string) => {
-    if (!noteContent.trim() || !loan || !currentStageDef) {
+    if (!noteContent.trim() || !loan) {
       toast({ title: "Note Required", description: "Please enter content for the note.", variant: "destructive" });
       return;
     }
+    const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-mock-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
+      id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: 'mock-user-id', userName: 'Mock Bank User', notes: noteContent,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
@@ -174,12 +182,13 @@ export default function LoanDetailPage() {
   };
 
   const onLogInfoRequestSubmit = async (infoToRequest: string) => {
-    if (!infoToRequest.trim() || !loan || !currentStageDef) {
+    if (!infoToRequest.trim() || !loan) {
       toast({ title: "Info Required", description: "Please specify information needed.", variant: "destructive" });
       return;
     }
+    const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-mock-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
+      id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: 'mock-user-id', userName: 'Mock Bank User', notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
     };
@@ -188,12 +197,13 @@ export default function LoanDetailPage() {
   };
   
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
-    if (!loan || !currentStageDef) return;
+    if (!loan) return;
+    const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const updatedHistory = loan.history.map(h =>
         h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
     );
     updatedHistory.push({
-        id: `hist-mock-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
+        id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
         userId: 'mock-user-id', userName: 'Mock Bank User',
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
@@ -201,16 +211,17 @@ export default function LoanDetailPage() {
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
-    if (!loan || !currentStageDef || !currentWorkflowVersion) return false;
+    if (!loan || !currentStageDef || !currentWorkflowVersion) {
+        if (!currentStageDef) toast({title: "Workflow Info Missing", description: "Cannot validate requirements as current stage definition is missing.", variant: "warning", duration: 5000});
+        return false;
+    }
     
-    // Check for active information requests
     const activeInfoReq = [...loan.history].reverse().find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
     if (activeInfoReq) {
       toast({ title: "Action Pending", description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
       return false;
     }
 
-    // Check for required documents for the current stage definition
     if (currentStageDef.requiredDocumentNames.length > 0) {
       const pendingDocs = currentStageDef.requiredDocumentNames.filter(reqDocName => {
         const uploadedDoc = loan.documents.find(d => d.name === reqDocName);
@@ -224,7 +235,7 @@ export default function LoanDetailPage() {
     return true;
   }, [loan, currentStageDef, currentWorkflowVersion, toast]);
 
-  const handleMarkStageComplete = async () => { // Officer action
+  const handleMarkStageComplete = async () => { 
     if (!loan || !currentStageDef || !validateCurrentStageRequirements()) return;
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officer-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -234,55 +245,48 @@ export default function LoanDetailPage() {
     await handleLocalAndUpdateService({ isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] }, `Loan submitted for manager review.`);
   };
 
-  const handleManagerPromoteLoan = async () => { // Manager action
+  const handleManagerPromoteLoan = async () => { 
     if (!loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
     
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (currentStageIndex === -1 || currentStageIndex === currentWorkflowVersion.stages.length - 1) {
       toast({ title: "Workflow End", description: "This is the last stage in the workflow. Consider closing or finalizing the loan.", variant: "info" });
-      // Potentially handle loan closure here if it's the final stage
-      // For now, we just prevent promotion beyond the last stage.
-      // One could also add a "isTerminal" flag to WorkflowStageDefinition.
-      // If it's the actual last stage, we might want to mark it as "Approved" or "Funds Disbursed"
-      // For this example, we'll assume such stages are explicitly part of the workflow.
-      
-      // If current stage IS the last one for this workflow version
       if (currentStageIndex === currentWorkflowVersion.stages.length -1) {
-          const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action (e.g. disbursement) may be manual or via specific stage logic.`;
+          const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
           const finalHistory: LoanHistoryEntry = {
             id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
             userId: 'mock-manager-user', userName: 'Manager (Mock)', notes: terminalNote,
           };
            await handleLocalAndUpdateService({ history: [...loan.history, finalHistory], isReadyForManagerReview: false }, "Loan reached final workflow stage.");
-           return;
-      } else { // Should not happen if check above is correct
-          toast({ title: "Workflow Error", description: "Cannot determine next stage.", variant: "destructive" });
-          return;
       }
+      return;
     }
 
     const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
     
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', userName: 'Manager (Mock)', // TODO: Get actual manager user
+      userId: 'mock-manager-user', userName: 'Manager (Mock)',
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
 
-    const success = await handleLocalAndUpdateService({
-      currentStageId: nextStageDef.id,
+    await handleLocalAndUpdateService({
+      currentStageId: nextStageDef.id, // Service will update ref paths and mirrors
       assignedDepartment: nextStageDef.responsibleDepartment,
-      assignedTo: undefined, // Unassign user for the new department/stage
+      assignedTo: undefined, 
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
+      workflowDefinitionId: loan.workflowDefinitionId, // Pass context for service
+      workflowVersionId: loan.workflowVersionId,     // Pass context for service
     }, `${loan.customerName} moved to ${nextStageDef.name}.`);
-    
-    // Note: PromoteLoanStageDialog is not used as selection is automatic.
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
-    if (!loan || !currentStageDef) return;
+    if (!loan || !currentStageDef) {
+        toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
+        return;
+    }
     if (!reworkNote.trim()) {
       toast({ title: "Note Required", description: "Please provide reason for returning.", variant: "destructive" });
       return;
@@ -294,7 +298,7 @@ export default function LoanDetailPage() {
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false, 
-      assignedTo: reworkAssigneeId === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : reworkAssigneeId, // Keep or change assignee
+      assignedTo: reworkAssigneeId === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : reworkAssigneeId,
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
     if (success) setIsReturnForReworkDialogOpen(false);
@@ -328,7 +332,7 @@ export default function LoanDetailPage() {
   };
 
 
-  if (isLoading && !loan) { /* ... loading UI ... */ 
+  if (isLoading && !loan) { 
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -336,7 +340,21 @@ export default function LoanDetailPage() {
       </div>
     );
   }
-  if (error && !loan) { /* ... error UI ... */ 
+  // If loan is null even after loading and no specific fetch error on loan, treat as "not found"
+  if (!loan && !isLoading && !error?.toLowerCase().includes("loan")) { // Check if error is not about the loan itself
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-4">
+        <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Loan Not Found</h1>
+        <p className="text-muted-foreground mb-6">The loan request with ID "{loanId}" could not be found or loaded.</p>
+        <button onClick={() => router.push('/loan-process')} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90">
+          Go Back to Loan Pipeline
+        </button>
+      </div>
+    );
+  }
+   // If there's an error related to fetching the loan itself, display that error.
+  if (error && error.toLowerCase().includes("loan") && !loan) { 
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
@@ -348,24 +366,45 @@ export default function LoanDetailPage() {
       </div>
     );
   }
-  if (!loan || !currentStageDef || !currentWorkflowVersion) { /* ... not found or data incomplete UI ... */ 
+  
+  // If loan exists, but workflow config might be incomplete, proceed to render what we can
+  if (!loan && !isLoading) { // Should be caught by above, but as a fallback
+     return (
+        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+            <p className="text-lg text-muted-foreground">Loan data is unavailable.</p>
+        </div>
+        );
+  }
+  // Ensure loan is not null before proceeding to render
+  if (!loan) { 
+    // This case should ideally be covered by the loading or error states above.
+    // If it's reached, it implies isLoading is false, error is null or not loan-related, but loan is still null.
     return (
-      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
-        <p className="text-lg text-muted-foreground">Loan data or workflow configuration is incomplete.</p>
-      </div>
+        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+            <AlertCircle className="h-8 w-8 text-destructive mr-2" />
+            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null.</p>
+        </div>
     );
   }
 
+
   const assignedUser = users.find(u => u.id === loan.assignedTo);
-  const isActionable = !currentStageDef.name.toLowerCase().includes("closed") && !currentStageDef.name.toLowerCase().includes("rejected") && !currentStageDef.name.toLowerCase().includes("disbursed");
+  // isActionable depends on currentStageDef, if it's null, actions should be disabled or behave safely.
+  const isActionable = currentStageDef ? 
+    !currentStageDef.name.toLowerCase().includes("closed") && 
+    !currentStageDef.name.toLowerCase().includes("rejected") && 
+    !currentStageDef.name.toLowerCase().includes("disbursed")
+    : false; // Default to not actionable if stage def is missing
 
 
   let progressPercentage = 0;
-  const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
-  if (currentStageIndexInWorkflow !== -1) {
-      progressPercentage = currentWorkflowVersion.stages
-          .slice(0, currentStageIndexInWorkflow + 1)
-          .reduce((sum, stage) => sum + (stage.percentageWeight || 0), 0);
+  if (currentWorkflowVersion && currentStageDef && loan) {
+      const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
+      if (currentStageIndexInWorkflow !== -1) {
+          progressPercentage = currentWorkflowVersion.stages
+              .slice(0, currentStageIndexInWorkflow + 1)
+              .reduce((sum, stage) => sum + (stage.percentageWeight || 0), 0);
+      }
   }
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
@@ -374,16 +413,16 @@ export default function LoanDetailPage() {
     <div className="space-y-6">
       <LoanDetailHeader
         loan={loan}
-        currentStageName={currentStageDef.name} // Pass current stage name
+        currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
         onBack={() => router.back()}
         onOpenEditDialog={() => setIsEditLoanDialogOpen(true)}
         onOpenAddNoteDialog={() => setIsAddNoteDialogOpen(true)}
         onOpenLogInfoDialog={() => setIsLogInfoDialogOpen(true)}
         onMarkStageComplete={handleMarkStageComplete}
-        onManagerPromoteLoan={handleManagerPromoteLoan} // Renamed
+        onManagerPromoteLoan={handleManagerPromoteLoan} 
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
-        isActionableStage={isActionable}
+        isActionableStage={isActionable && !!currentStageDef} // Ensure stageDef exists for actions
       />
 
       <Card className="shadow-lg">
@@ -395,9 +434,9 @@ export default function LoanDetailPage() {
             </div>
             <div className="flex flex-col items-end gap-1">
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}> 
-                  Stage: {currentStageDef.name}
+                  Stage: {currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
                 </Badge>
-                 <Badge variant="outline" className="text-sm">Dept: {loan.assignedDepartment || 'N/A'}</Badge>
+                 <Badge variant="outline" className="text-sm">Dept: {loan.assignedDepartment || (currentStageDef?.responsibleDepartment) || 'N/A'}</Badge>
                 {loan.isReadyForManagerReview && isActionable && (
                     <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                         Awaiting Manager Review
@@ -407,13 +446,20 @@ export default function LoanDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef.name}/>
-          <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loan.assignedDepartment} />
+          {error && error.toLowerCase().includes("workflows") && (
+            <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitleShadCN>Workflow Configuration Issue</AlertTitleShadCN>
+                <AlertDescriptionShadCN>{error}</AlertDescriptionShadCN>
+            </Alert>
+          )}
+          <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
+          <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} />
           <Separator className="my-8" />
           <div className="grid md:grid-cols-2 gap-8">
             <LoanDocumentsManager
               loan={loan}
-              currentStageDef={currentStageDef}
+              currentStageDef={currentStageDef} // Can be null
               onOpenUploadDialog={(docName) => { setCurrentDocumentToUpload(docName); setIsUploadDocDialogOpen(true); }}
               onVerifyDocument={handleVerifyDocument}
               isSavingGlobal={isSaving}
@@ -436,8 +482,8 @@ export default function LoanDetailPage() {
         isOpen={isEditLoanDialogOpen}
         onOpenChange={setIsEditLoanDialogOpen}
         loan={loan}
-        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment)} // Filter users by current department
-        currentDepartment={loan.assignedDepartment}
+        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)} // Allow users without department or matching
+        currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
         onSubmit={onEditLoanSubmit}
         isSaving={isSaving}
       />
@@ -460,16 +506,17 @@ export default function LoanDetailPage() {
         onSubmit={handleUploadDocument}
         isSaving={isSaving}
       />
-      {/* PromoteLoanStageDialog is removed as promotion is automatic */}
       <ReturnLoanForReworkDialog
         isOpen={isReturnForReworkDialogOpen}
         onOpenChange={setIsReturnForReworkDialogOpen}
         loan={loan}
-        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment)} // Filter users by current department
-        currentDepartment={loan.assignedDepartment}
+        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)}
+        currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
         onSubmit={onReturnForReworkSubmit}
         isSaving={isSaving}
       />
     </div>
   );
 }
+
+    
