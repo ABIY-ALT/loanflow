@@ -10,7 +10,7 @@ import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, Wor
 import { mockUsers } from '@/lib/mock-data';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service'; // Added getWorkflowDefinitions
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -73,7 +73,7 @@ export default function LoanDetailPage() {
         setLoan(null);
       } else if (loanResult.loan) {
         setLoan(loanResult.loan);
-        setUsers(loanResult.users || mockUsers); // Users might be part of loanResult or still mock
+        setUsers(loanResult.users || mockUsers);
       } else {
         setError(prev => prev ? `${prev}\nLoan: Loan request with ID "${loanId}" not found.` : `Loan: Loan request with ID "${loanId}" not found.`);
         setLoan(null);
@@ -81,7 +81,6 @@ export default function LoanDetailPage() {
 
       if (wfResult.error) {
         setError(prev => prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`);
-        // Do not nullify loan if only workflow fetch fails, page might still be usable
       } else if (wfResult.workflows) {
         setWorkflowDefinitions(wfResult.workflows);
       } else {
@@ -91,7 +90,7 @@ export default function LoanDetailPage() {
     } catch (err: any) {
       const errorMessage = err.message || "An unexpected error occurred while fetching page data.";
       setError(errorMessage);
-      setLoan(null); // If fundamental fetch error, set loan to null
+      setLoan(null);
     } finally {
       setIsLoading(false);
     }
@@ -138,7 +137,7 @@ export default function LoanDetailPage() {
 
 
   const onEditLoanSubmit = async (data: any) => { 
-    if (!loan) return; // currentStageDef no longer strictly required here for basic edit
+    if (!loan) return;
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
     
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
@@ -271,14 +270,14 @@ export default function LoanDetailPage() {
     };
 
     await handleLocalAndUpdateService({
-      currentStageId: nextStageDef.id, // Service will update ref paths and mirrors
+      currentStageId: nextStageDef.id,
       assignedDepartment: nextStageDef.responsibleDepartment,
       assignedTo: undefined, 
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
-      workflowDefinitionId: loan.workflowDefinitionId, // Pass context for service
-      workflowVersionId: loan.workflowVersionId,     // Pass context for service
+      workflowDefinitionId: loan.workflowDefinitionId, 
+      workflowVersionId: loan.workflowVersionId,     
     }, `${loan.customerName} moved to ${nextStageDef.name}.`);
   };
 
@@ -340,8 +339,8 @@ export default function LoanDetailPage() {
       </div>
     );
   }
-  // If loan is null even after loading and no specific fetch error on loan, treat as "not found"
-  if (!loan && !isLoading && !error?.toLowerCase().includes("loan")) { // Check if error is not about the loan itself
+  
+  if (!loan && !isLoading && !error?.toLowerCase().includes("loan")) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
@@ -353,7 +352,7 @@ export default function LoanDetailPage() {
       </div>
     );
   }
-   // If there's an error related to fetching the loan itself, display that error.
+  
   if (error && error.toLowerCase().includes("loan") && !loan) { 
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -367,43 +366,33 @@ export default function LoanDetailPage() {
     );
   }
   
-  // If loan exists, but workflow config might be incomplete, proceed to render what we can
-  if (!loan && !isLoading) { // Should be caught by above, but as a fallback
-     return (
-        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
-            <p className="text-lg text-muted-foreground">Loan data is unavailable.</p>
-        </div>
-        );
-  }
-  // Ensure loan is not null before proceeding to render
   if (!loan) { 
-    // This case should ideally be covered by the loading or error states above.
-    // If it's reached, it implies isLoading is false, error is null or not loan-related, but loan is still null.
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
             <AlertCircle className="h-8 w-8 text-destructive mr-2" />
-            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null.</p>
+            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null after loading attempts.</p>
         </div>
     );
   }
 
-
   const assignedUser = users.find(u => u.id === loan.assignedTo);
-  // isActionable depends on currentStageDef, if it's null, actions should be disabled or behave safely.
   const isActionable = currentStageDef ? 
     !currentStageDef.name.toLowerCase().includes("closed") && 
     !currentStageDef.name.toLowerCase().includes("rejected") && 
     !currentStageDef.name.toLowerCase().includes("disbursed")
-    : false; // Default to not actionable if stage def is missing
+    : false;
 
 
   let progressPercentage = 0;
-  if (currentWorkflowVersion && currentStageDef && loan) {
+  if (currentWorkflowVersion && loan?.currentStageId) {
       const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
-      if (currentStageIndexInWorkflow !== -1) {
+      
+      if (currentStageIndexInWorkflow > -1 && currentWorkflowVersion.stages.length > 0) {
+          // Sum weights of all stages *before* the current one.
+          // If currentStageIndexInWorkflow is 0 (first stage), slice(0,0) is [], sum is 0.
           progressPercentage = currentWorkflowVersion.stages
-              .slice(0, currentStageIndexInWorkflow + 1)
-              .reduce((sum, stage) => sum + (stage.percentageWeight || 0), 0);
+              .slice(0, currentStageIndexInWorkflow) 
+              .reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
       }
   }
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
@@ -422,7 +411,7 @@ export default function LoanDetailPage() {
         onManagerPromoteLoan={handleManagerPromoteLoan} 
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
-        isActionableStage={isActionable && !!currentStageDef} // Ensure stageDef exists for actions
+        isActionableStage={isActionable && !!currentStageDef}
       />
 
       <Card className="shadow-lg">
@@ -446,11 +435,11 @@ export default function LoanDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          {error && error.toLowerCase().includes("workflows") && (
+          {error && error.toLowerCase().includes("workflows") && !isLoading && ( // Show workflow-specific error if loan data is present
             <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitleShadCN>Workflow Configuration Issue</AlertTitleShadCN>
-                <AlertDescriptionShadCN>{error}</AlertDescriptionShadCN>
+                <AlertDescriptionShadCN>{error.replace("Workflows:", "").trim()}</AlertDescriptionShadCN>
             </Alert>
           )}
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
@@ -459,7 +448,7 @@ export default function LoanDetailPage() {
           <div className="grid md:grid-cols-2 gap-8">
             <LoanDocumentsManager
               loan={loan}
-              currentStageDef={currentStageDef} // Can be null
+              currentStageDef={currentStageDef} 
               onOpenUploadDialog={(docName) => { setCurrentDocumentToUpload(docName); setIsUploadDocDialogOpen(true); }}
               onVerifyDocument={handleVerifyDocument}
               isSavingGlobal={isSaving}
@@ -482,7 +471,7 @@ export default function LoanDetailPage() {
         isOpen={isEditLoanDialogOpen}
         onOpenChange={setIsEditLoanDialogOpen}
         loan={loan}
-        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)} // Allow users without department or matching
+        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)} 
         currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
         onSubmit={onEditLoanSubmit}
         isSaving={isSaving}
@@ -518,5 +507,3 @@ export default function LoanDetailPage() {
     </div>
   );
 }
-
-    
