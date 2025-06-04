@@ -5,21 +5,20 @@ import type {
   LoanRequest as PrismaLoanRequest,
   WorkflowDefinition as PrismaWorkflowDefinition,
   WorkflowVersion as PrismaWorkflowVersion,
-  WorkflowStageDefinition as PrismaWorkflowStageDefinitionModel, // Corrected: Model name directly
+  WorkflowStageDefinition as PrismaWorkflowStageDefinition,
   Department as PrismaDepartment,
   User as PrismaUser,
   LoanDocument as PrismaLoanDocument,
   LoanHistoryEntry as PrismaLoanHistoryEntry,
 } from '@prisma/client';
-// Enums are imported directly if needed, e.g. for casting
+
 import { LoanDocumentStatus as PrismaLoanDocumentStatus, UserRole as PrismaUserRole } from '@prisma/client';
 
 
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry } from '@/types/loan';
-// Import enums from app types for mapping
 import { UserRole as AppUserRole, LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
 
-import { mockUsers } from '@/lib/mock-data'; // For userName lookup if User table not fully populated
+import { mockUsers } from '@/lib/mock-data';
 import { formatISO, parseISO, addDays, isBefore, isValid, isAfter } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
@@ -32,29 +31,27 @@ const createErrorResult = (message: string, context?: string, originalError?: an
   return { error: detailedMessage };
 };
 
-// Helper to map Prisma User to App User
 const mapPrismaUserToAppUser = (prismaUser: PrismaUser & { department?: PrismaDepartment | null }): User => {
   return {
     id: prismaUser.id,
     name: prismaUser.name,
     email: prismaUser.email,
-    role: prismaUser.role as AppUserRole, // Cast Prisma enum to App enum
-    department: prismaUser.department?.name as Department | undefined, // Map department object to name string
+    role: prismaUser.role as AppUserRole,
+    department: prismaUser.department?.name as Department | undefined,
   };
 };
 
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null }) | null;
-        currentWorkflowStage?: (PrismaWorkflowStageDefinitionModel & { responsibleDepartment: PrismaDepartment }) | null;
+        currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition }) | null;
-        history?: PrismaLoanHistoryEntry[];
+        history?: (PrismaLoanHistoryEntry & { user?: PrismaUser | null })[];
         documents?: PrismaLoanDocument[];
     }
 ): LoanRequest => {
 
   const isTerminal = prismaLoan.isTerminalStage;
-  // Ensure stageDeadline is valid before parsing and comparing
   let isOverdueCalc = false;
   if (prismaLoan.stageDeadline && isValid(new Date(prismaLoan.stageDeadline))) {
       isOverdueCalc = isBefore(new Date(prismaLoan.stageDeadline), new Date()) && !isTerminal;
@@ -86,17 +83,17 @@ const mapPrismaLoanToAppLoan = (
     isReadyForManagerReview: prismaLoan.isReadyForManagerReview,
     isOverdue: isOverdueCalc,
     isTerminalStage: isTerminal,
-    history: prismaLoan.history?.map((h: PrismaLoanHistoryEntry) => ({
+    history: prismaLoan.history?.map((h: PrismaLoanHistoryEntry & { user?: PrismaUser | null }) => ({
       ...h,
       timestamp: formatISO(new Date(h.timestamp)),
-      // userId is already string
+      userName: h.user?.name || mockUsers.find(mu => mu.id === h.userId)?.name || 'System Event', // Fallback chain for userName
     })) || [],
     documents: prismaLoan.documents?.map((d: PrismaLoanDocument) => ({
       ...d,
-      status: d.status as AppLoanDocumentStatus, // Cast Prisma enum to App enum
+      status: d.status as AppLoanDocumentStatus,
       uploadedAt: d.uploadedAt ? formatISO(new Date(d.uploadedAt)) : undefined,
-      createdAt: formatISO(new Date(d.createdAt)), // Added mapping
-      updatedAt: formatISO(new Date(d.updatedAt)), // Added mapping
+      createdAt: formatISO(new Date(d.createdAt)),
+      updatedAt: formatISO(new Date(d.updatedAt)),
     })) || [],
     createdAt: formatISO(new Date(prismaLoan.createdAt)),
     updatedAt: formatISO(new Date(prismaLoan.updatedAt)),
@@ -114,12 +111,12 @@ export async function addLoanRequest(
           loanType: loanData.loanType,
         },
         isActive: true,
-        stages: { some: {} } // Ensures there's at least one stage
+        stages: { some: {} }
       },
       include: {
         stages: {
           orderBy: { order: 'asc' },
-          take: 1, // Get only the first stage (ordered by 'order')
+          take: 1,
           include: { responsibleDepartment: true }
         },
         workflowDefinition: true,
@@ -155,7 +152,6 @@ export async function addLoanRequest(
         );
     }
 
-    // Attempt to find an initial assignee from mockUsers based on department and role
     const initialAssigneeFromMock = mockUsers.find(u => u.department === firstStage.responsibleDepartment.name && u.role === AppUserRole.RELATIONSHIP_MANAGER)
                          || mockUsers.find(u => u.department === firstStage.responsibleDepartment.name);
 
@@ -175,23 +171,23 @@ export async function addLoanRequest(
         workflowVersionIdMirror: activeWorkflowVersion.id,
         currentStageIdMirror: firstStage.id,
 
-        workflowVersionId: activeWorkflowVersion.id,
-        currentStageId: firstStage.id,
+        workflowVersion: { connect: { id: activeWorkflowVersion.id } },
+        currentWorkflowStage: { connect: { id: firstStage.id } },
+
 
         submittedDate: currentDate,
-        lastUpdatedDate: currentDate, // Will be auto-updated by @updatedAt on subsequent changes
+        lastUpdatedDate: currentDate,
         stageEntryDate: currentDate,
         stageDeadline: stageDeadlineDate,
         isReadyForManagerReview: false,
-        isOverdue: false, // Initially not overdue
-        isTerminalStage: false, // Initially not terminal
+        isOverdue: false,
+        isTerminalStage: false,
 
-        assignedToUserId: initialAssigneeFromMock?.id || null, // Assign or leave null
+        assignedToUser: initialAssigneeFromMock ? { connect: { id: initialAssigneeFromMock.id } } : undefined,
 
-        historyEntries: { // Corrected relation name for history
+        history: { // Corrected from historyEntries
           create: [{
-            userId: initialAssigneeFromMock?.id || 'system-prisma', // This user ID should exist or be a placeholder
-            // userName is no longer directly on LoanHistoryEntry, it's derived via relation to User
+            userId: initialAssigneeFromMock?.id || 'system-prisma',
             stageName: firstStage.name,
             timestamp: currentDate,
             notes: `Loan application submitted. Workflow: ${activeWorkflowVersion.workflowDefinition.name} (V${activeWorkflowVersion.versionNumber}). Initial stage: ${firstStage.name}. Assigned to ${initialAssigneeFromMock?.name || 'Unassigned Staff'} in ${firstStage.responsibleDepartment.name}. Branch: ${loanData.customerBranch || 'N/A'}.`,
@@ -213,17 +209,15 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
         assignedToUser: { include: { department: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true } },
         workflowVersion: { include: { workflowDefinition: true } },
-        historyEntries: { orderBy: { timestamp: 'desc' }, include: { user: true } }, // Include user for history
+        history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
 
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
 
-    // Fetch all users from Prisma DB to pass to UI, or continue using mock if preferred for now
     const prismaUsers = await prisma.user.findMany({ include: { department: true } });
     const appUsers = prismaUsers.map(mapPrismaUserToAppUser);
-    // const appUsers = mockUsers.map(u => ({ ...u, department: u.department as Department | undefined }));
 
     return { loans: appLoans, users: appUsers };
   } catch (e: any) {
@@ -244,7 +238,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true} },
           },
         },
-        historyEntries: { orderBy: { timestamp: 'desc' }, include: { user: true } },
+        history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -254,10 +248,8 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
     }
 
     const appLoan = mapPrismaLoanToAppLoan(prismaLoan as any);
-    // Fetch all users from Prisma DB
     const prismaUsers = await prisma.user.findMany({ include: { department: true } });
     const appUsers = prismaUsers.map(mapPrismaUserToAppUser);
-    // const appUsers = mockUsers.map(u => ({ ...u, department: u.department as Department | undefined }));
 
     const wfDefsResult = await getWorkflowDefinitions();
 
@@ -283,7 +275,7 @@ export async function updateLoanRequest(
       }
 
       const updatePayload: any = {
-        lastUpdatedDate: new Date(), // Prisma's @updatedAt will also handle this
+        lastUpdatedDate: new Date(),
       };
 
       const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' >)[] =
@@ -298,22 +290,25 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.hasOwnProperty('assignedTo')) {
-        updatePayload.assignedToUserId = dataToUpdate.assignedTo || null;
+          if (dataToUpdate.assignedTo) {
+            updatePayload.assignedToUser = { connect: { id: dataToUpdate.assignedTo }};
+          } else {
+            updatePayload.assignedToUser = { disconnect: true };
+          }
       }
 
       if (dataToUpdate.history && dataToUpdate.history.length > 0) {
         for (const entry of dataToUpdate.history) {
            const userForHistory = await tx.user.findUnique({ where: { id: entry.userId } });
-           if (!userForHistory && entry.userId !== 'system-prisma') { // Allow system entries
+           if (!userForHistory && entry.userId !== 'system-prisma') {
              console.warn(`User with ID ${entry.userId} for history entry not found. Using placeholder name.`);
            }
           await tx.loanHistoryEntry.upsert({
             where: { id: entry.id || `_non_existent_hist_id_${Date.now()}` },
             create: {
               id: entry.id || undefined,
-              loanRequestId: id,
-              userId: entry.userId,
-              // userName: userForHistory?.name || entry.userName || 'System Event', // userName removed from model
+              loanRequest: { connect: { id: id } },
+              user: { connect: {id: entry.userId }},
               stageName: entry.stageName,
               timestamp: isValid(parseISO(entry.timestamp)) ? parseISO(entry.timestamp) : new Date(),
               notes: entry.notes,
@@ -322,7 +317,6 @@ export async function updateLoanRequest(
             update: {
               notes: entry.notes,
               requiredFulfilment: entry.requiredFulfilment,
-              // timestamp: isValid(parseISO(entry.timestamp)) ? parseISO(entry.timestamp) : new Date(), // Generally don't update timestamp of existing history
               updatedAt: new Date(),
             },
           });
@@ -335,7 +329,7 @@ export async function updateLoanRequest(
             where: { id: doc.id || `_non_existent_doc_id_for_loan_${id}_${Date.now()}` },
             create: {
               id: doc.id || undefined,
-              loanRequestId: id,
+              loanRequest: { connect: { id: id } },
               name: doc.name,
               status: doc.status as PrismaLoanDocumentStatus,
               notes: doc.notes,
@@ -369,8 +363,8 @@ export async function updateLoanRequest(
           throw new Error(`New stage definition (or its department) not found for ID "${clientProvidedCurrentStageId}" in version "${wfVerId}".`);
         }
 
-        updatePayload.currentStageId = newStageDef.id;
-        updatePayload.workflowVersionId = wfVerId;
+        updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
+        updatePayload.workflowVersion = { connect: {id: wfVerId } };
 
         updatePayload.workflowDefinitionIdMirror = wfDefId;
         updatePayload.workflowVersionIdMirror = wfVerId;
@@ -388,12 +382,12 @@ export async function updateLoanRequest(
         updatePayload.isTerminalStage = isTerminal;
         updatePayload.isOverdue = isBefore(newStageDeadline, new Date()) && !isTerminal;
 
-        if (!dataToUpdate.hasOwnProperty('assignedTo')) {
-          updatePayload.assignedToUserId = null;
+        if (!dataToUpdate.hasOwnProperty('assignedTo')) { // If assignedTo wasn't explicitly in dataToUpdate, unassign
+            updatePayload.assignedToUser = { disconnect: true };
         }
 
+
       } else {
-        // Update isOverdue and isTerminalStage if relevant fields changed, or if stageDeadline changed
         const currentStageForStatus = existingLoan.currentWorkflowStage;
         if (currentStageForStatus) {
           updatePayload.isTerminalStage = dataToUpdate.isTerminalStage !== undefined ? dataToUpdate.isTerminalStage : (
@@ -423,7 +417,7 @@ export async function updateLoanRequest(
           assignedToUser: { include: { department: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true } },
           workflowVersion: { include: { workflowDefinition: true } },
-          historyEntries: { orderBy: { timestamp: 'desc' }, include: { user: true } },
+          history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
           documents: { orderBy: { createdAt: 'asc' } },
         },
       });
@@ -545,7 +539,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
 
         const versionsToDelete = existingDbVersionIds.filter(id => !uiVersionIds.has(id));
         if (versionsToDelete.length > 0) {
-            await tx.workflowStageDefinition.deleteMany({ where: { workflowVersion: { id: { in: versionsToDelete } } } }); // Delete stages first
+            await tx.workflowStageDefinition.deleteMany({ where: { workflowVersion: { id: { in: versionsToDelete } } } });
             await tx.workflowVersion.deleteMany({ where: { id: { in: versionsToDelete }}});
         }
 
@@ -555,7 +549,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
             create: {
               id: version.id || undefined,
-              workflowDefinitionId: definitionId,
+              workflowDefinition: { connect: { id: definitionId } },
               versionNumber: versionData.versionNumber,
               isActive: versionData.isActive,
             },
@@ -586,9 +580,9 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               where: { id: stage.id || `_non_existent_stage_id_${Date.now()}` },
               create: {
                 id: stage.id || undefined,
-                workflowVersionId: versionId,
+                workflowVersion: { connect: { id: versionId } },
                 name: stage.name,
-                responsibleDepartmentName: department.name,
+                responsibleDepartment: { connect: { name: department.name } },
                 defaultTimelineDays: stage.defaultTimelineDays,
                 requiredDocumentNames: stage.requiredDocumentNames,
                 percentageWeight: stage.percentageWeight,
@@ -596,7 +590,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               },
               update: {
                 name: stage.name,
-                responsibleDepartmentName: department.name,
+                responsibleDepartment: { connect: { name: department.name } },
                 defaultTimelineDays: stage.defaultTimelineDays,
                 requiredDocumentNames: stage.requiredDocumentNames,
                 percentageWeight: stage.percentageWeight,
@@ -651,7 +645,7 @@ export async function addDepartment(departmentName: string): Promise<{ id?: stri
 export async function deleteDepartment(departmentId: string): Promise<{ success?: boolean; error?: string }> {
   try {
     const stagesUsingDept = await prisma.workflowStageDefinition.count({
-        where: { responsibleDepartment: { id: departmentId } } // Corrected relation access
+        where: { responsibleDepartment: { id: departmentId } }
     });
     if (stagesUsingDept > 0) {
         return createErrorResult(`Cannot delete department. It is currently assigned to ${stagesUsingDept} workflow stage(s). Please reassign stages before deleting.`, "deleteDepartment_inUseStages");
@@ -700,5 +694,4 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types for workflow.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
-
     
