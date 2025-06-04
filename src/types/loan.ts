@@ -1,4 +1,5 @@
 
+// Enums remain useful for defining allowed string values
 export enum UserRole {
   ADMIN = "Admin",
   RELATIONSHIP_MANAGER = "Relationship Manager",
@@ -6,6 +7,7 @@ export enum UserRole {
   STAFF = "Staff",
 }
 
+// Client-side/Application-level User type
 export interface User {
   id: string;
   name: string;
@@ -14,112 +16,117 @@ export interface User {
   department?: Department; // Department name string
 }
 
-// Represents a predefined department in the system
-export type Department = string; // e.g., "Origination", "Underwriting"
+// Represents a predefined department in the system (name string)
+export type Department = string; 
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
-  id: string;
+  id: string; // Matches Prisma model ID
   name: string;
   responsibleDepartment: Department; // Name of the department
   defaultTimelineDays: number;
   requiredDocumentNames: string[];
   percentageWeight: number;
-  order: number; // Defines sequence
-  createdAt?: string; // Optional, may not be present on client-side objects initially
-  updatedAt?: string; // Optional
+  order: number; 
+  // Prisma's createdAt/updatedAt are Date objects, service layer converts to string for UI
+  createdAt?: string; 
+  updatedAt?: string;
 }
 
 // Represents a specific version of a workflow
 export interface WorkflowVersion {
-  id: string;
-  workflowDefinitionId: string;
+  id: string; // Matches Prisma model ID
+  workflowDefinitionId: string; // Foreign key to WorkflowDefinition
   versionNumber: number;
   createdAt: string; // ISO date string
   stages: WorkflowStageDefinition[];
-  isActive: boolean; // Only one version can be active PER LOAN TYPE for its parent WorkflowDefinition
-  updatedAt?: string; // Optional
+  isActive: boolean; 
+  updatedAt?: string; 
 }
 
 // Represents a workflow template for a specific loan type
 export interface WorkflowDefinition {
-  id:string;
+  id: string; // Matches Prisma model ID
   name: string;
-  loanType: string; // e.g., "Personal Loan", "Mortgage" - defines the type of loan this workflow applies to
+  loanType: string; 
   description?: string;
   versions: WorkflowVersion[];
-  createdAt?: string; // Optional, as it's set by Firestore
-  updatedAt?: string; // Optional
+  createdAt?: string; 
+  updatedAt?: string; 
 }
+
+// LoanDocument status enum can be shared
+export type LoanDocumentStatus = "PENDING" | "SUBMITTED" | "VERIFIED" | "REJECTED";
 
 
 export interface LoanDocument {
-  id: string;
+  id: string; // Matches Prisma model ID
+  // loanRequestId is implicit via relation in Prisma, but good for app type if needed directly
+  // loanRequestId?: string; 
   name: string;
-  status: "Pending" | "Submitted" | "Verified" | "Rejected";
+  status: LoanDocumentStatus;
   notes?: string;
   uploadedAt?: string; // ISO date string
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LoanHistoryEntry {
-  id: string;
-  stageName: string; // Name of the workflow stage at the time of entry
+  id: string; // Matches Prisma model ID
+  // loanRequestId is implicit via relation in Prisma
+  // loanRequestId?: string; 
+  // userId is a direct field in Prisma model
+  userId: string; 
+  userName: string; // Store denormalized, or join User table in Prisma queries
+  stageName: string; 
   timestamp: string; // ISO date string
-  userId: string;
-  userName: string;
   notes?: string;
   requiredFulfilment?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LoanRequest {
-  id: string;
+  id: string; // Matches Prisma model ID
   loanNumber: string;
   customerNumber: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
-  customerBranch?: string; // Added field
-  loanAmount: number;
+  customerBranch?: string;
+  loanAmount: number; // Prisma stores as Decimal, convert to number for app
   loanType: string;
   loanPurpose: string;
 
-  // Option 1: Keep these as primary data source if resolved on client/service read
+  // These now map to direct foreign keys in Prisma, mirrors are not strictly needed in app type
+  // but kept for compatibility if UI relies on them from previous structure
   workflowDefinitionId: string; 
   workflowVersionId: string; 
   currentStageId: string; 
 
-  // Option 2: Firestore specific storage fields (denormalized for querying/linking)
-  workflowDefinitionId_mirror?: string; 
-  workflowVersionId_mirror?: string; 
-  currentStageId_mirror?: string; 
-
-  workflowVersionRefPath?: string; // Path string e.g. "workflowDefinitions/defId/versions/verId"
-  currentStageRefPath?: string; // Path string e.g. "workflowDefinitions/defId/versions/verId/stages/stageId"
+  // Firestore specific ref paths are removed
+  // workflowVersionRefPath?: string; 
+  // currentStageRefPath?: string;
   
-  // Optional: Keep old DocumentReference fields if needed during transition or specific server logic
-  workflowVersionRef?: any; 
-  currentStageRef?: any; 
-
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
 
-  assignedDepartment?: string; // Name of the department responsible for the current stage
-  assignedTo?: string; // User ID
+  assignedDepartment?: string; // Derived from current stage's responsible department
+  assignedTo?: string; // User ID (maps to assignedToUserId in Prisma)
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
 
   stageDeadline?: string; // ISO date string
-  isOverdue?: boolean; // Calculated
+  isOverdue?: boolean; // Calculated or stored
   isReadyForManagerReview?: boolean;
 
-  // Dynamically added by service layer or resolved from references
+  // Dynamically added/resolved
   currentStageName?: string;
-  isTerminalStage?: boolean;
+  isTerminalStage?: boolean; // Calculated or stored
 
-  // Firestore specific technical fields
-  assignedToUserId?: string | null; // Store the actual assigned user ID in Firestore this way
-  createdAt?: string; // Firestore serverTimestamp on create, converted to ISO on read
-  updatedAt?: string; // Firestore serverTimestamp on update, converted to ISO on read
+  // Prisma's createdAt/updatedAt are Date objects, service layer converts to string for UI
+  createdAt?: string;
+  updatedAt?: string;
 }
-
+    
