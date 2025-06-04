@@ -1,10 +1,11 @@
 
+
 // Enums remain useful for defining allowed string values
 export enum UserRole {
-  ADMIN = "Admin",
-  RELATIONSHIP_MANAGER = "Relationship Manager",
-  UNDERWRITER = "Underwriter",
-  STAFF = "Staff",
+  ADMIN = "ADMIN", // Match Prisma schema
+  RELATIONSHIP_MANAGER = "RELATIONSHIP_MANAGER",
+  UNDERWRITER = "UNDERWRITER",
+  STAFF = "STAFF",
 }
 
 // Client-side/Application-level User type
@@ -21,22 +22,21 @@ export type Department = string;
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
-  id: string; // Matches Prisma model ID
+  id: string; 
   name: string;
-  responsibleDepartment: Department; // Name of the department
+  responsibleDepartment: Department; 
   defaultTimelineDays: number;
   requiredDocumentNames: string[];
   percentageWeight: number;
   order: number; 
-  // Prisma's createdAt/updatedAt are Date objects, service layer converts to string for UI
   createdAt?: string; 
   updatedAt?: string;
 }
 
 // Represents a specific version of a workflow
 export interface WorkflowVersion {
-  id: string; // Matches Prisma model ID
-  workflowDefinitionId: string; // Foreign key to WorkflowDefinition
+  id: string; 
+  workflowDefinitionId: string; 
   versionNumber: number;
   createdAt: string; // ISO date string
   stages: WorkflowStageDefinition[];
@@ -46,7 +46,7 @@ export interface WorkflowVersion {
 
 // Represents a workflow template for a specific loan type
 export interface WorkflowDefinition {
-  id: string; // Matches Prisma model ID
+  id: string; 
   name: string;
   loanType: string; 
   description?: string;
@@ -55,14 +55,16 @@ export interface WorkflowDefinition {
   updatedAt?: string; 
 }
 
-// LoanDocument status enum can be shared
-export type LoanDocumentStatus = "PENDING" | "SUBMITTED" | "VERIFIED" | "REJECTED";
+export enum LoanDocumentStatus {
+  PENDING = "PENDING", // Match Prisma schema
+  SUBMITTED = "SUBMITTED",
+  VERIFIED = "VERIFIED",
+  REJECTED = "REJECTED",
+}
 
 
 export interface LoanDocument {
-  id: string; // Matches Prisma model ID
-  // loanRequestId is implicit via relation in Prisma, but good for app type if needed directly
-  // loanRequestId?: string; 
+  id: string; 
   name: string;
   status: LoanDocumentStatus;
   notes?: string;
@@ -72,12 +74,9 @@ export interface LoanDocument {
 }
 
 export interface LoanHistoryEntry {
-  id: string; // Matches Prisma model ID
-  // loanRequestId is implicit via relation in Prisma
-  // loanRequestId?: string; 
-  // userId is a direct field in Prisma model
+  id: string; 
   userId: string; 
-  userName: string; // Store denormalized, or join User table in Prisma queries
+  userName: string; 
   stageName: string; 
   timestamp: string; // ISO date string
   notes?: string;
@@ -87,45 +86,37 @@ export interface LoanHistoryEntry {
 }
 
 export interface LoanRequest {
-  id: string; // Matches Prisma model ID
+  id: string; 
   loanNumber: string;
   customerNumber: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
   customerBranch?: string;
-  loanAmount: number; // Prisma stores as Decimal, convert to number for app
+  loanAmount: number; 
   loanType: string;
   loanPurpose: string;
 
-  // These now map to direct foreign keys in Prisma, mirrors are not strictly needed in app type
-  // but kept for compatibility if UI relies on them from previous structure
   workflowDefinitionId: string; 
   workflowVersionId: string; 
   currentStageId: string; 
-
-  // Firestore specific ref paths are removed
-  // workflowVersionRefPath?: string; 
-  // currentStageRefPath?: string;
   
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
 
-  assignedDepartment?: string; // Derived from current stage's responsible department
-  assignedTo?: string; // User ID (maps to assignedToUserId in Prisma)
+  assignedDepartment?: string; 
+  assignedTo?: string; // User ID 
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
 
   stageDeadline?: string; // ISO date string
-  isOverdue?: boolean; // Calculated or stored
+  isOverdue?: boolean; 
   isReadyForManagerReview?: boolean;
 
-  // Dynamically added/resolved
   currentStageName?: string;
-  isTerminalStage?: boolean; // Calculated or stored
+  isTerminalStage?: boolean; 
 
-  // Prisma's createdAt/updatedAt are Date objects, service layer converts to string for UI
   createdAt?: string;
   updatedAt?: string;
 }
