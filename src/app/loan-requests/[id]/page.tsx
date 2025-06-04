@@ -10,7 +10,7 @@ import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, Wor
 import { mockUsers } from '@/lib/mock-data';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -147,8 +147,8 @@ export default function LoanDetailPage() {
             id: `hist-assign-${Date.now()}`,
             stageName: currentStageDef?.name || loan.currentStageName || 'Current Stage',
             timestamp: formatISO(new Date()),
-            userId: 'mock-manager-user', 
-            userName: 'Manager (Mock)',
+            userId: 'system-prisma', // System action for assignment change
+            userName: 'System Process',
             notes: `Case assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department.`
         });
     }
@@ -173,8 +173,10 @@ export default function LoanDetailPage() {
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-      userId: 'mock-user-id', userName: 'Mock Bank User', notes: noteContent,
+      id: `hist-note-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
+      userId: 'system-prisma', // Changed from 'mock-user-id'
+      userName: 'System Process', // Or a generic "User Note"
+      notes: noteContent,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
     if (success) setIsAddNoteDialogOpen(false);
@@ -187,8 +189,10 @@ export default function LoanDetailPage() {
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-      userId: 'mock-user-id', userName: 'Mock Bank User', notes: `Logged information request: ${infoToRequest}`,
+      id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
+      userId: 'system-prisma', // Changed from 'mock-user-id'
+      userName: 'System Process',
+      notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
@@ -202,8 +206,9 @@ export default function LoanDetailPage() {
         h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
     );
     updatedHistory.push({
-        id: `hist-mock-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-        userId: 'mock-user-id', userName: 'Mock Bank User',
+        id: `hist-fulfill-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
+        userId: 'system-prisma', // Changed from 'mock-user-id'
+        userName: 'System Process',
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
     await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
@@ -236,9 +241,13 @@ export default function LoanDetailPage() {
 
   const handleMarkStageComplete = async () => { 
     if (!loan || !currentStageDef || !validateCurrentStageRequirements()) return;
+    const actingUserId = loan.assignedTo || 'system-prisma'; // Use assigned officer or system
+    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || 'Assigned Officer') : 'System Process';
+
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-officer-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-      userId: loan.assignedTo || 'mock-officer-user', userName: users.find(u=>u.id === loan.assignedTo)?.name || 'Officer (Mock)',
+      id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
+      userId: actingUserId, 
+      userName: actingUserName,
       notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
     };
     await handleLocalAndUpdateService({ isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] }, `Loan submitted for manager review.`);
@@ -254,7 +263,9 @@ export default function LoanDetailPage() {
           const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
           const finalHistory: LoanHistoryEntry = {
             id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: 'mock-manager-user', userName: 'Manager (Mock)', notes: terminalNote,
+            userId: 'system-prisma', // Manager action, using system as placeholder
+            userName: 'System Process (Manager Action)', 
+            notes: terminalNote,
           };
            await handleLocalAndUpdateService({ history: [...loan.history, finalHistory], isReadyForManagerReview: false }, "Loan reached final workflow stage.");
       }
@@ -265,7 +276,8 @@ export default function LoanDetailPage() {
     
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', userName: 'Manager (Mock)',
+      userId: 'system-prisma', // Manager action, using system as placeholder
+      userName: 'System Process (Manager Action)',
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
 
@@ -292,7 +304,8 @@ export default function LoanDetailPage() {
     }
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-rework-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', userName: 'Manager (Mock)',
+      userId: 'system-prisma', // Manager action, using system as placeholder
+      userName: 'System Process (Manager Action)',
       notes: `Manager returned case for rework in stage '${currentStageDef.name}'. Reason: ${reworkNote}`
     };
     const success = await handleLocalAndUpdateService({
@@ -388,8 +401,6 @@ export default function LoanDetailPage() {
       const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
       
       if (currentStageIndexInWorkflow > -1 && currentWorkflowVersion.stages.length > 0) {
-          // Sum weights of all stages *before* the current one.
-          // If currentStageIndexInWorkflow is 0 (first stage), slice(0,0) is [], sum is 0.
           progressPercentage = currentWorkflowVersion.stages
               .slice(0, currentStageIndexInWorkflow) 
               .reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
@@ -435,7 +446,7 @@ export default function LoanDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          {error && error.toLowerCase().includes("workflows") && !isLoading && ( // Show workflow-specific error if loan data is present
+          {error && error.toLowerCase().includes("workflows") && !isLoading && ( 
             <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitleShadCN>Workflow Configuration Issue</AlertTitleShadCN>
