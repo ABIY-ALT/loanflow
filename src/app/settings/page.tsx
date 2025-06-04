@@ -34,7 +34,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
-import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinitionToFirestore } from '@/services/loan-service';
+import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -486,22 +486,22 @@ export default function SettingsPage() {
     };
 
     try {
-      const result = await addWorkflowDefinitionToFirestore(definitionData);
+      const result = await addWorkflowDefinition(definitionData);
       if (result.error || !result.id) {
-          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Firestore.", variant: "destructive", duration: 9000 });
+          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Prisma DB.", variant: "destructive", duration: 9000 });
       } else {
           const newDefinitionFromDb: WorkflowDefinition = {
               id: result.id,
               ...definitionData,
               versions: [],
-              createdAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(), // Assuming service returns or implies it was just created
               updatedAt: new Date().toISOString(),
           };
           setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
           setNewWorkflowName('');
           setNewWorkflowLoanType('');
           setNewWorkflowDescription('');
-          toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to Firestore.` });
+          toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to DB.` });
       }
     } catch (error: any) {
         let errorMessage = "An unexpected error occurred while adding workflow definition.";
@@ -527,14 +527,14 @@ export default function SettingsPage() {
         if (result.error) {
             throw new Error(result.error);
         }
-        toast({ title: "All Settings Saved to Firestore", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData();
+        toast({ title: "All Settings Saved to Database", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
+        await fetchInitialData(); // Re-fetch to ensure consistency with DB state
     } catch (err: any) {
-        let errorMessage = "Failed to save settings to Firestore.";
+        let errorMessage = "Failed to save settings to Database.";
         if (err && typeof err.message === 'string') {
             errorMessage = err.message;
-             if (err.message.includes("query requires an index")) {
-                errorMessage += " Please check Firestore console for index creation link.";
+             if (err.message.includes("query requires an index")) { // This might be less relevant with Prisma but good general practice
+                errorMessage += " Please check database logs or Prisma error details.";
             }
         }
         setError(errorMessage);
@@ -558,7 +558,7 @@ export default function SettingsPage() {
             <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
             <h2 className="text-2xl font-semibold text-destructive">Failed to Load Settings Data</h2>
             <p className="text-muted-foreground">{error}</p>
-            <p className="text-sm text-muted-foreground mt-2">Please ensure Firestore is configured and reachable. Check console for details and ensure required indexes are built.</p>
+            <p className="text-sm text-muted-foreground mt-2">Please ensure your database is configured and reachable. Check console for details.</p>
             <Button onClick={() => window.location.reload()}>Try Reloading</Button>
         </div>
     );
@@ -585,7 +585,7 @@ export default function SettingsPage() {
           {workflowDefinitions.length === 0 && !isLoadingData && (
             <div className="p-4 text-center border rounded-md bg-muted/50">
                 <p className="text-muted-foreground mb-2">No workflow definitions found.</p>
-                <p className="text-sm text-muted-foreground">Please add one below or check Firestore connection and console for errors.</p>
+                <p className="text-sm text-muted-foreground">Please add one below or check database connection and console for errors.</p>
             </div>
           )}
           {workflowDefinitions.map(def => (
@@ -608,7 +608,7 @@ export default function SettingsPage() {
                         Version {version.versionNumber}
                         {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
                       </div>
-                      <p className="text-xs text-muted-foreground">Created: {new Date(version.createdAt).toLocaleDateString()} | Stages: {version.stages.length}</p>
+                      <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                         {!version.isActive &&
@@ -639,7 +639,7 @@ export default function SettingsPage() {
                 <div><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e=>setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData}/></div>
                 <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}>
                     {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Add Workflow Definition to Firestore
+                    Add Workflow Definition to Database
                 </Button>
             </div>
         </CardContent>
@@ -675,10 +675,8 @@ export default function SettingsPage() {
       </Card>
       <div className="flex justify-end"><Button onClick={handleSaveChanges} size="lg" disabled={isSavingAll || isSavingData}>
         {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        {isSavingAll ? "Saving..." : "Save All Settings to Firestore"}
+        {isSavingAll ? "Saving..." : "Save All Settings to Database"}
         </Button></div>
     </div>
   );
 }
-
-    
