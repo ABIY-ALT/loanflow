@@ -26,17 +26,34 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, isLoading: authIsLoading } = useAuth(); 
+  const authContext = useAuth(); 
   const router = useRouter();
   const { toast } = useToast();
 
-  // Mock sign out
-  const handleSignOut = async () => {
-    toast({ title: "Signed Out (Mock)", description: "You have been signed out." });
-    // In a real app with context, you'd clear the user state.
-    // For now, this is conceptual as we don't have a login mechanism to go back to.
-    // router.push('/login'); // If you had a login page
+  const handleSignOut = () => {
+    authContext.logout(); // This will now handle the redirection
+    toast({ title: "Signed Out", description: "You have been successfully signed out." });
   };
+  
+  // If not authenticated and not on the login page, redirect to login
+  // This basic client-side protection can be enhanced.
+  useEffect(() => {
+    if (!authContext.isLoading && !authContext.user && window.location.pathname !== '/login') {
+      router.replace('/login');
+    }
+  }, [authContext.isLoading, authContext.user, router]);
+
+  // If still loading auth state, or if no user and trying to access protected content, show loader or nothing.
+  // The useEffect above will handle redirection.
+  if (authContext.isLoading || (!authContext.user && window.location.pathname !== '/login')) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-lg text-muted-foreground">Loading session...</p>
+        </div>
+      );
+  }
+
 
   return (
     <SidebarProvider defaultOpen={false}> 
@@ -63,14 +80,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <Bell className="h-5 w-5" />
               <span className="sr-only">Notifications</span>
             </Button>
-            {authIsLoading ? (
+            {authContext.isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
-            ) : user ? (
+            ) : authContext.user ? (
                 <div className="flex items-center gap-2">
                     <UserCircle className="h-6 w-6 text-muted-foreground" />
                     <div className="text-sm">
-                        <span className="font-medium">{user.name}</span>
-                        <Badge variant="outline" className="ml-2 text-xs">{user.role}</Badge>
+                        <span className="font-medium">{authContext.user.name}</span>
+                        <Badge variant="outline" className="ml-2 text-xs">{authContext.user.role}</Badge>
                     </div>
                     <Button variant="ghost" size="sm" onClick={handleSignOut}>
                         <LogOut className="mr-1 h-4 w-4" /> Sign Out
@@ -78,7 +95,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
             ) : (
                  <Button variant="outline" size="sm" onClick={() => router.push('/login')}>
-                    Sign In (Mock)
+                    Sign In
                 </Button>
             )}
           </div>
@@ -90,4 +107,3 @@ export default function AppLayout({ children }: AppLayoutProps) {
     </SidebarProvider>
   );
 }
-
