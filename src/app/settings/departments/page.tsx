@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { getDepartments, addDepartment, deleteDepartment as deleteDepartmentService } from '@/services/loan-service';
-import { Loader2, PlusCircle, Trash2, AlertTriangle, Building } from 'lucide-react';
+import { getDepartments, addDepartment, deleteDepartment as deleteDepartmentService } from '@/services/loan-service-prisma';
+import { Loader2, PlusCircle, Trash2, AlertTriangle, Building, ArrowLeft, ShieldAlert } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
+import { UserRole } from '@/types/loan';
 
 interface DepartmentItem {
   id: string;
@@ -29,6 +30,7 @@ interface DepartmentItem {
 }
 
 export default function ManageDepartmentsPage() {
+  const { user: currentUser, isLoading: authLoading } = useAuth();
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -59,8 +61,10 @@ export default function ManageDepartmentsPage() {
   }, []);
 
   useEffect(() => {
-    fetchDepartmentsCallback();
-  }, [fetchDepartmentsCallback]);
+    if (currentUser && currentUser.role === UserRole.ADMIN) {
+        fetchDepartmentsCallback();
+    }
+  }, [fetchDepartmentsCallback, currentUser]);
 
   const handleAddDepartment = async () => {
     if (!newDepartmentName.trim()) {
@@ -122,7 +126,28 @@ export default function ManageDepartmentsPage() {
         setIsSaving(false);
     }
   };
+  
+  if (authLoading || (isLoading && !departments.length)) {
+    return (
+        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="ml-3 text-lg">Loading departments...</p>
+        </div>
+    );
+  }
 
+  if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to manage departments. Please contact an administrator.</p>
+            <Link href="/" passHref>
+                <Button variant="outline">Go to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -172,7 +197,7 @@ export default function ManageDepartmentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && (
+          {isLoading && departments.length === 0 && (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-3 text-muted-foreground">Loading departments...</p>
@@ -242,5 +267,3 @@ export default function ManageDepartmentsPage() {
     </div>
   );
 }
-
-    

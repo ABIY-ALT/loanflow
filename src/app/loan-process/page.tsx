@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
+import { UserRole } from '@/types/loan';
 import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getLoanRequests, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service';
+import { getLoanRequests, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Ensure Prisma service
 import {
   Tooltip,
   TooltipContent,
@@ -29,33 +30,38 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { mockUsers } from '@/lib/mock-data'; // For user names
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 
 interface LoanCardProps {
   loan: LoanRequest;
   stageName: string;
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerView: boolean;
+  isManagerViewing: boolean; // Renamed for clarity
   router: ReturnType<typeof useRouter>;
+  currentUser: User | null; // Added current user for more granular checks
 }
 
-function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }: LoanCardProps) {
+function LoanCard({ loan, stageName, onCardActionClick, isManagerViewing, router, currentUser }: LoanCardProps) {
   const canTakeAction = !stageName.toLowerCase().includes("closed") && !stageName.toLowerCase().includes("rejected") && !stageName.toLowerCase().includes("disbursed");
   
   let actionButtonText = "Details";
   let ActionIcon = ArrowRight;
   let actionHandler = () => router.push(`/loan-requests/${loan.id}`);
 
-  if (isManagerView && loan.isReadyForManagerReview && canTakeAction) {
+  const isCurrentUserAssigned = currentUser && loan.assignedTo === currentUser.id;
+  const canUserMarkComplete = (currentUser?.role === UserRole.STAFF || currentUser?.role === UserRole.RELATIONSHIP_MANAGER || currentUser?.role === UserRole.UNDERWRITER) && isCurrentUserAssigned;
+
+
+  if (isManagerViewing && loan.isReadyForManagerReview && canTakeAction) { // Manager sees "Review & Promote"
     actionButtonText = "Review & Promote";
     ActionIcon = UserCheck;
     actionHandler = () => onCardActionClick(loan);
-  } else if (!isManagerView && loan.assignedTo && !loan.isReadyForManagerReview && canTakeAction) {
+  } else if (canUserMarkComplete && !loan.isReadyForManagerReview && canTakeAction) { // Assigned staff sees "Mark Complete"
     actionButtonText = "Mark Complete";
     ActionIcon = CheckSquare;
     actionHandler = () => onCardActionClick(loan);
-  } else if (!loan.assignedTo && canTakeAction) {
+  } else if (!loan.assignedTo && canTakeAction && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.UNDERWRITER)) { // Manager/Admin can assign
     actionButtonText = "Assign Staff";
     ActionIcon = UserPlus;
     actionHandler = () => router.push(`/loan-requests/${loan.id}`);
@@ -79,7 +85,7 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }:
       </CardHeader>
       <CardContent className="p-4 pt-0 text-sm space-y-2">
         <p className="truncate">Amount: ${loan.loanAmount.toLocaleString()}</p>
-        <p className="truncate">Assigned: {loan.assignedTo ? mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown' : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
+        <p className="truncate">Assigned: {loan.assignedTo ? (mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown User') : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
         {loan.stageDeadline && (<div className="flex items-center text-xs text-muted-foreground"><Clock className="h-3 w-3 mr-1" />Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}</div>)}
         
         {loan.isReadyForManagerReview && canTakeAction && (
@@ -87,7 +93,7 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerView, router }:
                 Awaiting Manager Review
             </Badge>
         )}
-         {(isManagerView || (loan.assignedTo && !loan.isReadyForManagerReview) || !loan.assignedTo) && canTakeAction && (
+         {(isManagerViewing || canUserMarkComplete || (!loan.assignedTo && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.UNDERWRITER))) && canTakeAction && (
           <Button variant="outline" size="sm" className="w-full mt-2" onClick={actionHandler}>
             <ActionIcon className="mr-2 h-4 w-4" /> {actionButtonText}
           </Button>
@@ -101,15 +107,16 @@ interface KanbanColumnProps {
   stageDef: WorkflowStageDefinition;
   loans: LoanRequest[];
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerView: boolean;
+  isManagerViewing: boolean;
   router: ReturnType<typeof useRouter>;
+  currentUser: User | null;
 }
 
-function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, router }: KanbanColumnProps) {
+function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerViewing, router, currentUser }: KanbanColumnProps) {
   return (
     <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
       <div className="flex justify-between items-center p-2 mb-2 gap-2">
-        <div className="flex items-center min-w-0"> {/* Container for icon and text, allows shrinking */}
+        <div className="flex items-center min-w-0"> 
             <Building className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0"/>
             <h3 className="font-semibold text-foreground truncate"> 
             {stageDef.responsibleDepartment} - {stageDef.name}
@@ -126,7 +133,7 @@ function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerView, route
           </div>
         )}
         {loans.map((loan) => (
-          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} isManagerView={isManagerView} router={router}/>
+          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} isManagerViewing={isManagerViewing} router={router} currentUser={currentUser}/>
         ))}
       </ScrollArea>
     </div>
@@ -188,8 +195,10 @@ interface ActiveWorkflowPipeline {
 
 export default function LoanProcessPage() {
   const router = useRouter();
+  const { user: currentUser, isLoading: authLoading } = useAuth(); // Get current user
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
+  const [usersFromService, setUsersFromService] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -197,6 +206,8 @@ export default function LoanProcessPage() {
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [selectedLoanForDialog, setSelectedLoanForDialog] = useState<LoanRequest | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false); 
+
+  const isManagerRole = currentUser?.role === UserRole.UNDERWRITER || currentUser?.role === UserRole.ADMIN;
 
   const activeWorkflowPipelines = useMemo(() => {
     if (!fetchedWorkflowDefinitions || fetchedWorkflowDefinitions.length === 0) return [];
@@ -233,7 +244,7 @@ export default function LoanProcessPage() {
       ]);
 
       if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
-      else if (loansResult.loans) { setAllLoans(loansResult.loans); }
+      else if (loansResult.loans) { setAllLoans(loansResult.loans); setUsersFromService(loansResult.users || []); }
       else { setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
 
       if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); setFetchedWorkflowDefinitions([]); }
@@ -270,6 +281,10 @@ export default function LoanProcessPage() {
   }, [toast, getStageDefById]);
 
   const handleCardActionClick = useCallback(async (loan: LoanRequest) => {
+    if (!currentUser) {
+        toast({title: "Authentication Error", description: "User not identified.", variant: "destructive"});
+        return;
+    }
     setSelectedLoanForDialog(loan);
     const currentStageDef = getStageDefById(loan.workflowVersionId, loan.currentStageId);
     if (!currentStageDef) {
@@ -277,22 +292,20 @@ export default function LoanProcessPage() {
         return;
     }
 
-    if (loan.isReadyForManagerReview) {
+    // Manager action: Promote
+    if (isManagerRole && loan.isReadyForManagerReview) {
         if (!validateLoanForNextStep(loan)) return;
         setIsPromoteDialogOpen(true);
-    } else { 
-        if (!loan.assignedTo) {
-            toast({title: "Assignment Needed", description: "Loan must be assigned to a staff member first.", variant: "info"});
-            router.push(`/loan-requests/${loan.id}`); // Navigate to detail page for assignment
-            return;
-        }
+    } 
+    // Staff action: Mark Complete
+    else if (!isManagerRole && loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview) {
         if (!validateLoanForNextStep(loan)) return;
         
         setIsProcessingAction(true);
-        const officerName = mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Officer';
+        const officerName = usersFromService.find(u=>u.id === loan.assignedTo)?.name || currentUser.name || 'Officer';
         const newHistoryEntry: LoanHistoryEntry = {
             id: `hist-officer-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: loan.assignedTo || 'mock-user-id', userName: officerName,
+            userId: loan.assignedTo || currentUser.id, userName: officerName,
             notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
         };
         const updatedFields: Partial<Omit<LoanRequest, 'id'>> = { 
@@ -301,20 +314,32 @@ export default function LoanProcessPage() {
             lastUpdatedDate: formatISO(new Date()) 
         };
         
-        setAllLoans(prev => prev.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l)); // Optimistic update
+        setAllLoans(prev => prev.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l)); 
         const serviceResult = await updateLoanRequest(loan.id, updatedFields);
         setIsProcessingAction(false);
 
         if (serviceResult.error || !serviceResult.success) {
             toast({ title: "Error", description: serviceResult.error || "Failed to mark stage complete.", variant: "destructive" });
-            fetchPageData(); // Revert optimistic update by re-fetching
+            fetchPageData(); 
         } else {
             toast({ title: "Success", description: `${loan.customerName}'s stage '${currentStageDef.name}' marked complete. Awaiting manager review.` });
         }
     }
-  }, [toast, validateLoanForNextStep, fetchPageData, getStageDefById, router]);
+    // Action needed: Assignment
+    else if (!loan.assignedTo && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.UNDERWRITER)) {
+        toast({title: "Assignment Needed", description: "This loan needs to be assigned to a staff member.", variant: "info"});
+        router.push(`/loan-requests/${loan.id}`); 
+        return;
+    } else {
+        toast({title: "Action Not Permitted", description: "You may not have the required role or assignment for this action.", variant: "warning"});
+    }
+  }, [toast, validateLoanForNextStep, fetchPageData, getStageDefById, router, currentUser, isManagerRole, usersFromService]);
 
   const handleConfirmPromotion = useCallback(async (loanId: string) => {
+    if (!currentUser || !(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.UNDERWRITER)) {
+        toast({title: "Permission Denied", description: "Only managers or admins can promote loans.", variant: "destructive"});
+        return;
+    }
     const loanToPromote = allLoans.find(l => l.id === loanId);
     if (!loanToPromote) { toast({ title: "Error", description: "Loan not found.", variant: "destructive"}); return; }
 
@@ -328,11 +353,11 @@ export default function LoanProcessPage() {
       setSelectedLoanForDialog(null);
       const finalHistoryEntry: LoanHistoryEntry = {
         id: `hist-final-${Date.now()}`, stageName: currentVersion.stages[currentStageIndex]?.name || 'Final Stage', timestamp: formatISO(new Date()),
-        userId: 'mock-manager-user', userName: 'Manager (Mock)', notes: 'Loan reached final workflow stage. Process complete.',
+        userId: currentUser.id, userName: currentUser.name, notes: 'Manager action: Loan reached final workflow stage. Process complete.',
       };
-      // Mark as not needing manager review anymore
+      
       const updateResult = await updateLoanRequest(loanId, { history: [...(loanToPromote.history || []), finalHistoryEntry], isReadyForManagerReview: false, lastUpdatedDate: formatISO(new Date()) });
-      if (updateResult.success) fetchPageData(); // Re-fetch to update state
+      if (updateResult.success) fetchPageData(); 
       return;
     }
 
@@ -340,7 +365,7 @@ export default function LoanProcessPage() {
     setIsProcessingAction(true);
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'mock-manager-user', userName: 'Manager (Mock)',
+      userId: currentUser.id, userName: currentUser.name,
       notes: `Manager promoted from '${currentVersion.stages[currentStageIndex].name}' to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
     const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
@@ -351,12 +376,11 @@ export default function LoanProcessPage() {
       isReadyForManagerReview: false,
       lastUpdatedDate: formatISO(new Date()),
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
-      // Ensure these mirror fields are also set, updateLoanRequest service should handle this based on currentStageId now
       workflowDefinitionId: loanToPromote.workflowDefinitionId,
       workflowVersionId: loanToPromote.workflowVersionId,
     };
 
-    setAllLoans(prev => prev.map(l => l.id === loanId ? { ...l, ...updatedFields } : l)); // Optimistic
+    setAllLoans(prev => prev.map(l => l.id === loanId ? { ...l, ...updatedFields } : l)); 
     setIsPromoteDialogOpen(false);
     setSelectedLoanForDialog(null);
 
@@ -365,11 +389,11 @@ export default function LoanProcessPage() {
 
     if (serviceResult.error || !serviceResult.success) {
       toast({ title: "Promotion Error", description: serviceResult.error || "Failed to promote.", variant: "destructive" });
-      fetchPageData(); // Revert
+      fetchPageData(); 
     } else {
       toast({ title: "Promotion Successful", description: `${loanToPromote.customerName} moved to ${nextStageDef.name}.` });
     }
-  }, [allLoans, toast, fetchPageData, fetchedWorkflowDefinitions]);
+  }, [allLoans, toast, fetchPageData, fetchedWorkflowDefinitions, currentUser]);
 
   const loansByStageAndVersionId = useCallback((stageId: string, versionId: string) => {
     return allLoans.filter(loan => loan.currentStageId === stageId && loan.workflowVersionId === versionId);
@@ -390,8 +414,9 @@ export default function LoanProcessPage() {
     return currentVersion.stages[currentStageIndex + 1]?.name || '';
   }, [selectedLoanForDialog, fetchedWorkflowDefinitions]);
 
-
-  if (isLoading && (allLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) { return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines & workflows...</p></div>); }
+  if (authLoading || (isLoading && (allLoans.length === 0 || fetchedWorkflowDefinitions.length === 0))) { 
+    return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines & workflows...</p></div>); 
+  }
   if (error && (allLoans.length === 0 || activeWorkflowPipelines.length === 0) ) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
   
   if (activeWorkflowPipelines.length === 0 && !isLoading) { 
@@ -408,14 +433,13 @@ export default function LoanProcessPage() {
           <AlertTriangle className="h-5 w-5" />
           <AlertTitleShadCN>No Active Loan Pipelines Found</AlertTitleShadCN>
           <AlertDescShadCN>
-            There are no workflow definitions with an active version that also has stages configured in Firestore.
-            Please go to Settings to define your loan workflows, ensure at least one version per loan type is marked active, and that it has stages defined. Then, click "Save All Settings to Firestore".
+            There are no workflow definitions with an active version that also has stages configured.
+            Please go to Settings (Admin only) to define loan workflows.
           </AlertDescShadCN>
         </Alert>
       </div>
     );
   }
-
 
   return (
     <div className="space-y-6">
@@ -441,8 +465,9 @@ export default function LoanProcessPage() {
                   stageDef={stageDef}
                   loans={loansByStageAndVersionId(stageDef.id, pipeline.activeVersion.id)}
                   onCardActionClick={handleCardActionClick}
-                  isManagerView={false} 
+                  isManagerViewing={isManagerRole} 
                   router={router}
+                  currentUser={currentUser}
                 />
               ))}
             </div>
@@ -463,4 +488,3 @@ export default function LoanProcessPage() {
     </div>
   );
 }
-

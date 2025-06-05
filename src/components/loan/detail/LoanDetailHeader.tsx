@@ -3,18 +3,19 @@
 
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2 } from 'lucide-react';
-import type { LoanRequest } from '@/types/loan';
-// Removed LoanStage import
+import type { LoanRequest, User } from '@/types/loan';
+import { UserRole } from '@/types/loan';
+import { useAuth } from '@/contexts/auth-context';
 
 interface LoanDetailHeaderProps {
   loan: LoanRequest | null;
-  currentStageName: string; // Added to display current stage
+  currentStageName: string; 
   onBack: () => void;
   onOpenEditDialog: () => void;
   onOpenAddNoteDialog: () => void;
   onOpenLogInfoDialog: () => void;
-  onMarkStageComplete: () => Promise<void>; // Officer action
-  onManagerPromoteLoan: () => Promise<void>; // Manager action, promotion is automatic
+  onMarkStageComplete: () => Promise<void>; 
+  onManagerPromoteLoan: () => Promise<void>; 
   onOpenReturnForReworkDialog: () => void;
   isSaving: boolean;
   isActionableStage: boolean;
@@ -33,12 +34,22 @@ export function LoanDetailHeader({
   isSaving,
   isActionableStage,
 }: LoanDetailHeaderProps) {
-  if (!loan) return null;
+  const { user: currentUser } = useAuth();
 
-  const canOfficerMarkComplete = isActionableStage && !loan.isReadyForManagerReview && loan.assignedTo; // Officer must be assigned
-  const canManagerTakeAction = isActionableStage && loan.isReadyForManagerReview;
-  // Direct "Approve" button might be removed if approval is just part of the last stage promotion.
-  // For now, let's assume promotion handles approval to the next logical step or finalization.
+  if (!loan || !currentUser) return null;
+
+  const isManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.UNDERWRITER;
+  const isStaff = currentUser.role === UserRole.STAFF || currentUser.role === UserRole.RELATIONSHIP_MANAGER;
+
+  const canOfficerMarkComplete = isActionableStage && 
+                                 (isStaff || (isManager && loan.assignedTo === currentUser.id)) && // Manager can mark complete if assigned to them
+                                 loan.assignedTo === currentUser.id && 
+                                 !loan.isReadyForManagerReview;
+
+  const canManagerTakeAction = isActionableStage && 
+                               isManager && 
+                               loan.isReadyForManagerReview;
+
 
   return (
     <div className="flex items-center justify-between mb-8 flex-wrap">
@@ -46,14 +57,19 @@ export function LoanDetailHeader({
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
-        <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details / Assign</Button>
+        { (isManager || (isStaff && loan.assignedTo === currentUser.id) ) && 
+            <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details / Assign</Button>
+        }
         <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
-        <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving || !isActionableStage}><Edit3 className="mr-2 h-4 w-4" /> Log Info Request</Button>
+        
+        { (isManager || (isStaff && loan.assignedTo === currentUser.id) ) && isActionableStage &&
+            <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Info Request</Button>
+        }
 
         {canOfficerMarkComplete && (
           <Button onClick={onMarkStageComplete} disabled={isSaving}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <CheckSquare className="mr-2 h-4 w-4" /> Mark Stage Complete & Submit for Review
+            <CheckSquare className="mr-2 h-4 w-4" /> Mark Stage Complete & Submit
           </Button>
         )}
 
@@ -61,7 +77,7 @@ export function LoanDetailHeader({
            <>
             <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-               <ArrowRight className="mr-2 h-4 w-4" /> Manager: Approve & Promote to Next Stage
+               <ArrowRight className="mr-2 h-4 w-4" /> Approve & Promote
             </Button>
             <Button variant="outline" onClick={onOpenReturnForReworkDialog} disabled={isSaving} className="border-amber-500 text-amber-700 hover:bg-amber-50">
                 <Undo2 className="mr-2 h-4 w-4" /> Return for Rework

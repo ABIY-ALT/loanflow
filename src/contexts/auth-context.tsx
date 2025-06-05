@@ -2,30 +2,61 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState } from 'react';
-// Firebase User type is no longer imported
-// import { type User as FirebaseUser } from 'firebase/auth';
-// import { auth } from '@/lib/firebase'; // Firebase auth is not used
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { User as AppUser } from '@/types/loan'; // Renamed to AppUser to avoid conflict
+import { UserRole } from '@/types/loan';
+import { mockUsers } from '@/lib/mock-data';
 import { Loader2 } from 'lucide-react';
 
-// Using a simple mock user type or null if no user is simulated
-type MockUser = { email: string } | null;
+// For demonstration, let's set a default mock logged-in user ID.
+// You can change this ID to test different roles:
+// 'user-admin-alice' (ADMIN)
+// 'user-manager-mike' (UNDERWRITER - Manager)
+// 'user-jane-doe' (RELATIONSHIP_MANAGER - Staff/Officer)
+const MOCK_CURRENT_USER_ID = 'user-manager-mike'; 
 
 interface AuthContextType {
-  user: MockUser;
+  user: AppUser | null; // User can be null if not found or initially
   isLoading: boolean;
+  // Helper function to easily switch mock user for testing (optional enhancement)
+  // switchMockUser: (userId: string) => void; 
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<MockUser>(null); // Default to no user
-  const [isLoading, setIsLoading] = useState(false); // Not loading as auth is removed
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Removed useEffect that subscribed to onAuthStateChanged from Firebase
+  useEffect(() => {
+    // Simulate fetching the current user's details
+    setIsLoading(true);
+    const currentUserData = mockUsers.find(u => u.id === MOCK_CURRENT_USER_ID);
+    if (currentUserData) {
+      setUser(currentUserData);
+    } else {
+      console.warn(`Mock user with ID "${MOCK_CURRENT_USER_ID}" not found in mockUsers. Defaulting to null user.`);
+      setUser(null); // Or set to a guest user if you have one
+    }
+    setIsLoading(false);
+  }, []); // Runs once on mount
 
-  // The loading screen for auth initialization is removed as Firebase auth is not active.
-  // If you want a generic app loading screen, it should be handled differently.
+  // Placeholder for a user switching mechanism for easier testing.
+  // const switchMockUser = (userId: string) => {
+  //   setIsLoading(true);
+  //   const newUserData = mockUsers.find(u => u.id === userId);
+  //   setUser(newUserData || null);
+  //   setIsLoading(false);
+  // };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-lg text-muted-foreground">Initializing user session...</p>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, isLoading }}>
@@ -37,11 +68,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    // This might happen if a component tries to useAuth outside of AuthProvider
-    // or if AuthProvider is removed from the layout.
-    // console.warn('useAuth called outside of AuthProvider or AuthProvider is not set up.');
-    // Return a default state to prevent errors in consuming components if they aren't updated.
+    // This might happen if a component tries to useAuth outside of AuthProvider.
+    // Return a default "guest" state to prevent errors.
     return { user: null, isLoading: false };
   }
   return context;
 };
+

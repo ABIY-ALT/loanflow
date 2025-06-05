@@ -15,23 +15,28 @@ import {
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, Landmark } from 'lucide-react'; // Removed LogIn, LogOut, Loader2 for auth
-// Removed: import { useAuth } from '@/contexts/auth-context'; 
-// Removed: import { signOut } from 'firebase/auth';
-// Removed: import { auth } from '@/lib/firebase';
+import { Bell, Landmark, UserCircle, LogOut, Loader2 } from 'lucide-react'; 
+import { useAuth } from '@/contexts/auth-context'; 
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  // Removed: const { user, isLoading: authIsLoading } = useAuth(); 
+  const { user, isLoading: authIsLoading } = useAuth(); 
   const router = useRouter();
   const { toast } = useToast();
 
-  // Removed: handleSignOut function as Firebase auth is removed
+  // Mock sign out
+  const handleSignOut = async () => {
+    toast({ title: "Signed Out (Mock)", description: "You have been signed out." });
+    // In a real app with context, you'd clear the user state.
+    // For now, this is conceptual as we don't have a login mechanism to go back to.
+    // router.push('/login'); // If you had a login page
+  };
 
   return (
     <SidebarProvider defaultOpen={false}> 
@@ -58,7 +63,24 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <Bell className="h-5 w-5" />
               <span className="sr-only">Notifications</span>
             </Button>
-            {/* Authentication related UI (user email, login/logout buttons) removed */}
+            {authIsLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+            ) : user ? (
+                <div className="flex items-center gap-2">
+                    <UserCircle className="h-6 w-6 text-muted-foreground" />
+                    <div className="text-sm">
+                        <span className="font-medium">{user.name}</span>
+                        <Badge variant="outline" className="ml-2 text-xs">{user.role}</Badge>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                        <LogOut className="mr-1 h-4 w-4" /> Sign Out
+                    </Button>
+                </div>
+            ) : (
+                 <Button variant="outline" size="sm" onClick={() => router.push('/login')}>
+                    Sign In (Mock)
+                </Button>
+            )}
           </div>
         </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8">
@@ -68,3 +90,4 @@ export default function AppLayout({ children }: AppLayoutProps) {
     </SidebarProvider>
   );
 }
+

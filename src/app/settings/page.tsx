@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2 } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -31,9 +31,10 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+} from '@dnd-kit/dnd-kit-sortable'; // Corrected import for dnd-kit
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
+import { UserRole } from '@/types/loan';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -47,10 +48,12 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/contexts/auth-context';
+import Link from 'next/link';
 
 
 const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
-  id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Client-side ID for new stages before full save
+  id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
   name,
   responsibleDepartment: departmentName,
   defaultTimelineDays: timeline,
@@ -343,6 +346,7 @@ function EditWorkflowVersionDialog({
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user: currentUser, isLoading: authLoading } = useAuth();
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSavingData, setIsSavingData] = useState(false);
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -390,8 +394,10 @@ export default function SettingsPage() {
 
 
   useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
+    if (currentUser && currentUser.role === UserRole.ADMIN) {
+        fetchInitialData();
+    }
+  }, [fetchInitialData, currentUser]);
 
 
   const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
@@ -494,7 +500,7 @@ export default function SettingsPage() {
               id: result.id,
               ...definitionData,
               versions: [],
-              createdAt: new Date().toISOString(), // Assuming service returns or implies it was just created
+              createdAt: new Date().toISOString(), 
               updatedAt: new Date().toISOString(),
           };
           setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
@@ -528,12 +534,12 @@ export default function SettingsPage() {
             throw new Error(result.error);
         }
         toast({ title: "All Settings Saved to Database", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData(); // Re-fetch to ensure consistency with DB state
+        await fetchInitialData(); 
     } catch (err: any) {
         let errorMessage = "Failed to save settings to Database.";
         if (err && typeof err.message === 'string') {
             errorMessage = err.message;
-             if (err.message.includes("query requires an index")) { // This might be less relevant with Prisma but good general practice
+             if (err.message.includes("query requires an index")) { 
                 errorMessage += " Please check database logs or Prisma error details.";
             }
         }
@@ -544,7 +550,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoadingData) {
+  if (authLoading || isLoadingData) {
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -552,6 +558,20 @@ export default function SettingsPage() {
         </div>
     );
   }
+
+  if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view this page. Please contact an administrator if you believe this is an error.</p>
+            <Link href="/" passHref>
+                <Button variant="outline">Go to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
+  
   if (error && workflowDefinitions.length === 0 && departments.length === 0) {
      return (
         <div className="space-y-6 p-4 text-center">
@@ -564,7 +584,6 @@ export default function SettingsPage() {
     );
   }
 
-
   return (
     <div className="space-y-8">
       <div>
@@ -572,7 +591,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground">
           Define workflow definitions for loan types. Each definition can have multiple versions.
           Only one version per loan type can be active for new applications.
-          Ensure departments are set up via Settings &gt; Manage Departments for stage assignment.
+          Ensure departments are set up via <Link href="/settings/departments" className="text-primary hover:underline">Manage Departments</Link> for stage assignment.
         </p>
       </div>
 

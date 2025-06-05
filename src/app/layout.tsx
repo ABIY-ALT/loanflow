@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import AppLayout from '@/components/layout/app-layout';
 import { Toaster } from "@/components/ui/toaster";
-// Removed: import { AuthProvider } from '@/contexts/auth-context'; 
+import { AuthProvider } from '@/contexts/auth-context'; 
 
 export const metadata: Metadata = {
   title: 'LoanFlow - Loan Management System',
@@ -19,12 +19,14 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        {/* Removed AuthProvider wrapper */}
-        <AppLayout>
-          {children}
-        </AppLayout>
+        <AuthProvider> {/* Ensure AuthProvider wraps AppLayout and children */}
+          <AppLayout>
+            {children}
+          </AppLayout>
+        </AuthProvider>
         <Toaster />
       </body>
     </html>
   );
 }
+
