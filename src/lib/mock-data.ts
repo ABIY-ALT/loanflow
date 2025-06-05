@@ -5,15 +5,17 @@ import { UserRole } from '@/types/loan';
 const MOCK_REFERENCE_DATE = new Date('2024-07-15T10:00:00.000Z').getTime();
 
 export const mockUsers: User[] = [
-  { id: 'user-jane-doe', name: 'Jane Doe', email: 'jane@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination" },
-  { id: 'user-john-smith', name: 'John Smith', email: 'john@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination" },
-  { id: 'user-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', role: UserRole.UNDERWRITER, department: "Origination" },
-  { id: 'user-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', role: UserRole.ADMIN },
-  { id: 'user-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', role: UserRole.UNDERWRITER, department: "Underwriting" },
-  { id: 'user-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', role: UserRole.UNDERWRITER, department: "Underwriting" },
-  { id: 'user-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', role: UserRole.STAFF, department: "Closing" },
-  { id: 'user-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', role: UserRole.STAFF, department: "Closing" },
-  { id: 'user-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', role: UserRole.STAFF, department: "Credit Analysis" },
+  { id: 'user-jane-doe', name: 'Jane Doe', email: 'jane@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination", password: 'password' },
+  { id: 'user-john-smith', name: 'John Smith', email: 'john@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination", password: 'password' },
+  { id: 'user-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', role: UserRole.UNDERWRITER, department: "Origination", password: 'password' },
+  { id: 'user-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', role: UserRole.ADMIN, password: 'password' },
+  { id: 'user-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', role: UserRole.UNDERWRITER, department: "Underwriting", password: 'password' },
+  { id: 'user-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', role: UserRole.UNDERWRITER, department: "Underwriting", password: 'password' },
+  { id: 'user-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', role: UserRole.STAFF, department: "Closing", password: 'password' },
+  { id: 'user-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', role: UserRole.STAFF, department: "Closing", password: 'password' },
+  { id: 'user-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', role: UserRole.STAFF, department: "Credit Analysis", password: 'password' },
+  // System user for Prisma seeding - ensure this ID matches what seed.ts uses
+  { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', role: UserRole.ADMIN, password: 'systempassword' },
 ];
 
 export const mockDepartments: Department[] = [
@@ -286,3 +288,12 @@ export const logActiveVersionForLoanType = (loanType: string) => {
         console.log(`No active version found for loan type: ${loanType} in definition: ${wfDef.name}`);
     }
 };
+
+// Ensure all mockUsers have a password defined; if not, default it.
+mockUsers.forEach(user => {
+  if (user.password === undefined) {
+    user.password = 'password'; // Default password if none is set
+  }
+});
+
+    

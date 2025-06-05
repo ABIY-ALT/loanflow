@@ -3,8 +3,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-// Removed: import { signInWithEmailAndPassword, type AuthError } from 'firebase/auth';
-// Removed: import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,10 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, LogIn } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/auth-context';
+import { mockUsers } from '@/lib/mock-data'; // Ensure mockUsers is imported
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const authContext = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -26,19 +27,21 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
 
-    // Firebase login logic removed.
-    // Simulating login for prototype purposes:
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
+    // Simulate login by finding user in mockUsers
+    // Ensure mockUsers is available and has users with passwords
+    const foundUser = mockUsers.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+    );
 
-    if (email === "user@example.com" && password === "password") { // Mock credentials
-      toast({ title: "Login Successful (Mock)", description: "Welcome back!" });
-      // In a real app with context, you might set a local mock user state or similar
-      router.push('/'); 
+    if (foundUser) {
+      authContext.login(foundUser); // Pass the whole user object
+      toast({ title: "Login Successful", description: "Welcome back!" });
+      // router.push('/'); // Redirection is handled by AuthContext.login
     } else {
-      const friendlyMessage = "Invalid email or password (Mock).";
+      const friendlyMessage = "Invalid email or password. Please try again.";
       setError(friendlyMessage);
-      toast({ title: "Login Failed (Mock)", description: friendlyMessage, variant: "destructive" });
-    } 
+      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive" });
+    }
     setIsLoading(false);
   };
 
@@ -103,3 +106,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
