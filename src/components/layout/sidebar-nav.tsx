@@ -7,13 +7,13 @@ import {
   LayoutGrid,
   FilePlus2,
   SearchCheck,
-  Settings as SettingsIcon, 
+  Settings as SettingsIcon,
   KanbanSquare,
   AlertTriangle,
   UserCheck,
   FolderKanban,
   Building,
-  ClipboardList, 
+  ClipboardList,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -33,45 +33,45 @@ interface NavItemConfig {
 }
 
 const navItemsConfig: NavItemConfig[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutGrid }, // All roles
-  { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare }, // All roles
-  { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 }, // All roles
-  { 
-    href: '/my-assigned-cases', 
-    label: 'My Assigned Cases', 
+  { href: '/', label: 'Dashboard', icon: LayoutGrid },
+  { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
+  { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 },
+  {
+    href: '/my-assigned-cases',
+    label: 'My Assigned Cases',
     icon: ClipboardList,
-    roles: [UserRole.STAFF, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.ADMIN] 
-  },
-  { 
-    href: '/manager-review', 
-    label: 'Manager Review Queue', 
-    icon: UserCheck,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN] // Typically manager roles
-  },
-  { 
-    href: '/department-queue', 
-    label: 'Unassigned Cases', 
-    icon: FolderKanban,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN] // Typically manager roles
-  },
-  { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck }, // All roles
-  { 
-    href: '/overdue-tasks', 
-    label: 'Overdue Tasks', 
-    icon: AlertTriangle,
-    roles: [UserRole.UNDERWRITER, UserRole.RELATIONSHIP_MANAGER, UserRole.ADMIN] // Roles that manage queues or overview
+    roles: [UserRole.STAFF, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.ADMIN]
   },
   {
-    href: '/settings', 
+    href: '/manager-review',
+    label: 'Manager Review Queue',
+    icon: UserCheck,
+    roles: [UserRole.UNDERWRITER, UserRole.ADMIN]
+  },
+  {
+    href: '/department-queue',
+    label: 'Unassigned Cases',
+    icon: FolderKanban,
+    roles: [UserRole.UNDERWRITER, UserRole.ADMIN]
+  },
+  { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
+  {
+    href: '/overdue-tasks',
+    label: 'Overdue Tasks',
+    icon: AlertTriangle,
+    roles: [UserRole.UNDERWRITER, UserRole.RELATIONSHIP_MANAGER, UserRole.ADMIN]
+  },
+  {
+    href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    roles: [UserRole.ADMIN], // ADMIN only
+    roles: [UserRole.ADMIN, UserRole.UNDERWRITER], // Updated for broader manager access for demo
     subItems: [
-      { 
-        href: '/settings/departments', 
-        label: 'Manage Departments', 
+      {
+        href: '/settings/departments',
+        label: 'Manage Departments',
         icon: Building,
-        roles: [UserRole.ADMIN] // ADMIN only
+        roles: [UserRole.ADMIN, UserRole.UNDERWRITER] // Updated
       },
     ],
   },
@@ -87,7 +87,6 @@ export default function SidebarNav() {
   }, []);
 
   if (!isClient || authLoading) {
-    // Optionally show loading skeletons for nav items
     return (
         <SidebarMenu>
             {[...Array(6)].map((_, i) => (
@@ -99,11 +98,22 @@ export default function SidebarNav() {
     );
   }
 
+  // If no user is logged in, don't render any menu items.
+  if (!user) {
+    return null;
+  }
+
   const userRole = user?.role;
 
   const canView = (itemRoles?: UserRole[]): boolean => {
-    if (!itemRoles || itemRoles.length === 0) return true; // No specific roles defined, visible to all
-    if (!userRole) return false; // No user role, cannot view restricted items
+    if (!itemRoles || itemRoles.length === 0) return true;
+    if (!userRole) return false; // Should not happen if user is null check above is active
+
+    // Simplified logic: ADMIN and UNDERWRITER see all manager-level items
+    if (userRole === UserRole.ADMIN || userRole === UserRole.UNDERWRITER) {
+        return true;
+    }
+    // Other roles only see items specifically assigned to them or public items
     return itemRoles.includes(userRole);
   };
 
@@ -112,11 +122,9 @@ export default function SidebarNav() {
   return (
     <SidebarMenu>
       {visibleNavItems.map((item) => {
-        if (!canView(item.roles)) return null;
-
         const Icon = item.icon;
         const mainButtonIsActive = currentPathname === item.href;
-        
+
         const filteredSubItems = item.subItems?.filter(sub => canView(sub.roles));
         const openSubMenu = filteredSubItems && filteredSubItems.length > 0 && currentPathname.startsWith(item.href);
 
