@@ -2,6 +2,7 @@
 'use client'; 
 
 import type React from 'react';
+import { useEffect } from 'react'; // Added useEffect here
 import { useRouter } from 'next/navigation';
 import {
   SidebarProvider,
