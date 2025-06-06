@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect }from 'react';
 import type { User as AppUser } from '@/types/loan';
 import { mockUsers } from '@/lib/mock-data';
 import { Loader2 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { useRouter, usePathname } from 'next/navigation';
 interface AuthContextType {
   user: AppUser | null;
   isLoading: boolean; // True ONLY during active login/logout process
-  login: (email: string, password?: string) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<boolean>; // Make login async
   logout: () => void;
 }
 
@@ -20,28 +20,29 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isProcessingAuth, setIsProcessingAuth] = useState(false); // For active login/logout
-  const [isClientSideReady, setIsClientSideReady] = useState(false); // For initial mount/hydration
+  const [isInitialLoad, setIsInitialLoad] = useState(true); // For initial client-side check
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    // This effect runs once on mount to indicate client is ready
-    setIsClientSideReady(true);
+    // On initial mount, simply mark initial load as complete.
+    // In a real app, you might check localStorage for a persisted session here.
+    setIsInitialLoad(false);
   }, []);
 
-  const login = async (email: string, password?: string): Promise<boolean> => {
+  const login = async (emailInput: string, passwordInput?: string): Promise<boolean> => {
     setIsProcessingAuth(true);
     try {
       // Simulate finding user
       const foundUser = mockUsers.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+        (u) => u.email.toLowerCase() === emailInput.toLowerCase() && u.password === passwordInput
       );
 
       if (foundUser) {
-        setUser(foundUser); // This will trigger the redirection useEffect
+        setUser(foundUser);
         return true;
       } else {
-        setUser(null);
+        setUser(null); // Ensure user is null on failed login
         return false;
       }
     } catch (error) {
@@ -54,30 +55,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    setIsProcessingAuth(true);
-    setUser(null); // This will trigger the redirection useEffect
-    // router.push('/login') is handled by the useEffect
-    setIsProcessingAuth(false);
+    setIsProcessingAuth(true); // Indicate processing has started
+    setUser(null);
+    // Redirection to /login will be handled by the useEffect below,
+    // once isProcessingAuth becomes false and user is null.
+    setIsProcessingAuth(false); // Indicate processing is finished
   };
 
   useEffect(() => {
-    if (!isClientSideReady || isProcessingAuth) {
-      // Wait for client hydration AND for any active login/logout process to finish
+    if (isInitialLoad || isProcessingAuth) {
+      // Don't run navigation logic if initial load isn't complete or if auth is being processed
       return;
     }
 
     if (user && pathname === '/login') {
-      router.replace('/'); // User is logged in and on login page, redirect to home
+      router.replace('/');
     } else if (!user && pathname !== '/login') {
-      router.push('/login'); // User is not logged in and not on login page, redirect to login
+      router.push('/login');
     }
-  }, [user, isClientSideReady, isProcessingAuth, pathname, router]);
-
+  }, [user, isInitialLoad, isProcessingAuth, pathname, router]);
 
   // ----- Render Logic for AuthProvider -----
 
-  if (!isClientSideReady) {
-    // Initializing phase, client not yet ready (e.g., during SSR hydration mismatch checks)
+  if (isInitialLoad) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   if (isProcessingAuth) {
-    // Active login or logout process is running
+    // This loader is for the duration of the login/logout async operations.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -96,11 +96,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // Client is ready and no auth process is active.
-  // Now decide based on user and pathname whether to redirect or render children.
+  // If not initial load, not processing, no user, and not on login page -> means we should redirect.
+  // The useEffect handles the push, this loader is for the interim before that effect runs or completes.
   if (!user && pathname !== '/login') {
-    // Redirect to login is expected because user is not set and we are not on the login page.
-    // AuthProvider shows its own loader for this transient state.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -109,11 +107,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // If we reach here, it means:
-  // - Client is ready (isClientSideReady is true).
-  // - No authentication process is active (isProcessingAuth is false).
-  // - AND (user is authenticated OR (user is null AND pathname IS '/login'))
-  // So, render the children (which could be LoginPage or AppLayout for protected routes).
+  // Render children if:
+  // - User is authenticated (and not initial load, not processing)
+  // - OR on the login page (user is null, not initial load, not processing)
   return (
     <AuthContext.Provider value={{ user, isLoading: isProcessingAuth, login, logout }}>
       {children}

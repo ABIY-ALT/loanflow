@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { useEffect } from 'react'; // Added useEffect import
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -37,7 +38,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   };
 
   if (authIsLoading) {
-    // AuthContext is actively processing login/logout or initial load.
+    // AuthContext is actively processing login/logout.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -46,11 +47,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
-  // If auth is NOT actively processing, but there's NO user,
-  // AND we are NOT on the login page, it's an unexpected state for a protected route.
-  // AuthProvider should have redirected. This "Verifying session..." is a fallback.
-  if (!authIsLoading && !user && pathname !== '/login') {
-    console.warn(`AppLayout: Rendered on a protected page (${pathname}) with no user, and auth is not processing. AuthProvider should handle redirect.`);
+  // If AppLayout is rendered, and AuthProvider is NOT processing auth:
+  // - If 'user' is null AND we are NOT on the login page, it means AuthProvider
+  //   should be redirecting or showing its "Redirecting..." loader.
+  //   This "Verifying session..." screen in AppLayout is a fallback for any transient state.
+  if (!user && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -59,12 +60,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
-  // If we reach here, it means:
-  // 1. authIsLoading is false.
-  // 2. EITHER a user is present (typical for protected routes)
-  // 3. OR user is null BUT pathname IS '/login' (AppLayout is rendering for the login page)
-  // In both these valid scenarios, we proceed to render the main layout structure.
-  // SidebarNav will correctly show no items if user is null (which is the case for /login).
+  // If user is null AND pathname IS '/login', AppLayout renders its structure,
+  // and LoginPage (as children) is displayed.
+  // If user is authenticated, AppLayout renders its structure,
+  // and the protected page (as children) is displayed.
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -105,8 +104,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </>
             ) : (
-              // Show Sign In button if no user and on login page (or other non-protected layout areas if any)
-              pathname === '/login' && ( // Only show Sign In if actually on login page and no user
+              // Show Sign In button if no user and currently on login page
+              pathname === '/login' && (
                 <Button variant="outline" onClick={() => router.push('/login')}>
                   Sign In
                 </Button>
