@@ -20,7 +20,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
-import { useEffect } from 'react'; // Added useEffect import
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -33,12 +32,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const pathname = usePathname();
 
   const handleSignOut = () => {
-    logout(); // AuthContext's useEffect will handle redirection to /login
+    logout(); // AuthContext's logout now handles redirection
     toast({ title: "Signed Out", description: "You have been successfully signed out." });
   };
 
+  // If AuthContext is actively processing login/logout.
   if (authIsLoading) {
-    // AuthContext is actively processing login/logout.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -47,23 +46,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
-  // If AppLayout is rendered, and AuthProvider is NOT processing auth:
-  // - If 'user' is null AND we are NOT on the login page, it means AuthProvider
-  //   should be redirecting or showing its "Redirecting..." loader.
-  //   This "Verifying session..." screen in AppLayout is a fallback for any transient state.
-  if (!user && pathname !== '/login') {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Verifying session...</p>
-      </div>
-    );
-  }
-
-  // If user is null AND pathname IS '/login', AppLayout renders its structure,
-  // and LoginPage (as children) is displayed.
-  // If user is authenticated, AppLayout renders its structure,
-  // and the protected page (as children) is displayed.
+  // If AppLayout is rendered, AuthProvider has determined that content (either login page or protected content)
+  // should be displayed. No need for additional "Verifying session" loader here, as AuthProvider handles it.
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -104,7 +88,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </>
             ) : (
-              // Show Sign In button if no user and currently on login page
+              // Show Sign In button if no user and currently on login page (though AuthProvider typically handles this view)
               pathname === '/login' && (
                 <Button variant="outline" onClick={() => router.push('/login')}>
                   Sign In
