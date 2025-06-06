@@ -10,7 +10,7 @@ import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
-  isLoading: boolean; // True ONLY during active login/logout process
+  isLoading: boolean; // Reflects if an auth operation (login/logout) is in progress
   login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -19,47 +19,48 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true); // True until client-side mount and initial checks
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false); // True during active login/logout async operations
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     // Simulate initial check (e.g., for a persisted session)
-    // For this mock setup, we just mark initial load as complete.
+    // For this mock setup, we just mark initial load as complete after mount.
     setIsInitialLoad(false);
   }, []);
 
   const login = async (emailInput: string, passwordInput?: string): Promise<boolean> => {
     setIsProcessingAuth(true);
     try {
+      // Defensively ensure emailInput is a string before calling toLowerCase
+      const emailToCompare = String(emailInput || '').toLowerCase();
       const foundUser = mockUsers.find(
-        (u) => u.email.toLowerCase() === emailInput.toLowerCase() && u.password === passwordInput
+        (u) => u.email.toLowerCase() === emailToCompare && u.password === passwordInput
       );
 
       if (foundUser) {
         setUser(foundUser);
-        setIsProcessingAuth(false); // Set before navigation
-        router.push('/'); // Navigate after successful login state update
+        // router.push('/'); // Navigation is now handled by useEffect based on user state change
         return true;
       } else {
         setUser(null);
-        setIsProcessingAuth(false);
         return false;
       }
     } catch (error) {
       console.error("Error during login process in AuthContext:", error);
       setUser(null);
-      setIsProcessingAuth(false);
       return false;
+    } finally {
+      setIsProcessingAuth(false);
     }
   };
 
   const logout = () => {
     setIsProcessingAuth(true);
     setUser(null);
-    setIsProcessingAuth(false); // Set before navigation
-    router.push('/login');
+    // router.push('/login'); // Navigation is now handled by useEffect
+    setIsProcessingAuth(false);
   };
 
   useEffect(() => {
@@ -85,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  if (isProcessingAuth) {
+  if (isProcessingAuth) { // Loader during active login/logout attempt
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -94,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // This specific loader is for when a redirect to login is imminent due to lack of user session.
+  // Loader for when redirection to login is imminent due to lack of user session on a protected route
   if (!user && pathname !== '/login' && !isInitialLoad && !isProcessingAuth) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
@@ -104,10 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // Render children if:
-  // - User is authenticated (and not initial load, not processing)
-  // - OR on the login page (user is null, not initial load, not processing)
-  // - OR if it's a state where children should render (e.g. initial load completed, auth not processing, user exists, OR on login page)
   return (
     <AuthContext.Provider value={{ user, isLoading: isProcessingAuth, login, logout }}>
       {children}
@@ -122,3 +119,4 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
