@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect, useRef }from 'react';
+import { createContext, useContext, useState, useEffect }from 'react';
 import type { User as AppUser } from '@/types/loan';
 import { mockUsers } from '@/lib/mock-data';
 import { Loader2 } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
-  isLoading: boolean; // Reflects if an auth operation (login/logout) is in progress
+  isLoading: boolean; // Reflects if an auth operation (login/logout) is actively processing
   login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -19,14 +19,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const [isProcessingAuth, setIsProcessingAuth] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
+  // Effect for initial client-side readiness
   useEffect(() => {
-    // Simulate initial client-side readiness. In a real app, you might check for a persisted session here.
-    setIsInitialLoad(false);
+    setIsInitialLoadComplete(true);
   }, []);
 
   const login = async (emailInput: string, passwordInput?: string): Promise<boolean> => {
@@ -39,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (foundUser) {
         setUser(foundUser); // Update user state
-        // Navigation will be handled by useEffect reacting to user state change
+        // Navigation is now handled by the useEffect hook reacting to the 'user' state change
         return true;
       } else {
         setUser(null);
@@ -56,44 +56,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setIsProcessingAuth(true);
-    setUser(null);
-    // Navigation to /login will be handled by useEffect
+    setUser(null); // Update user state
+    // Navigation is now handled by the useEffect hook reacting to the 'user' state change
     setIsProcessingAuth(false);
   };
 
+  // Effect for handling navigation based on auth state and path
   useEffect(() => {
-    if (isInitialLoad || isProcessingAuth) {
-      return; // Don't run navigation logic during initial load or active auth processing
+    if (!isInitialLoadComplete || isProcessingAuth) {
+      // Don't navigate if still initializing client-side or if an auth operation is actively processing.
+      // Loaders in the render logic below will handle showing appropriate messages.
+      return;
     }
 
-    // User is authenticated
-    if (user) {
+    if (user) { // User is authenticated
       if (pathname === '/login') {
-        router.replace('/'); // Authenticated user on login page, redirect to home
+        // Authenticated user on login page, redirect to home
+        router.replace('/');
       }
       // If user is authenticated and not on /login, they are on a protected page, no action needed here.
-    }
-    // User is NOT authenticated
-    else {
+    } else { // User is NOT authenticated
       if (pathname !== '/login') {
-        router.push('/login'); // Unauthenticated user on a protected page, redirect to login
+        // Unauthenticated user on a protected page, redirect to login
+        router.push('/login');
       }
       // If !user and on /login, no action needed here, they are on the correct page.
     }
-  }, [user, isInitialLoad, isProcessingAuth, pathname, router]);
+  }, [user, isInitialLoadComplete, isProcessingAuth, pathname, router]);
 
 
   // ----- Render Logic for AuthProvider -----
-  if (isInitialLoad) {
+  if (!isInitialLoadComplete) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Initializing...</p>
+        <p className="text-lg text-muted-foreground">Initializing application...</p>
       </div>
     );
   }
 
   if (isProcessingAuth) {
+    // This covers the active processing of login() or logout()
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -101,9 +104,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       </div>
     );
   }
-
-  // If not initial load AND not processing auth:
-  // Check if a redirect to login is needed (and will be actioned by useEffect)
+  
+  // This specific loader is for when a redirect to /login is expected because
+  // initial load is complete, no auth is processing, but user is null and not on /login.
   if (!user && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
@@ -113,9 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
   
-  // If user is authenticated OR if user is not authenticated but on the login page:
-  // Render children with AuthContext.Provider
-  // The isLoading prop of the context is isProcessingAuth
+  // If none of the above loading/redirecting conditions are met, render the context provider and children.
+  // This means:
+  // 1. User is authenticated (and useEffect will ensure they are not on /login).
+  // 2. User is not authenticated BUT is currently on the /login page.
   return (
     <AuthContext.Provider value={{ user, isLoading: isProcessingAuth, login, logout }}>
       {children}
