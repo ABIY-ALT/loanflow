@@ -10,7 +10,7 @@ import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
-  isLoading: boolean; // Represents if initial auth check or login process is ongoing
+  isLoading: boolean; // True during initial app load/session check OR active auth process (login/logout)
   login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -19,48 +19,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // True for initial app load/session check
+  const [isLoading, setIsLoading] = useState(true); // Start true for initial load/session check
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     // Simulate initial session check. For this prototype, just finish "initial loading".
     // In a real app, this would be async and might set 'user' if a session exists.
+    // For now, we assume no pre-existing session.
     setIsLoading(false);
-  }, []);
+  }, []); // Runs once on mount to signify initial app data loading is complete.
 
   useEffect(() => {
+    // This effect handles redirection logic based on auth state and current path.
+    // It should only run after the initial isLoading phase is complete.
     if (isLoading) {
-      // If we are in the initial loading phase or an auth process is active,
-      // don't attempt redirects yet.
-      return;
+      return; // Don't redirect if we are still in an initial loading or active auth process state
     }
 
-    // After initial loading is done (isLoading is false):
     if (user && pathname === '/login') {
-      // If user is logged in and somehow on the login page, redirect to home.
-      router.replace('/'); // Use replace to avoid back button going to login
+      router.replace('/'); // User is logged in and on login page, redirect to home
     } else if (!user && pathname !== '/login') {
-      // If user is not logged in and not on the login page, redirect to login.
-      router.push('/login'); // Can be push or replace depending on desired back button behavior
+      router.push('/login'); // User is not logged in and not on login page, redirect to login
     }
   }, [user, isLoading, pathname, router]);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
-    setIsLoading(true); // Indicate authentication process is starting
+    setIsLoading(true); // Indicate an authentication process is starting
     try {
       // Simulate API call or credential check
-      // await new Promise(resolve => setTimeout(resolve, 300)); // Optional delay for testing
+      // await new Promise(resolve => setTimeout(resolve, 300)); // Optional delay
 
       const foundUser = mockUsers.find(
         (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
       );
 
       if (foundUser) {
-        setUser(foundUser); // Set the user state. useEffect above will handle redirect.
+        setUser(foundUser); // This will trigger the useEffect above for redirection
         return true;
       } else {
-        setUser(null);
+        setUser(null); // Ensure user is null on failed login
         return false;
       }
     } catch (error) {
@@ -73,27 +71,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    setUser(null); // Clear the user state. useEffect above will handle redirect.
+    setIsLoading(true); // Indicate an authentication process is starting
+    setUser(null); // This will trigger the useEffect above for redirection
+    // router.push('/login') is handled by the useEffect now
+    setIsLoading(false); // Authentication attempt finished
   };
 
-  // This is the primary gate for displaying content or a global loader.
-  // Show loader if:
-  // 1. `isLoading` is true (either initial app load or an auth process like login is active).
-  // 2. OR initial loading is done (`isLoading` is false), but no user is set AND we are not on the login page
-  //    (this implies a redirect to /login is pending or should be happening via the useEffect).
-  if (isLoading || (!user && pathname !== '/login')) {
+  // Primary gate for displaying global loaders or the application content.
+  if (isLoading) {
+    // This covers initial app load (first useEffect setting isLoading to false)
+    // AND active authentication processes (login/logout setting isLoading true/false).
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Initializing...</p>
+        <p className="text-lg text-muted-foreground">Initializing application...</p>
       </div>
     );
   }
 
-  // If execution reaches here, it means:
-  // - `isLoading` is false.
-  // - AND (EITHER `user` is set (so we render children, which could be AppLayout for protected routes)
-  //      OR `user` is null AND `pathname` IS '/login' (so we render children, which is LoginPage))
+  // If initial loading is done (isLoading is false), and no user is authenticated,
+  // and we are not on the login page, a redirect to /login is imminent via useEffect.
+  // Show a loader for this transient state.
+  if (!user && pathname !== '/login') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-lg text-muted-foreground">Redirecting to login...</p>
+      </div>
+    );
+  }
+
+  // If we reach here, it means:
+  // - isLoading is false.
+  // - AND (user is authenticated OR (user is null AND pathname IS '/login'))
+  // So, render the children (which could be LoginPage or AppLayout for protected routes).
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout }}>
       {children}
