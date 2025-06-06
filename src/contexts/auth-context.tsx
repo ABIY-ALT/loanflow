@@ -4,15 +4,16 @@
 import type React from 'react';
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { User as AppUser } from '@/types/loan';
-import { UserRole } from '@/types/loan';
+// UserRole is not directly used here but good for context if needed later
+// import { UserRole } from '@/types/loan';
 import { mockUsers } from '@/lib/mock-data';
 import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: AppUser | null;
   isLoading: boolean;
-  login: (email: string, password?: string) => Promise<boolean>; // Modified to handle mock auth
+  login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -21,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter(); // Get router instance
+  const router = useRouter();
 
   useEffect(() => {
     // Simulate checking for an existing session (e.g., from localStorage or a cookie)
@@ -31,22 +32,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
-    // Simulate network delay for login
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      // Simulate network delay - can be removed if not needed for testing
+      // await new Promise(resolve => setTimeout(resolve, 500));
 
-    const foundUser = mockUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
+      const foundUser = mockUsers.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      );
 
-    if (foundUser) {
-      setUser(foundUser);
-      setIsLoading(false);
-      router.push('/'); // Redirect to dashboard after successful login
-      return true;
-    } else {
-      setUser(null);
-      setIsLoading(false);
-      return false;
+      if (foundUser) {
+        setUser(foundUser);
+        router.push('/'); // Navigate on success
+        return true;
+      } else {
+        setUser(null);
+        return false;
+      }
+    } catch (error) {
+      console.error("Error during login process in AuthContext:", error);
+      setUser(null); // Ensure user is null on error
+      return false;   // Indicate login failure
+    } finally {
+      setIsLoading(false); // CRITICAL: Ensure isLoading is set to false
     }
   };
 
@@ -55,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     router.push('/login'); // Redirect to login page immediately after clearing user
   };
 
-  if (isLoading && !user) { // Show loading only on initial load or during login process
+  if (isLoading) { // Simplified condition: if isLoading is true, show loader.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
