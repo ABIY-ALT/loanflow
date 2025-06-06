@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect }from 'react';
+import { createContext, useContext, useState, useEffect, useRef }from 'react';
 import type { User as AppUser } from '@/types/loan';
 import { mockUsers } from '@/lib/mock-data';
 import { Loader2 } from 'lucide-react';
@@ -19,29 +19,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true); // True until client-side mount and initial checks
-  const [isProcessingAuth, setIsProcessingAuth] = useState(false); // True during active login/logout async operations
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    // Simulate initial check (e.g., for a persisted session)
-    // For this mock setup, we just mark initial load as complete after mount.
+    // Simulate initial client-side readiness. In a real app, you might check for a persisted session here.
     setIsInitialLoad(false);
   }, []);
 
   const login = async (emailInput: string, passwordInput?: string): Promise<boolean> => {
     setIsProcessingAuth(true);
     try {
-      // Defensively ensure emailInput is a string before calling toLowerCase
       const emailToCompare = String(emailInput || '').toLowerCase();
       const foundUser = mockUsers.find(
         (u) => u.email.toLowerCase() === emailToCompare && u.password === passwordInput
       );
 
       if (foundUser) {
-        setUser(foundUser);
-        // router.push('/'); // Navigation is now handled by useEffect based on user state change
+        setUser(foundUser); // Update user state
+        // Navigation will be handled by useEffect reacting to user state change
         return true;
       } else {
         setUser(null);
@@ -59,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setIsProcessingAuth(true);
     setUser(null);
-    // router.push('/login'); // Navigation is now handled by useEffect
+    // Navigation to /login will be handled by useEffect
     setIsProcessingAuth(false);
   };
 
@@ -68,10 +66,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return; // Don't run navigation logic during initial load or active auth processing
     }
 
-    if (user && pathname === '/login') {
-      router.replace('/'); // If user is logged in and on login page, redirect to home
-    } else if (!user && pathname !== '/login') {
-      router.push('/login'); // If user is not logged in and not on login page, redirect to login
+    // User is authenticated
+    if (user) {
+      if (pathname === '/login') {
+        router.replace('/'); // Authenticated user on login page, redirect to home
+      }
+      // If user is authenticated and not on /login, they are on a protected page, no action needed here.
+    }
+    // User is NOT authenticated
+    else {
+      if (pathname !== '/login') {
+        router.push('/login'); // Unauthenticated user on a protected page, redirect to login
+      }
+      // If !user and on /login, no action needed here, they are on the correct page.
     }
   }, [user, isInitialLoad, isProcessingAuth, pathname, router]);
 
@@ -86,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  if (isProcessingAuth) { // Loader during active login/logout attempt
+  if (isProcessingAuth) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -95,8 +102,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // Loader for when redirection to login is imminent due to lack of user session on a protected route
-  if (!user && pathname !== '/login' && !isInitialLoad && !isProcessingAuth) {
+  // If not initial load AND not processing auth:
+  // Check if a redirect to login is needed (and will be actioned by useEffect)
+  if (!user && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -104,7 +112,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       </div>
     );
   }
-
+  
+  // If user is authenticated OR if user is not authenticated but on the login page:
+  // Render children with AuthContext.Provider
+  // The isLoading prop of the context is isProcessingAuth
   return (
     <AuthContext.Provider value={{ user, isLoading: isProcessingAuth, login, logout }}>
       {children}
@@ -119,4 +130,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-
