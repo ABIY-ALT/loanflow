@@ -26,15 +26,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Simulate initial session check. For this prototype, just finish "initial loading".
     // In a real app, this would be async and might set 'user' if a session exists.
-    // For now, we assume no pre-existing session.
-    setIsLoading(false);
-  }, []); // Runs once on mount to signify initial app data loading is complete.
+    setIsLoading(false); // Client-side: once mounted, initial app data loading is complete.
+  }, []); // Runs once on mount
 
   useEffect(() => {
-    // This effect handles redirection logic based on auth state and current path.
-    // It should only run after the initial isLoading phase is complete.
     if (isLoading) {
-      return; // Don't redirect if we are still in an initial loading or active auth process state
+      // Don't perform redirects if we are still in an initial loading phase (first useEffect)
+      // or if an active auth process (login/logout) has set isLoading to true.
+      return;
     }
 
     if (user && pathname === '/login') {
@@ -47,9 +46,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true); // Indicate an authentication process is starting
     try {
-      // Simulate API call or credential check
-      // await new Promise(resolve => setTimeout(resolve, 300)); // Optional delay
-
       const foundUser = mockUsers.find(
         (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
       );
@@ -73,7 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setIsLoading(true); // Indicate an authentication process is starting
     setUser(null); // This will trigger the useEffect above for redirection
-    // router.push('/login') is handled by the useEffect now
+    // router.push('/login') is handled by the useEffect
     setIsLoading(false); // Authentication attempt finished
   };
 
@@ -84,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Initializing application...</p>
+        <p className="text-lg text-muted-foreground">Initializing...</p>
       </div>
     );
   }
