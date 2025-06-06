@@ -2,8 +2,8 @@
 'use client';
 
 import type React from 'react';
-import { useEffect } from 'react'; // Keep useEffect import
-import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
+// Removed unused useEffect import
+import { useRouter, usePathname } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -27,18 +27,21 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, isLoading: authIsLoading, logout } = useAuth(); // Renamed isLoading for clarity
+  const { user, isLoading: authIsProcessing, logout } = useAuth();
   const { toast } = useToast();
-  const router = useRouter(); // Kept for potential future use, not for logout redirect
-  const pathname = usePathname();
+  const router = useRouter(); // Kept for general navigation if needed elsewhere
+  const pathname = usePathname(); // To know current page
 
   const handleSignOut = () => {
     logout(); // AuthContext's useEffect will handle redirection to /login
     toast({ title: "Signed Out", description: "You have been successfully signed out." });
   };
 
-  // If AuthContext is actively processing something (initial load or login/logout action)
-  if (authIsLoading) {
+
+  if (authIsProcessing) {
+    // This means login() or logout() in AuthContext is actively running.
+    // AuthProvider should ideally show its own "Processing authentication..."
+    // This is a fallback if AppLayout somehow renders during this specific state.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -47,14 +50,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
-  // If AuthContext is done loading, but there's no user,
-  // AuthProvider should have already redirected to /login or shown its own "Redirecting..." loader.
-  // If AppLayout still renders in this state, it's an unexpected situation.
-  // This usually means AppLayout is wrapping a page it shouldn't (like /login)
-  // or there's a timing issue in the redirect logic.
   if (!user) {
-    console.warn(`AppLayout: Rendered with no user, and AuthContext is not loading (pathname: ${pathname}). AuthProvider should handle this. Displaying fallback loader.`);
-    // Display a generic loader; AuthProvider is responsible for the actual redirect.
+    // If auth is NOT processing, and there's NO user, it means AuthProvider should have
+    // either redirected to /login or be showing its "Redirecting to login..." screen.
+    // If AppLayout renders in this state, it's an unexpected situation on a protected route.
+    console.warn(`AppLayout: Rendered with no user, and auth is not processing (pathname: ${pathname}). This may indicate an issue if not on /login. AuthProvider should handle redirects.`);
+    // Displaying a generic "Verifying session..." which should be very brief if AuthProvider is working.
+    // If this screen persists, there's a deeper issue in AuthProvider's redirection or state logic.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -63,7 +65,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
-  // If we reach here, user is authenticated and authIsLoading is false.
+  // If we reach here, user is authenticated and auth is not actively processing.
   // Render the main application layout.
   return (
     <SidebarProvider defaultOpen={false}>
