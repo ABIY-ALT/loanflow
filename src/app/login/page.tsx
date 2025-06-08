@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { mockUsers } from '@/lib/mock-data'; // Ensure mockUsers is imported
+// Removed mockUsers import as login logic is now fully in AuthContext
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,31 +19,35 @@ export default function LoginPage() {
   const authContext = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // Local loading state for the form submission
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsLoading(true); // Use local isLoading for button disabling
     setError(null);
 
-    // Simulate login by finding user in mockUsers
-    // Ensure mockUsers is available and has users with passwords
-    const foundUser = mockUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
+    // Call context's login, which now only handles auth logic and returns success/failure
+    const success = await authContext.login(email, password);
 
-    if (foundUser) {
-      authContext.login(foundUser); // Pass the whole user object
+    if (success) {
       toast({ title: "Login Successful", description: "Welcome back!" });
-      // router.push('/'); // Redirection is handled by AuthContext.login
+      router.push('/'); // Navigate to home page after successful login
     } else {
       const friendlyMessage = "Invalid email or password. Please try again.";
       setError(friendlyMessage);
       toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive" });
     }
-    setIsLoading(false);
+    setIsLoading(false); // Reset local isLoading
   };
+
+  // If authContext.isLoading is true, it means AuthProvider is doing something global (like redirecting)
+  // We might want to disable the form or show a different message, but for now, local isLoading handles the button.
+  if (authContext.isLoading) {
+    // This is a global loading state from AuthProvider, potentially during redirects or initial checks.
+    // The login form might still be visible but less interactive or showing a global loader from AuthProvider.
+  }
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
@@ -64,7 +68,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                disabled={isLoading}
+                disabled={isLoading || authContext.isLoading} // Disable if local or global loading
                 className="text-base"
               />
             </div>
@@ -77,15 +81,15 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={isLoading}
+                disabled={isLoading || authContext.isLoading} // Disable if local or global loading
                 className="text-base"
               />
             </div>
             {error && (
               <p className="text-sm text-destructive text-center">{error}</p>
             )}
-            <Button type="submit" className="w-full text-lg py-3" disabled={isLoading}>
-              {isLoading ? (
+            <Button type="submit" className="w-full text-lg py-3" disabled={isLoading || authContext.isLoading}>
+              {isLoading ? ( // Prioritize local form submission loading indicator
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               ) : (
                 <LogIn className="mr-2 h-5 w-5" />
@@ -106,5 +110,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    
