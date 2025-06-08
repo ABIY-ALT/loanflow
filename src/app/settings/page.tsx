@@ -31,7 +31,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-} from '@dnd-kit/dnd-kit-sortable'; // Corrected import for dnd-kit
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
 import { UserRole } from '@/types/loan';
@@ -53,7 +53,7 @@ import Link from 'next/link';
 
 
 const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
-  id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
+  id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
   name,
   responsibleDepartment: departmentName,
   defaultTimelineDays: timeline,
@@ -500,7 +500,7 @@ export default function SettingsPage() {
               id: result.id,
               ...definitionData,
               versions: [],
-              createdAt: new Date().toISOString(), 
+              createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
           };
           setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
@@ -534,12 +534,12 @@ export default function SettingsPage() {
             throw new Error(result.error);
         }
         toast({ title: "All Settings Saved to Database", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData(); 
+        await fetchInitialData();
     } catch (err: any) {
         let errorMessage = "Failed to save settings to Database.";
         if (err && typeof err.message === 'string') {
             errorMessage = err.message;
-             if (err.message.includes("query requires an index")) { 
+             if (err.message.includes("query requires an index")) {
                 errorMessage += " Please check database logs or Prisma error details.";
             }
         }
@@ -571,7 +571,7 @@ export default function SettingsPage() {
         </div>
     );
   }
-  
+
   if (error && workflowDefinitions.length === 0 && departments.length === 0) {
      return (
         <div className="space-y-6 p-4 text-center">
@@ -699,3 +699,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
+    
