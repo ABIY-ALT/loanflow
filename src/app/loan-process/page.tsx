@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { UserRole } from '@/types/loan';
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -37,33 +37,64 @@ interface LoanCardProps {
   loan: LoanRequest;
   stageName: string;
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerViewing: boolean; // Renamed for clarity
+  currentUser: User | null; 
   router: ReturnType<typeof useRouter>;
-  currentUser: User | null; // Added current user for more granular checks
 }
 
-function LoanCard({ loan, stageName, onCardActionClick, isManagerViewing, router, currentUser }: LoanCardProps) {
-  const canTakeAction = !stageName.toLowerCase().includes("closed") && !stageName.toLowerCase().includes("rejected") && !stageName.toLowerCase().includes("disbursed");
-  
-  let actionButtonText = "Details";
-  let ActionIcon = ArrowRight;
+function LoanCard({ loan, stageName, onCardActionClick, currentUser, router }: LoanCardProps) {
+  const isManagerRole = currentUser?.role === UserRole.UNDERWRITER || currentUser?.role === UserRole.ADMIN;
+  const isViewOnlyRole = currentUser?.role === UserRole.VIEW_ONLY;
+
+  const canPerformActions = !stageName.toLowerCase().includes("closed") && 
+                            !stageName.toLowerCase().includes("rejected") && 
+                            !stageName.toLowerCase().includes("disbursed") &&
+                            !isViewOnlyRole;
+
+  let actionButtonText = "View Details";
+  let ActionIcon = Eye; // Default to Eye icon for viewing
   let actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+  let showActionButton = true;
 
   const isCurrentUserAssigned = currentUser && loan.assignedTo === currentUser.id;
   const canUserMarkComplete = (currentUser?.role === UserRole.STAFF || currentUser?.role === UserRole.RELATIONSHIP_MANAGER || currentUser?.role === UserRole.UNDERWRITER) && isCurrentUserAssigned;
 
-
-  if (isManagerViewing && loan.isReadyForManagerReview && canTakeAction) { // Manager sees "Review & Promote"
-    actionButtonText = "Review & Promote";
-    ActionIcon = UserCheck;
-    actionHandler = () => onCardActionClick(loan);
-  } else if (canUserMarkComplete && !loan.isReadyForManagerReview && canTakeAction) { // Assigned staff sees "Mark Complete"
-    actionButtonText = "Mark Complete";
-    ActionIcon = CheckSquare;
-    actionHandler = () => onCardActionClick(loan);
-  } else if (!loan.assignedTo && canTakeAction && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.UNDERWRITER)) { // Manager/Admin can assign
-    actionButtonText = "Assign Staff";
-    ActionIcon = UserPlus;
+  if (canPerformActions) {
+    if (isManagerRole && loan.isReadyForManagerReview) {
+      actionButtonText = "Review & Promote";
+      ActionIcon = UserCheck;
+      actionHandler = () => onCardActionClick(loan);
+    } else if (canUserMarkComplete && !loan.isReadyForManagerReview) {
+      actionButtonText = "Mark Complete";
+      ActionIcon = CheckSquare;
+      actionHandler = () => onCardActionClick(loan);
+    } else if (!loan.assignedTo && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.UNDERWRITER)) {
+      actionButtonText = "Assign Staff";
+      ActionIcon = UserPlus;
+      actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+    } else if (isViewOnlyRole) {
+        // For VIEW_ONLY, action is always "View Details"
+        actionButtonText = "View Details";
+        ActionIcon = Eye;
+        actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+    } else if (!isManagerRole && !canUserMarkComplete && loan.assignedTo && loan.assignedTo !== currentUser?.id) {
+        // Staff viewing a case not assigned to them, or that cannot be marked complete by them yet
+        actionButtonText = "View Details";
+        ActionIcon = Eye;
+        actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+    } else if (!isManagerRole && !canUserMarkComplete && !loan.assignedTo) {
+        // Staff viewing an unassigned case they cannot directly assign
+        actionButtonText = "View Details";
+        ActionIcon = Eye;
+        actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+    }
+  } else if (isViewOnlyRole) { // Explicitly handle view-only for non-actionable stages
+    actionButtonText = "View Details";
+    ActionIcon = Eye;
+    actionHandler = () => router.push(`/loan-requests/${loan.id}`);
+  } else {
+    // For non-actionable stages (closed, etc.) and non-view-only roles, still show details
+    actionButtonText = "View Details";
+    ActionIcon = Eye;
     actionHandler = () => router.push(`/loan-requests/${loan.id}`);
   }
 
@@ -88,12 +119,12 @@ function LoanCard({ loan, stageName, onCardActionClick, isManagerViewing, router
         <p className="truncate">Assigned: {loan.assignedTo ? (mockUsers.find(u=>u.id === loan.assignedTo)?.name || 'Unknown User') : <span className="italic text-muted-foreground">Unassigned Staff</span>}</p>
         {loan.stageDeadline && (<div className="flex items-center text-xs text-muted-foreground"><Clock className="h-3 w-3 mr-1" />Deadline: {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}</div>)}
         
-        {loan.isReadyForManagerReview && canTakeAction && (
+        {loan.isReadyForManagerReview && canPerformActions && !isViewOnlyRole && (
              <Badge variant="outline" className="mt-2 text-orange-600 border-orange-400 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                 Awaiting Manager Review
             </Badge>
         )}
-         {(isManagerViewing || canUserMarkComplete || (!loan.assignedTo && (currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.UNDERWRITER))) && canTakeAction && (
+        {showActionButton && (
           <Button variant="outline" size="sm" className="w-full mt-2" onClick={actionHandler}>
             <ActionIcon className="mr-2 h-4 w-4" /> {actionButtonText}
           </Button>
@@ -107,12 +138,11 @@ interface KanbanColumnProps {
   stageDef: WorkflowStageDefinition;
   loans: LoanRequest[];
   onCardActionClick: (loan: LoanRequest) => void;
-  isManagerViewing: boolean;
-  router: ReturnType<typeof useRouter>;
   currentUser: User | null;
+  router: ReturnType<typeof useRouter>;
 }
 
-function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerViewing, router, currentUser }: KanbanColumnProps) {
+function KanbanColumn({ stageDef, loans, onCardActionClick, currentUser, router }: KanbanColumnProps) {
   return (
     <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
       <div className="flex justify-between items-center p-2 mb-2 gap-2">
@@ -133,7 +163,7 @@ function KanbanColumn({ stageDef, loans, onCardActionClick, isManagerViewing, ro
           </div>
         )}
         {loans.map((loan) => (
-          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} isManagerViewing={isManagerViewing} router={router} currentUser={currentUser}/>
+          <LoanCard key={loan.id} loan={loan} stageName={stageDef.name} onCardActionClick={onCardActionClick} currentUser={currentUser} router={router}/>
         ))}
       </ScrollArea>
     </div>
@@ -195,7 +225,7 @@ interface ActiveWorkflowPipeline {
 
 export default function LoanProcessPage() {
   const router = useRouter();
-  const { user: currentUser, isLoading: authLoading } = useAuth(); // Get current user
+  const { user: currentUser, isLoading: authLoading } = useAuth(); 
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [usersFromService, setUsersFromService] = useState<User[]>([]);
@@ -281,8 +311,8 @@ export default function LoanProcessPage() {
   }, [toast, getStageDefById]);
 
   const handleCardActionClick = useCallback(async (loan: LoanRequest) => {
-    if (!currentUser) {
-        toast({title: "Authentication Error", description: "User not identified.", variant: "destructive"});
+    if (!currentUser || currentUser.role === UserRole.VIEW_ONLY) {
+        toast({title: "Permission Denied", description: "You do not have permission to perform this action.", variant: "destructive"});
         return;
     }
     setSelectedLoanForDialog(loan);
@@ -292,12 +322,10 @@ export default function LoanProcessPage() {
         return;
     }
 
-    // Manager action: Promote
     if (isManagerRole && loan.isReadyForManagerReview) {
         if (!validateLoanForNextStep(loan)) return;
         setIsPromoteDialogOpen(true);
     } 
-    // Staff action: Mark Complete
     else if (!isManagerRole && loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview) {
         if (!validateLoanForNextStep(loan)) return;
         
@@ -325,7 +353,6 @@ export default function LoanProcessPage() {
             toast({ title: "Success", description: `${loan.customerName}'s stage '${currentStageDef.name}' marked complete. Awaiting manager review.` });
         }
     }
-    // Action needed: Assignment
     else if (!loan.assignedTo && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.UNDERWRITER)) {
         toast({title: "Assignment Needed", description: "This loan needs to be assigned to a staff member.", variant: "info"});
         router.push(`/loan-requests/${loan.id}`); 
@@ -427,7 +454,9 @@ export default function LoanProcessPage() {
             <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
             <p className="text-muted-foreground">Visualize and manage loans through their lifecycle.</p>
           </div>
-          <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
+          {currentUser && currentUser.role !== UserRole.VIEW_ONLY && (
+            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
+          )}
         </div>
         <Alert variant="default" className="max-w-2xl mx-auto">
           <AlertTriangle className="h-5 w-5" />
@@ -448,7 +477,9 @@ export default function LoanProcessPage() {
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
           <p className="text-muted-foreground">Visualize and manage loans through their lifecycle for each active workflow.</p>
         </div>
-        <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
+        {currentUser && currentUser.role !== UserRole.VIEW_ONLY && (
+           <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
+        )}
       </div>
 
       {activeWorkflowPipelines.map(pipeline => (
@@ -465,9 +496,8 @@ export default function LoanProcessPage() {
                   stageDef={stageDef}
                   loans={loansByStageAndVersionId(stageDef.id, pipeline.activeVersion.id)}
                   onCardActionClick={handleCardActionClick}
-                  isManagerViewing={isManagerRole} 
-                  router={router}
                   currentUser={currentUser}
+                  router={router}
                 />
               ))}
             </div>

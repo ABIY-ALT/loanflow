@@ -38,15 +38,20 @@ export function LoanDetailHeader({
 
   if (!loan || !currentUser) return null;
 
+  const isViewOnly = currentUser.role === UserRole.VIEW_ONLY;
   const isManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.UNDERWRITER;
   const isStaff = currentUser.role === UserRole.STAFF || currentUser.role === UserRole.RELATIONSHIP_MANAGER;
 
-  const canOfficerMarkComplete = isActionableStage && 
-                                 (isStaff || (isManager && loan.assignedTo === currentUser.id)) && // Manager can mark complete if assigned to them
+  const canEditDetails = !isViewOnly && (isManager || (isStaff && loan.assignedTo === currentUser.id));
+  const canAddNote = !isViewOnly; // All non-view-only roles can add notes for now
+  const canLogInfoRequest = !isViewOnly && isActionableStage && (isManager || (isStaff && loan.assignedTo === currentUser.id));
+  
+  const canOfficerMarkComplete = !isViewOnly && isActionableStage && 
+                                 (isStaff || (isManager && loan.assignedTo === currentUser.id)) && 
                                  loan.assignedTo === currentUser.id && 
                                  !loan.isReadyForManagerReview;
 
-  const canManagerTakeAction = isActionableStage && 
+  const canManagerTakeAction = !isViewOnly && isActionableStage && 
                                isManager && 
                                loan.isReadyForManagerReview;
 
@@ -57,12 +62,13 @@ export function LoanDetailHeader({
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
-        { (isManager || (isStaff && loan.assignedTo === currentUser.id) ) && 
+        {canEditDetails && 
             <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details / Assign</Button>
         }
-        <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
-        
-        { (isManager || (isStaff && loan.assignedTo === currentUser.id) ) && isActionableStage &&
+        {canAddNote && 
+            <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
+        }
+        {canLogInfoRequest &&
             <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Info Request</Button>
         }
 

@@ -16,6 +16,7 @@ export const mockUsers: User[] = [
   { id: 'user-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', role: UserRole.STAFF, department: "Credit Analysis", password: 'password' },
   // System user for Prisma seeding - ensure this ID matches what seed.ts uses
   { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', role: UserRole.ADMIN, password: 'systempassword' },
+  { id: 'user-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', role: UserRole.VIEW_ONLY, password: 'password' },
 ];
 
 export const mockDepartments: Department[] = [

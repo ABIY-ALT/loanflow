@@ -14,6 +14,7 @@ import {
   FolderKanban,
   Building,
   ClipboardList,
+  Eye, // Added for VIEW_ONLY if we give it a specific icon
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -35,43 +36,48 @@ interface NavItemConfig {
 const navItemsConfig: NavItemConfig[] = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
   { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
-  { href: '/loan-requests/new', label: 'New Loan Request', icon: FilePlus2 },
+  { 
+    href: '/loan-requests/new', 
+    label: 'New Loan Request', 
+    icon: FilePlus2,
+    roles: [UserRole.ADMIN, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.STAFF] // Not for VIEW_ONLY
+  },
   {
     href: '/my-assigned-cases',
     label: 'My Assigned Cases',
     icon: ClipboardList,
-    roles: [UserRole.STAFF, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.ADMIN]
+    roles: [UserRole.STAFF, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.ADMIN] // Not for VIEW_ONLY
   },
   {
     href: '/manager-review',
     label: 'Manager Review Queue',
     icon: UserCheck,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN]
+    roles: [UserRole.UNDERWRITER, UserRole.ADMIN] // Not for VIEW_ONLY or basic staff
   },
   {
     href: '/department-queue',
     label: 'Unassigned Cases',
     icon: FolderKanban,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN]
+    roles: [UserRole.UNDERWRITER, UserRole.ADMIN] // Not for VIEW_ONLY or basic staff
   },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
   {
     href: '/overdue-tasks',
     label: 'Overdue Tasks',
     icon: AlertTriangle,
-    roles: [UserRole.UNDERWRITER, UserRole.RELATIONSHIP_MANAGER, UserRole.ADMIN]
+    roles: [UserRole.UNDERWRITER, UserRole.RELATIONSHIP_MANAGER, UserRole.ADMIN] // Not for VIEW_ONLY or basic staff
   },
   {
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    roles: [UserRole.ADMIN, UserRole.UNDERWRITER], // Updated for broader manager access for demo
+    roles: [UserRole.ADMIN, UserRole.UNDERWRITER], 
     subItems: [
       {
         href: '/settings/departments',
         label: 'Manage Departments',
         icon: Building,
-        roles: [UserRole.ADMIN, UserRole.UNDERWRITER] // Updated
+        roles: [UserRole.ADMIN, UserRole.UNDERWRITER] 
       },
     ],
   },
@@ -98,7 +104,6 @@ export default function SidebarNav() {
     );
   }
 
-  // If no user is logged in, don't render any menu items.
   if (!user) {
     return null;
   }
@@ -106,18 +111,32 @@ export default function SidebarNav() {
   const userRole = user?.role;
 
   const canView = (itemRoles?: UserRole[]): boolean => {
-    if (!itemRoles || itemRoles.length === 0) return true;
-    if (!userRole) return false; // Should not happen if user is null check above is active
+    if (!userRole) return false; 
+    if (!itemRoles || itemRoles.length === 0) return true; // Public item
 
-    // Simplified logic: ADMIN and UNDERWRITER see all manager-level items
-    if (userRole === UserRole.ADMIN || userRole === UserRole.UNDERWRITER) {
-        return true;
+    // VIEW_ONLY specific logic: only show items explicitly allowed for VIEW_ONLY or public items
+    if (userRole === UserRole.VIEW_ONLY) {
+        return itemRoles.includes(UserRole.VIEW_ONLY) || itemRoles.length === 0;
     }
-    // Other roles only see items specifically assigned to them or public items
+
+    // For other roles (ADMIN, UNDERWRITER, STAFF, etc.)
+    if (userRole === UserRole.ADMIN || userRole === UserRole.UNDERWRITER) { // ADMIN and UNDERWRITER are broader
+        return true; 
+    }
     return itemRoles.includes(userRole);
   };
+  
+  // Explicitly define what VIEW_ONLY can see if the generic `canView` is too broad
+  const isViewOnlyUser = userRole === UserRole.VIEW_ONLY;
+  const viewOnlyAllowedPaths = ['/', '/loan-process', '/loan-status'];
 
-  const visibleNavItems = navItemsConfig.filter(item => canView(item.roles));
+
+  const visibleNavItems = navItemsConfig.filter(item => {
+    if (isViewOnlyUser) {
+        return viewOnlyAllowedPaths.includes(item.href);
+    }
+    return canView(item.roles);
+  });
 
   return (
     <SidebarMenu>
@@ -125,7 +144,13 @@ export default function SidebarNav() {
         const Icon = item.icon;
         const mainButtonIsActive = currentPathname === item.href;
 
-        const filteredSubItems = item.subItems?.filter(sub => canView(sub.roles));
+        // Filter sub-items based on role, especially for VIEW_ONLY
+        const filteredSubItems = item.subItems?.filter(sub => {
+            if (isViewOnlyUser) {
+                return viewOnlyAllowedPaths.includes(sub.href); // VIEW_ONLY generally won't have sub-items based on current config
+            }
+            return canView(sub.roles);
+        });
         const openSubMenu = filteredSubItems && filteredSubItems.length > 0 && currentPathname.startsWith(item.href);
 
         return (

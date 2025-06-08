@@ -8,11 +8,12 @@ import { HistoryEntryItem } from '@/components/loan/common/HistoryEntryItem';
 
 interface LoanHistoryTimelineProps {
   loan: LoanRequest;
-  onFulfillInfoRequest: (entryId: string, requirementText: string) => Promise<void>;
+  onFulfillInfoRequest?: (entryId: string, requirementText: string) => Promise<void>; // Made optional
   isSavingGlobal: boolean;
+  isViewOnly: boolean; // New prop
 }
 
-export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal }: LoanHistoryTimelineProps) {
+export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal, isViewOnly }: LoanHistoryTimelineProps) {
   // Find the latest history entry that has a 'requiredFulfilment' and is not yet marked as fulfilled.
   const activeInfoRequestEntry = [...loan.history]
     .reverse()
@@ -28,8 +29,9 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
               key={entry.id}
               entry={entry}
               isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
-              onFulfillInfoRequest={onFulfillInfoRequest}
+              onFulfillInfoRequest={onFulfillInfoRequest} // Pass it down; button inside HistoryEntryItem will handle its presence
               isSaving={isSavingGlobal}
+              isViewOnly={isViewOnly} // Pass down view-only status
             />
           ))}
         </div>

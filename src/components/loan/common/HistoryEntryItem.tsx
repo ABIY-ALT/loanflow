@@ -14,6 +14,7 @@ interface HistoryEntryItemProps {
   isActiveInfoRequest?: boolean;
   onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
   isSaving?: boolean;
+  isViewOnly?: boolean; // New prop
 }
 
 export function HistoryEntryItem({
@@ -21,6 +22,7 @@ export function HistoryEntryItem({
   isActiveInfoRequest,
   onFulfillInfoRequest,
   isSaving,
+  isViewOnly, // Use new prop
 }: HistoryEntryItemProps) {
   return (
     <div className="relative pl-6 pb-4 border-l border-border">
@@ -33,7 +35,7 @@ export function HistoryEntryItem({
       {entry.requiredFulfilment && (
         <div className={`text-sm mt-1 p-2 rounded-md border ${isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-muted/50'}`}>
           <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
-          {isActiveInfoRequest && onFulfillInfoRequest && entry.requiredFulfilment && (
+          {isActiveInfoRequest && onFulfillInfoRequest && entry.requiredFulfilment && !isViewOnly && ( // Check isViewOnly
             <Button
               size="sm"
               variant="outline"

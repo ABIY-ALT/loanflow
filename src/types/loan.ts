@@ -6,6 +6,7 @@ export enum UserRole {
   RELATIONSHIP_MANAGER = "RELATIONSHIP_MANAGER",
   UNDERWRITER = "UNDERWRITER",
   STAFF = "STAFF",
+  VIEW_ONLY = "VIEW_ONLY", // New role
 }
 
 // Client-side/Application-level User type

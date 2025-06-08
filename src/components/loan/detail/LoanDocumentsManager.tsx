@@ -32,10 +32,11 @@ const getDocumentBadgeVariant = (status: LoanDocument['status'] | 'Missing'): "d
 
 interface LoanDocumentsManagerProps {
   loan: LoanRequest;
-  currentStageDef: WorkflowStageDefinition | null; // Use new stage definition
-  onOpenUploadDialog: (docName: string) => void;
-  onVerifyDocument: (docName: string) => Promise<void>;
+  currentStageDef: WorkflowStageDefinition | null;
+  onOpenUploadDialog?: (docName: string) => void; // Optional for view-only
+  onVerifyDocument?: (docName: string) => Promise<void>; // Optional for view-only
   isSavingGlobal: boolean;
+  isViewOnly: boolean; // New prop
 }
 
 export function LoanDocumentsManager({
@@ -44,12 +45,14 @@ export function LoanDocumentsManager({
   onOpenUploadDialog,
   onVerifyDocument,
   isSavingGlobal,
+  isViewOnly,
 }: LoanDocumentsManagerProps) {
   const requiredDocumentsForCurrentStage = currentStageDef?.requiredDocumentNames || [];
   const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);
 
 
   const handleVerify = async (docName: string) => {
+    if (isViewOnly || !onVerifyDocument) return;
     setIsVerifyingDoc(docName);
     await onVerifyDocument(docName);
     setIsVerifyingDoc(null);
@@ -79,11 +82,11 @@ export function LoanDocumentsManager({
                   >
                     {status}
                   </Badge>
-                  {status === 'Missing' || status === 'Pending' || status === 'Rejected' ? (
+                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected') ? (
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
-                  ) : status === 'Submitted' ? (
+                  ) : !isViewOnly && onVerifyDocument && status === 'Submitted' ? (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>

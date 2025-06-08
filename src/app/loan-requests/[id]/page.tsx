@@ -7,12 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
+import { UserRole } from '@/types/loan'; // Import UserRole
 import { mockUsers } from '@/lib/mock-data';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -32,6 +34,7 @@ export default function LoanDetailPage() {
   const params = useParams();
   const { toast } = useToast();
   const loanId = params.id as string;
+  const { user: currentUser } = useAuth(); // Get current user
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
   const [users, setUsers] = useState<UserType[]>(mockUsers);
@@ -46,6 +49,8 @@ export default function LoanDetailPage() {
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = useState(false);
   const [currentDocumentToUpload, setCurrentDocumentToUpload] = useState<string | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
+
+  const isViewOnlyUser = currentUser?.role === UserRole.VIEW_ONLY;
   
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowDefinitionId || !loan.workflowVersionId) return null;
@@ -104,6 +109,10 @@ export default function LoanDetailPage() {
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
   ): Promise<boolean> => {
+    if (isViewOnlyUser) {
+      toast({ title: "Permission Denied", description: "View-only users cannot make changes.", variant: "destructive" });
+      return false;
+    }
     if (!loan) return false;
     setIsSaving(true);
     
@@ -133,11 +142,11 @@ export default function LoanDetailPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [loan, toast, fetchLoanData]);
+  }, [loan, toast, fetchLoanData, isViewOnlyUser]);
 
 
   const onEditLoanSubmit = async (data: any) => { 
-    if (!loan) return;
+    if (!loan || isViewOnlyUser) return;
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
     
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
@@ -147,9 +156,9 @@ export default function LoanDetailPage() {
             id: `hist-assign-${Date.now()}`,
             stageName: currentStageDef?.name || loan.currentStageName || 'Current Stage',
             timestamp: formatISO(new Date()),
-            userId: 'system-prisma', // System action for assignment change
-            userName: 'System Process',
-            notes: `Case assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department.`
+            userId: currentUser?.id || 'system-prisma', 
+            userName: currentUser?.name || 'System Process',
+            notes: `Case assignment changed. Now assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department by ${currentUser?.name || 'System Process'}.`
         });
     }
 
@@ -167,6 +176,7 @@ export default function LoanDetailPage() {
   };
 
   const onAddNoteSubmit = async (noteContent: string) => {
+    if (isViewOnlyUser) return;
     if (!noteContent.trim() || !loan) {
       toast({ title: "Note Required", description: "Please enter content for the note.", variant: "destructive" });
       return;
@@ -174,8 +184,8 @@ export default function LoanDetailPage() {
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-note-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-      userId: 'system-prisma', // Changed from 'mock-user-id'
-      userName: 'System Process', // Or a generic "User Note"
+      userId: currentUser?.id || 'system-prisma', 
+      userName: currentUser?.name || 'System Process',
       notes: noteContent,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
@@ -183,6 +193,7 @@ export default function LoanDetailPage() {
   };
 
   const onLogInfoRequestSubmit = async (infoToRequest: string) => {
+    if (isViewOnlyUser) return;
     if (!infoToRequest.trim() || !loan) {
       toast({ title: "Info Required", description: "Please specify information needed.", variant: "destructive" });
       return;
@@ -190,8 +201,8 @@ export default function LoanDetailPage() {
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-      userId: 'system-prisma', // Changed from 'mock-user-id'
-      userName: 'System Process',
+      userId: currentUser?.id || 'system-prisma', 
+      userName: currentUser?.name || 'System Process',
       notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
     };
@@ -200,21 +211,22 @@ export default function LoanDetailPage() {
   };
   
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
-    if (!loan) return;
+    if (!loan || isViewOnlyUser) return;
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
     const updatedHistory = loan.history.map(h =>
-        h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by customer on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
+        h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by ${currentUser?.name || 'User'} on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
     );
     updatedHistory.push({
         id: `hist-fulfill-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-        userId: 'system-prisma', // Changed from 'mock-user-id'
-        userName: 'System Process',
+        userId: currentUser?.id || 'system-prisma', 
+        userName: currentUser?.name || 'System Process',
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
     await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
+    if (isViewOnlyUser) return false;
     if (!loan || !currentStageDef || !currentWorkflowVersion) {
         if (!currentStageDef) toast({title: "Workflow Info Missing", description: "Cannot validate requirements as current stage definition is missing.", variant: "warning", duration: 5000});
         return false;
@@ -237,12 +249,12 @@ export default function LoanDetailPage() {
       }
     }
     return true;
-  }, [loan, currentStageDef, currentWorkflowVersion, toast]);
+  }, [loan, currentStageDef, currentWorkflowVersion, toast, isViewOnlyUser]);
 
   const handleMarkStageComplete = async () => { 
-    if (!loan || !currentStageDef || !validateCurrentStageRequirements()) return;
-    const actingUserId = loan.assignedTo || 'system-prisma'; // Use assigned officer or system
-    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || 'Assigned Officer') : 'System Process';
+    if (isViewOnlyUser || !loan || !currentStageDef || !validateCurrentStageRequirements()) return;
+    const actingUserId = loan.assignedTo || currentUser?.id || 'system-prisma';
+    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || currentUser?.name || 'Assigned Officer') : (currentUser?.name || 'System Process');
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -254,7 +266,7 @@ export default function LoanDetailPage() {
   };
 
   const handleManagerPromoteLoan = async () => { 
-    if (!loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
+    if (isViewOnlyUser || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
     
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (currentStageIndex === -1 || currentStageIndex === currentWorkflowVersion.stages.length - 1) {
@@ -263,8 +275,8 @@ export default function LoanDetailPage() {
           const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
           const finalHistory: LoanHistoryEntry = {
             id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: 'system-prisma', // Manager action, using system as placeholder
-            userName: 'System Process (Manager Action)', 
+            userId: currentUser.id,
+            userName: currentUser.name, 
             notes: terminalNote,
           };
            await handleLocalAndUpdateService({ history: [...loan.history, finalHistory], isReadyForManagerReview: false }, "Loan reached final workflow stage.");
@@ -276,8 +288,8 @@ export default function LoanDetailPage() {
     
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'system-prisma', // Manager action, using system as placeholder
-      userName: 'System Process (Manager Action)',
+      userId: currentUser.id, 
+      userName: currentUser.name,
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
 
@@ -294,6 +306,7 @@ export default function LoanDetailPage() {
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
+    if (isViewOnlyUser) return;
     if (!loan || !currentStageDef) {
         toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
         return;
@@ -304,8 +317,8 @@ export default function LoanDetailPage() {
     }
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-rework-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-      userId: 'system-prisma', // Manager action, using system as placeholder
-      userName: 'System Process (Manager Action)',
+      userId: currentUser?.id || 'system-prisma', 
+      userName: currentUser?.name || 'System Process (Manager Action)',
       notes: `Manager returned case for rework in stage '${currentStageDef.name}'. Reason: ${reworkNote}`
     };
     const success = await handleLocalAndUpdateService({
@@ -317,7 +330,7 @@ export default function LoanDetailPage() {
   };
 
   const handleUploadDocument = async (docName: string) => {
-    if (!loan) return;
+    if (!loan || isViewOnlyUser) return;
     const existingDocIndex = loan.documents.findIndex(d => d.name === docName);
     let updatedDocuments: LoanDocument[];
     const timestamp = formatISO(new Date());
@@ -336,7 +349,7 @@ export default function LoanDetailPage() {
   };
 
   const handleVerifyDocument = async (docName: string) => {
-    if (!loan) return;
+    if (!loan || isViewOnlyUser) return;
     const updatedDocuments = loan.documents.map(doc =>
         doc.name === docName ? { ...doc, status: 'Verified', notes: 'Document verified.' } : doc
     );
@@ -460,14 +473,16 @@ export default function LoanDetailPage() {
             <LoanDocumentsManager
               loan={loan}
               currentStageDef={currentStageDef} 
-              onOpenUploadDialog={(docName) => { setCurrentDocumentToUpload(docName); setIsUploadDocDialogOpen(true); }}
-              onVerifyDocument={handleVerifyDocument}
+              onOpenUploadDialog={isViewOnlyUser ? undefined : (docName) => { setCurrentDocumentToUpload(docName); setIsUploadDocDialogOpen(true); }}
+              onVerifyDocument={isViewOnlyUser ? undefined : handleVerifyDocument}
               isSavingGlobal={isSaving}
+              isViewOnly={isViewOnlyUser}
             />
             <LoanHistoryTimeline
               loan={loan}
-              onFulfillInfoRequest={handleFulfillInfoRequest}
+              onFulfillInfoRequest={isViewOnlyUser ? undefined : handleFulfillInfoRequest}
               isSavingGlobal={isSaving}
+              isViewOnly={isViewOnlyUser}
             />
           </div>
         </CardContent>
@@ -478,43 +493,47 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      <EditLoanDetailsDialog
-        isOpen={isEditLoanDialogOpen}
-        onOpenChange={setIsEditLoanDialogOpen}
-        loan={loan}
-        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)} 
-        currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
-        onSubmit={onEditLoanSubmit}
-        isSaving={isSaving}
-      />
-      <AddNoteToLoanDialog
-        isOpen={isAddNoteDialogOpen}
-        onOpenChange={setIsAddNoteDialogOpen}
-        onSubmit={onAddNoteSubmit}
-        isSaving={isSaving}
-      />
-      <LogInfoRequestForLoanDialog
-        isOpen={isLogInfoDialogOpen}
-        onOpenChange={setIsLogInfoDialogOpen}
-        onSubmit={onLogInfoRequestSubmit}
-        isSaving={isSaving}
-      />
-      <UploadLoanDocumentDialog
-        isOpen={isUploadDocDialogOpen}
-        onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentToUpload(null);}}
-        documentName={currentDocumentToUpload}
-        onSubmit={handleUploadDocument}
-        isSaving={isSaving}
-      />
-      <ReturnLoanForReworkDialog
-        isOpen={isReturnForReworkDialogOpen}
-        onOpenChange={setIsReturnForReworkDialogOpen}
-        loan={loan}
-        users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)}
-        currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
-        onSubmit={onReturnForReworkSubmit}
-        isSaving={isSaving}
-      />
+      {!isViewOnlyUser && (
+        <>
+          <EditLoanDetailsDialog
+            isOpen={isEditLoanDialogOpen}
+            onOpenChange={setIsEditLoanDialogOpen}
+            loan={loan}
+            users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)} 
+            currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
+            onSubmit={onEditLoanSubmit}
+            isSaving={isSaving}
+          />
+          <AddNoteToLoanDialog
+            isOpen={isAddNoteDialogOpen}
+            onOpenChange={setIsAddNoteDialogOpen}
+            onSubmit={onAddNoteSubmit}
+            isSaving={isSaving}
+          />
+          <LogInfoRequestForLoanDialog
+            isOpen={isLogInfoDialogOpen}
+            onOpenChange={setIsLogInfoDialogOpen}
+            onSubmit={onLogInfoRequestSubmit}
+            isSaving={isSaving}
+          />
+          <UploadLoanDocumentDialog
+            isOpen={isUploadDocDialogOpen}
+            onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentToUpload(null);}}
+            documentName={currentDocumentToUpload}
+            onSubmit={handleUploadDocument}
+            isSaving={isSaving}
+          />
+          <ReturnLoanForReworkDialog
+            isOpen={isReturnForReworkDialogOpen}
+            onOpenChange={setIsReturnForReworkDialogOpen}
+            loan={loan}
+            users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)}
+            currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
+            onSubmit={onReturnForReworkSubmit}
+            isSaving={isSaving}
+          />
+        </>
+      )}
     </div>
   );
 }
