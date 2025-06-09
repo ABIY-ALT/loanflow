@@ -27,10 +27,10 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription as ShadDialogDescription,
+  DialogDescription as ShadDialogDescription, // Aliased to avoid conflicts if any
   DialogFooter,
   DialogHeader,
-  DialogTitle as ShadDialogTitle,
+  DialogTitle as ShadDialogTitle, // Aliased to avoid conflicts if any
   DialogClose,
 } from "@/components/ui/dialog";
 import Link from 'next/link';
@@ -297,7 +297,7 @@ export default function ManageRolesPage() {
             </ShadDialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit}>
-            <ScrollArea className="max-h-[60vh] p-1 pr-3"> {/* Added ScrollArea here */}
+            <ScrollArea className="max-h-[60vh] p-1 pr-3"> {/* ScrollArea added here */}
               <div className="space-y-4 py-4">
                   <div>
                     <Label htmlFor="role-name-dialog" className="block text-sm font-medium mb-1">Role Name</Label>
@@ -345,7 +345,7 @@ export default function ManageRolesPage() {
                     ))}
                   </div>
               </div>
-            </ScrollArea> {/* ScrollArea ends here */}
+            </ScrollArea>
             <DialogFooter className="pt-5">
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting} onClick={resetFormDialog}>Cancel</Button>
@@ -362,4 +362,4 @@ export default function ManageRolesPage() {
     </div>
   );
 }
-
+    
