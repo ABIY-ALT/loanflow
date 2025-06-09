@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -27,10 +27,10 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter as FormDialogFooter, // Renamed to avoid conflict
-  DialogHeader as FormDialogHeader, // Renamed to avoid conflict
-  DialogTitle as FormDialogTitle,   // Renamed to avoid conflict
+  DialogDescription as ShadDialogDescription, // Use imported DialogDescription
+  DialogFooter,
+  DialogHeader,
+  DialogTitle as ShadDialogTitle, // Use imported DialogTitle
   DialogClose,
 } from "@/components/ui/dialog";
 import Link from 'next/link';
@@ -290,12 +290,12 @@ export default function ManageRolesPage() {
       {/* Add/Edit Role Dialog */}
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isSubmitting) { setIsFormDialogOpen(isOpen); if (!isOpen) resetFormDialog(); } }}>
         <DialogContent className="sm:max-w-2xl">
-          <FormDialogHeader>
-            <FormDialogTitle>{editingRole ? 'Edit Role' : 'Add New Role'}</FormDialogTitle>
-            <FormDialogDescription>
+          <DialogHeader> {/* Corrected: Was FormDialogHeader */}
+            <ShadDialogTitle>{editingRole ? 'Edit Role' : 'Add New Role'}</ShadDialogTitle> {/* Corrected: Was FormDialogTitle */}
+            <ShadDialogDescription> {/* Corrected: Was FormDialogDescription */}
               {editingRole ? `Update the details for "${editingRole.name}".` : 'Define a new role and assign its permissions.'}
-            </FormDialogDescription>
-          </FormDialogHeader>
+            </ShadDialogDescription>
+          </DialogHeader>
           <form onSubmit={handleFormSubmit}>
             <ScrollArea className="max-h-[60vh] p-1 pr-3">
             <div className="space-y-4 py-4">
@@ -346,7 +346,7 @@ export default function ManageRolesPage() {
                 </div>
             </div>
             </ScrollArea>
-            <FormDialogFooter className="pt-5">
+            <DialogFooter className="pt-5"> {/* Corrected: Was FormDialogFooter */}
               <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting} onClick={resetFormDialog}>Cancel</Button>
               </DialogClose>
@@ -354,7 +354,7 @@ export default function ManageRolesPage() {
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingRole ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
                 {editingRole ? 'Save Changes' : 'Add Role'}
               </Button>
-            </FormDialogFooter>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -362,3 +362,4 @@ export default function ManageRolesPage() {
     </div>
   );
 }
+
