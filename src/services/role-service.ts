@@ -3,11 +3,13 @@
 
 import prisma from '@/lib/prisma';
 import type { Role as PrismaRole } from '@prisma/client';
+import type { AppPermission } from '@/lib/permissions'; // Import AppPermission
 
 export interface AppRole {
   id: string;
   name: string;
   description?: string | null;
+  permissions: AppPermission[]; // Changed from string[] to AppPermission[]
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +18,7 @@ const mapPrismaRoleToAppRole = (prismaRole: PrismaRole): AppRole => ({
   id: prismaRole.id,
   name: prismaRole.name,
   description: prismaRole.description,
+  permissions: prismaRole.permissions as AppPermission[], // Cast to AppPermission[]
   createdAt: prismaRole.createdAt.toISOString(),
   updatedAt: prismaRole.updatedAt.toISOString(),
 });
@@ -39,7 +42,8 @@ export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
 
 export async function addRole(
   name: string,
-  description?: string
+  description?: string,
+  permissions?: AppPermission[] // Changed from string[]
 ): Promise<RoleServiceResult<AppRole>> {
   if (!name.trim()) {
     return { error: "Role name cannot be empty." };
@@ -56,6 +60,7 @@ export async function addRole(
       data: {
         name: name.trim(),
         description: description?.trim() || null,
+        permissions: permissions || [], // Store permissions
       },
     });
     return { data: mapPrismaRoleToAppRole(newRole) };
@@ -65,16 +70,54 @@ export async function addRole(
   }
 }
 
+export async function updateRole(
+  id: string,
+  name: string,
+  description?: string | null,
+  permissions?: AppPermission[]
+): Promise<RoleServiceResult<AppRole>> {
+  if (!name.trim()) {
+    return { error: "Role name cannot be empty." };
+  }
+  try {
+    // Check if another role with the new name already exists (if name is being changed)
+    const existingRoleWithNewName = await prisma.role.findFirst({
+      where: {
+        name: name.trim(),
+        id: { not: id },
+      },
+    });
+    if (existingRoleWithNewName) {
+      return { error: `Another role with name "${name.trim()}" already exists.` };
+    }
+
+    const updatedRole = await prisma.role.update({
+      where: { id },
+      data: {
+        name: name.trim(),
+        description: description === undefined ? undefined : (description?.trim() || null), // Handle undefined vs null/empty
+        permissions: permissions || [],
+        updatedAt: new Date(),
+      },
+    });
+    return { data: mapPrismaRoleToAppRole(updatedRole) };
+  } catch (e: any) {
+    console.error(`Error updating role ${id}:`, e);
+    if ((e as any).code === 'P2025') {
+        return { error: `Role with ID "${id}" not found for update.`};
+    }
+    return { error: e.message || `Failed to update role ${id}.` };
+  }
+}
+
+
 export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>> {
   try {
-    // In a real app, you'd check if this role is currently assigned to any users
-    // or permissions before allowing deletion.
-    // For now, we'll just delete it.
-    // Example check:
-    // const usersWithRole = await prisma.user.count({ where: { customRoleId: id } });
-    // if (usersWithRole > 0) {
-    //   return { error: `Cannot delete role. It is currently assigned to ${usersWithRole} user(s).` };
-    // }
+    // Check if any users are assigned to this role
+    const usersWithRole = await prisma.user.count({ where: { customRoleId: id } });
+    if (usersWithRole > 0) {
+      return { error: `Cannot delete role. It is currently assigned to ${usersWithRole} user(s). Please reassign users before deleting.` };
+    }
 
     await prisma.role.delete({
       where: { id },
@@ -83,10 +126,8 @@ export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>
   } catch (e: any)
    {
     console.error("Error deleting role:", e);
-    // Prisma error P2025 means record to delete not found, which is fine for a delete op if it's already gone.
-    // Other errors like P2003 (foreign key constraint violation) would be more critical if roles were linked.
     if ((e as any).code === 'P2025') {
-        return { data: true }; // Effectively deleted or already gone
+        return { data: true }; 
     }
     return { error: e.message || `Failed to delete role with ID ${id}.` };
   }
