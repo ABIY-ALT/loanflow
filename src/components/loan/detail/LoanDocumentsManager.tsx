@@ -5,8 +5,14 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertCircle,
+  FileSymlink,
+  CheckCircle,
+  XCircle,
+  FileText,
+} from 'lucide-react'; // Assuming you're using lucide-react for icons
 import type { LoanRequest, LoanDocument, WorkflowStageDefinition } from '@/types/loan';
-import { FileText, CheckCircle, XCircle, AlertCircle, FileSymlink, Paperclip, UploadCloud, BadgeCheck, Loader2 } from 'lucide-react';
 
 const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
     switch (status) {
@@ -60,7 +66,7 @@ export function LoanDocumentsManager({
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-4 flex items-center"><Paperclip className="mr-2 h-5 w-5 text-primary" />Documents</h3>
+      <h3 className="text-lg font-semibold mb-4 flex items-center"><FileText className="mr-2 h-5 w-5 text-primary" />Documents</h3>
       <p className="text-sm text-muted-foreground mb-1">Required for current stage: <span className="font-semibold">{currentStageDef?.name || 'Unknown Stage'}</span></p>
       {requiredDocumentsForCurrentStage.length > 0 ? (
         <ul className="space-y-3 mb-4">
@@ -82,11 +88,11 @@ export function LoanDocumentsManager({
                   >
                     {status}
                   </Badge>
-                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected') ? (
+                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') ? ( // Added Submitted to allow re-upload
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
-                  ) : !isViewOnly && onVerifyDocument && status === 'Submitted' ? (
+                  ) : !isViewOnly && onVerifyDocument && status === 'Submitted' && !isSavingGlobal ? (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>

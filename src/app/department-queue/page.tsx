@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Ensure this is the correct and only import
+import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback } from 'react';

@@ -11,8 +11,8 @@ import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Bui
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getLoanRequests, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import {
+import { getLoanRequests, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Ensure this is already using prisma service
+import { 
   Tooltip,
   TooltipContent,
   TooltipProvider,

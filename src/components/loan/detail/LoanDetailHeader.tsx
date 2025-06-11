@@ -1,6 +1,5 @@
 
 'use client';
-
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2 } from 'lucide-react';
 import type { LoanRequest, User } from '@/types/loan';

@@ -19,9 +19,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from 'react';
 import { Loader2, Search, BotMessageSquare, ListChecks, AlertCircle } from 'lucide-react';
 import { loanStatusLookup, LoanStatusLookupInput, LoanStatusLookupOutput } from '@/ai/flows/loan-status-lookup'; // Corrected import
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-const loanStatusSchema = z.object({
+export const loanStatusSchema = z.object({
   identifier: z.string().min(1, { message: "Please enter a Loan or Customer Number." }),
   type: z.enum(['loanNumber', 'customerNumber']),
 });
@@ -34,6 +33,7 @@ export default function LoanStatusPage() {
   const [lookupResult, setLookupResult] = useState<LoanStatusLookupOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+
   const form = useForm<LoanStatusFormValues>({
     resolver: zodResolver(loanStatusSchema),
     defaultValues: {
@@ -41,6 +41,7 @@ export default function LoanStatusPage() {
       type: 'loanNumber', // Default to loan number
     },
   });
+
 
   async function onSubmit(data: LoanStatusFormValues) {
     setIsLoading(true);
@@ -51,13 +52,14 @@ export default function LoanStatusPage() {
       ? { loanNumber: data.identifier }
       : { customerNumber: data.identifier };
 
+
     try {
       const result = await loanStatusLookup(input); // This is a Server Action call
 
       // Assuming loanStatusLookup returns LoanStatusLookupOutput or throws an error
       // Server actions typically don't return { error: string } like our custom service might
       // They either succeed and return data, or the promise rejects with an error.
-
+      
       setLookupResult(result);
       toast({
         title: "Loan Status Retrieved",
@@ -68,7 +70,7 @@ export default function LoanStatusPage() {
       let errorMessage = "An unexpected error occurred during lookup.";
       if (err && typeof err.message === 'string') {
         errorMessage = err.message;
-      }
+       }
       setError(errorMessage); // Set local error state for Alert display
       toast({
         title: "Lookup Failed",
@@ -80,6 +82,7 @@ export default function LoanStatusPage() {
       setIsLoading(false);
     }
   }
+
 
   return (
     <div className="space-y-6">
@@ -96,6 +99,7 @@ export default function LoanStatusPage() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
+
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
               <FormField
                 control={form.control}
@@ -156,6 +160,7 @@ export default function LoanStatusPage() {
         </CardContent>
       </Card>
 
+
       {isLoading && (
         <Alert>
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -173,6 +178,7 @@ export default function LoanStatusPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
 
       {lookupResult && !isLoading && (
         <Card className="shadow-lg">

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import type { LoanRequest, WorkflowDefinition, User } from '@/types/loan';
+import type { LoanRequest, WorkflowDefinition, User, Department } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
@@ -20,7 +20,7 @@ export default function ManagerReviewQueuePage() {
   const [users, setUsers] = useState<User[]>([]); // State to store users from service
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]); // State for workflow definitions
 
-  const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
+  const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string | undefined => {
     if (!workflowVersionId || !stageId || !workflowDefs) return "Unknown Stage";
     for (const def of workflowDefs) {
       const version = def.versions.find(v => v.id === workflowVersionId);

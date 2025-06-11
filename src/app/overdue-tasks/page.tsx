@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Ensure this is the correct import path
+import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition } from '@/types/loan'; // Import WorkflowDefinition
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
@@ -38,14 +38,17 @@ export default function OverdueTasksPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [loansResult, wfResult] = await Promise.all([getLoanRequests(), getWorkflowDefinitions()]); // Fetch both loans and workflows
+        const [loansResult, wfResult] = await Promise.all([
+          getLoanRequests(),
+          getWorkflowDefinitions(),
+        ]); // Fetch both loans and workflows
 
         const result = loansResult; // Use loansResult for overdue loan filtering
         if (result.error) {
           console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
-          setOverdueLoans(result.loans.filter(loan => loan.isOverdue)); // Filter for overdue loans
+          setOverdueLoans(result.loans.filter((loan) => loan.isOverdue)); // Filter for overdue loans
         }
       } catch (err: any) {
         console.error("Error fetching overdue loans in component:", err);
