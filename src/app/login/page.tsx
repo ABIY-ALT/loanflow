@@ -39,9 +39,10 @@ export default function LoginPage() {
     setIsSubmitting(false);
   };
 
-  if (authContext.isLoading && !isSubmitting) {
-     // AuthProvider is handling a redirect or initial load.
-  }
+  // Handled by AuthProvider's loading screen or redirect logic
+  // if (authContext.isLoading && !isSubmitting) {
+  //    return ( /* ... loading spinner or minimal layout ... */ );
+  // }
 
 
   return (
@@ -95,8 +96,9 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col items-center text-sm">
           <p className="text-muted-foreground">
-            Need an account? <Link href="#" className="font-medium text-primary hover:underline">Register Here (Not Implemented)</Link>
+            Don't have an account? <Link href="/#" className="font-medium text-primary hover:underline" onClick={(e) => { e.preventDefault(); toast({title: "Registration Info", description: "User registration is managed by administrators."})}}>Contact Admin</Link>
           </p>
+          <p className="text-xs text-muted-foreground mt-1">Note: User registration is not self-service.</p>
         </CardFooter>
       </Card>
     </div>
