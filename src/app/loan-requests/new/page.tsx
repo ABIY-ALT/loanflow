@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service';
+import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service-prisma';
 import type { LoanRequest } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';

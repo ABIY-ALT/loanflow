@@ -34,11 +34,15 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
   }
 
   try {
-    const response = await fetch(`${identityServiceUrl}/api/auth/login`, {
+    console.log("Attempting to login with phone number:", phoneNumberInput);
+    console.log("Using identity service URL:", identityServiceUrl+ '/api/auth/login');
+    const response = await fetch(`${identityServiceUrl}api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phoneNumber: phoneNumberInput, password: passwordInput }),
     });
+
+    console.log("Response status:", response.status);
 
     const data = await response.json();
 

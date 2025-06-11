@@ -8,9 +8,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL_PRISMA") // Uses a pooled connection
-  directUrl = env("DATABASE_URL_NONPOOL") // Uses a direct connection
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {

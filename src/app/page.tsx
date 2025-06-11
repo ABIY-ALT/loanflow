@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service';
+import { getLoanRequests } from '@/services/loan-service-prisma';
 import type { LoanRequest } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
