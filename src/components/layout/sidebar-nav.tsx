@@ -14,8 +14,8 @@ import {
   FolderKanban,
   Building,
   ClipboardList,
-  Eye, 
-  Drama, // Icon for Role Management
+  Eye,
+  Drama,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -24,67 +24,77 @@ import {
 } from '@/components/ui/sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { UserRole } from '@/types/loan';
+import { UserRole } from '@/types/loan'; // UserRole enum for comparison
 
 interface NavItemConfig {
   href: string;
   label: string;
   icon: React.ElementType;
-  roles?: UserRole[]; 
+  roles?: (UserRole | string)[]; // Allow string for JWT roles
   subItems?: NavItemConfig[];
 }
+
+// UserRole enum values for easier comparison with JWT roles (which are strings)
+const ROLES_FROM_ENUM = {
+  ADMIN: UserRole.ADMIN.toString(), // "Admin"
+  RELATIONSHIP_MANAGER: UserRole.RELATIONSHIP_MANAGER.toString(),
+  UNDERWRITER: UserRole.UNDERWRITER.toString(),
+  STAFF: UserRole.STAFF.toString(),
+  VIEW_ONLY: UserRole.VIEW_ONLY.toString(),
+};
+
 
 const navItemsConfig: NavItemConfig[] = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
   { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
-  { 
-    href: '/loan-requests/new', 
-    label: 'New Loan Request', 
+  {
+    href: '/loan-requests/new',
+    label: 'New Loan Request',
     icon: FilePlus2,
-    roles: [UserRole.ADMIN, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.STAFF]
+    roles: [ROLES_FROM_ENUM.ADMIN, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.STAFF]
   },
   {
     href: '/my-assigned-cases',
     label: 'My Assigned Cases',
     icon: ClipboardList,
-    roles: [UserRole.STAFF, UserRole.RELATIONSHIP_MANAGER, UserRole.UNDERWRITER, UserRole.ADMIN]
+    roles: [ROLES_FROM_ENUM.STAFF, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/manager-review',
     label: 'Manager Review Queue',
     icon: UserCheck,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN] 
+    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/department-queue',
     label: 'Unassigned Cases',
     icon: FolderKanban,
-    roles: [UserRole.UNDERWRITER, UserRole.ADMIN]
+    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
   },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
   {
     href: '/overdue-tasks',
     label: 'Overdue Tasks',
     icon: AlertTriangle,
-    roles: [UserRole.UNDERWRITER, UserRole.RELATIONSHIP_MANAGER, UserRole.ADMIN]
+    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    roles: [UserRole.ADMIN, UserRole.UNDERWRITER], 
+    roles: [ROLES_FROM_ENUM.ADMIN, ROLES_FROM_ENUM.UNDERWRITER],
     subItems: [
       {
         href: '/settings/departments',
         label: 'Manage Departments',
         icon: Building,
-        roles: [UserRole.ADMIN] // Typically Admin only
+        roles: [ROLES_FROM_ENUM.ADMIN]
       },
       {
-        href: '/settings/roles-management', // New page link
+        href: '/settings/roles-management',
         label: 'Manage Roles',
-        icon: Drama, // Using Drama icon for roles
-        roles: [UserRole.ADMIN] // Admin only
+        icon: Drama,
+        roles: [ROLES_FROM_ENUM.ADMIN]
       },
     ],
   },
@@ -112,32 +122,32 @@ export default function SidebarNav() {
   }
 
   if (!user) {
-    return null;
+    return null; // No user, no sidebar nav items (except potentially public ones if any)
   }
 
-  const userRole = user?.role;
+  const currentUserRoleString = String(user.role); // Role from JWT is a string
 
-  const canView = (itemRoles?: UserRole[]): boolean => {
-    if (!userRole) return false; 
-    if (!itemRoles || itemRoles.length === 0) return true; 
+  const canView = (itemRoles?: (UserRole | string)[]): boolean => {
+    if (!currentUserRoleString) return false;
+    if (!itemRoles || itemRoles.length === 0) return true; // Public item
 
-    if (userRole === UserRole.VIEW_ONLY) {
-        return itemRoles.includes(UserRole.VIEW_ONLY) || itemRoles.length === 0;
-    }
-    // Admin and Underwriter can see more items by default if not explicitly restricted
-    if (userRole === UserRole.ADMIN) return true; // Admin sees everything
-    if (userRole === UserRole.UNDERWRITER && (itemRoles.includes(UserRole.UNDERWRITER) || itemRoles.includes(UserRole.STAFF) || itemRoles.includes(UserRole.RELATIONSHIP_MANAGER) )) return true;
+    // Admin sees everything
+    if (currentUserRoleString === ROLES_FROM_ENUM.ADMIN) return true;
 
-    return itemRoles.includes(userRole);
+    // For VIEW_ONLY, it's a specific check, not general visibility.
+    // This will be handled by the viewOnlyAllowedPaths for now.
+    // A more robust permission system would be based on specific permissions, not just role names.
+    
+    return itemRoles.includes(currentUserRoleString);
   };
-  
-  const isViewOnlyUser = userRole === UserRole.VIEW_ONLY;
-  const viewOnlyAllowedPaths = ['/', '/loan-process', '/loan-status'];
 
+  const isViewOnlyUser = currentUserRoleString === ROLES_FROM_ENUM.VIEW_ONLY;
+  const viewOnlyAllowedPaths = ['/', '/loan-process', '/loan-status', '/loan-requests']; // Added /loan-requests for detail view
 
   const visibleNavItems = navItemsConfig.filter(item => {
     if (isViewOnlyUser) {
-        return viewOnlyAllowedPaths.includes(item.href);
+      // VIEW_ONLY can see specific paths, and loan detail pages (which start with /loan-requests/)
+      return viewOnlyAllowedPaths.some(allowedPath => item.href === allowedPath || (allowedPath === '/loan-requests' && item.href.startsWith('/loan-requests/')));
     }
     return canView(item.roles);
   });
@@ -153,14 +163,12 @@ export default function SidebarNav() {
 
         const filteredSubItems = item.subItems?.filter(sub => {
             if (isViewOnlyUser) {
-                return viewOnlyAllowedPaths.includes(sub.href);
+                // VIEW_ONLY generally doesn't see settings sub-items
+                return false;
             }
             return canView(sub.roles);
         });
-        // Determine if the submenu should be open: if the parent item's path is a prefix of the current path,
-        // AND there are visible sub-items.
         const openSubMenu = filteredSubItems && filteredSubItems.length > 0 && currentPathname.startsWith(item.href) && item.href !== '/';
-
 
         return (
           <SidebarMenuItem key={item.href}>

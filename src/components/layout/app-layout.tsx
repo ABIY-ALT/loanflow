@@ -26,31 +26,35 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, isLoading: authIsLoading, logout } = useAuth();
+  const { user, isLoading: authIsLoadingGlobal, logout } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
 
-  const handleSignOut = () => {
-    logout(); // AuthContext's logout now handles redirection
+  const handleSignOut = async () => {
+    await logout(); // AuthContext's logout now calls server action
     toast({ title: "Signed Out", description: "You have been successfully signed out." });
+    // Navigation to /login is handled by AuthContext's useEffect
   };
 
-  // If AuthContext is actively processing login/logout.
-  if (authIsLoading) {
+  // This loader is for when AuthContext is doing something critical like initial user load
+  // or redirecting. AuthProvider itself handles more granular loading states.
+  if (authIsLoadingGlobal && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Processing authentication...</p>
+        <p className="text-lg text-muted-foreground">Loading session...</p>
       </div>
     );
   }
+  
+  // If not globally loading, but no user and not on login page, AuthProvider's useEffect will redirect.
+  // We can show a minimal layout or rely on AuthProvider's "Redirecting..." screen.
+  // For simplicity here, we proceed to render the layout. AuthProvider handles the redirect screen.
 
-  // If AppLayout is rendered, AuthProvider has determined that content (either login page or protected content)
-  // should be displayed. No need for additional "Verifying session" loader here, as AuthProvider handles it.
 
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider defaultOpen={true}> {/* Default to open */}
       <Sidebar collapsible="icon">
         <SidebarRail />
         <SidebarHeader className="p-4">
@@ -79,17 +83,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <div className="flex items-center gap-2">
                   <UserCircle className="h-6 w-6 text-muted-foreground" />
                   <div className="text-sm">
-                    <span className="font-medium">{user.name}</span>
-                    <Badge variant="outline" className="ml-2 text-xs">{user.role}</Badge>
+                    <span className="font-medium">{user.fullName || `${user.firstName} ${user.lastName}`}</span>
+                    <Badge variant="outline" className="ml-2 text-xs">{String(user.role)}</Badge>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={handleSignOut}>
-                    <LogOut className="mr-1 h-4 w-4" /> Sign Out
+                  <Button variant="ghost" size="sm" onClick={handleSignOut} disabled={authIsLoadingGlobal}>
+                    {authIsLoadingGlobal && pathname === '/login' ? <Loader2 className="animate-spin mr-1 h-4 w-4" /> : <LogOut className="mr-1 h-4 w-4" />}
+                     Sign Out
                   </Button>
                 </div>
               </>
             ) : (
-              // Show Sign In button if no user and currently on login page (though AuthProvider typically handles this view)
-              pathname === '/login' && (
+              pathname !== '/login' && ( // Only show Sign In if not on login page and no user
                 <Button variant="outline" onClick={() => router.push('/login')}>
                   Sign In
                 </Button>
