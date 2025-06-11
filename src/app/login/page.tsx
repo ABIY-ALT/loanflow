@@ -26,13 +26,11 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setError(null);
 
-    // Call context's login, which now calls the server action with phoneNumber
     const result = await authContext.login(phoneNumber, password);
 
     if (result.success) {
       toast({ title: "Login Successful", description: "Welcome back!" });
       // Navigation is handled by AuthContext's useEffect after user state updates
-      // router.push('/'); // This line was correctly removed previously as AuthContext handles redirect
     } else {
       const friendlyMessage = result.error || "Login failed. Please check your credentials and try again.";
       setError(friendlyMessage);
