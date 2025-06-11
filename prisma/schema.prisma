@@ -22,7 +22,6 @@ model User {
   customRoleId  String? // Foreign key for the new Role model
   customRole    Role?       @relation("customRole", fields: [customRoleId], references: [id]) // Corrected: Added relation name
   loansAssigned LoanRequest[] @relation("AssignedUser") // Loans this user is assigned to
-  historyEntries LoanHistoryEntry[] @relation("ActionUser") // History entries made by this user
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 }
@@ -155,7 +154,6 @@ model LoanHistoryEntry {
   loanRequestId       String
   loanRequest         LoanRequest @relation("LoanHistory", fields: [loanRequestId], references: [id], onDelete: Cascade)
   userId              String // Could be system ID or User ID
-  user                User?       @relation("ActionUser", fields: [userId], references: [id], onDelete:NoAction, onUpdate:NoAction, map: "loan_history_user_fk")
   stageName           String
   timestamp           DateTime    @default(now())
   notes               String?

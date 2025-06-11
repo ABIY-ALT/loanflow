@@ -171,10 +171,6 @@ export async function addLoanRequest(
         workflowVersionIdMirror: activeWorkflowVersion.id,
         currentStageIdMirror: firstStage.id,
 
-        workflowVersion: { connect: { id: activeWorkflowVersion.id } },
-        currentWorkflowStage: { connect: { id: firstStage.id } },
-
-
         submittedDate: currentDate,
         lastUpdatedDate: currentDate,
         stageEntryDate: currentDate,
@@ -209,7 +205,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
         assignedToUser: { include: { department: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true } },
         workflowVersion: { include: { workflowDefinition: true } },
-        history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
+        history: { orderBy: { timestamp: 'desc' } }, // Removed include: { user: true }
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -238,7 +234,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true} },
           },
         },
-        history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
+        history: { orderBy: { timestamp: 'desc' } }, // Removed include: { user: true }
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -417,7 +413,7 @@ export async function updateLoanRequest(
           assignedToUser: { include: { department: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true } },
           workflowVersion: { include: { workflowDefinition: true } },
-          history: { orderBy: { timestamp: 'desc' }, include: { user: true } },
+          history: { orderBy: { timestamp: 'desc' } }, // Removed include: { user: true }
           documents: { orderBy: { createdAt: 'asc' } },
         },
       });
@@ -694,4 +690,3 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types for workflow.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
-    
