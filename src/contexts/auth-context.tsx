@@ -3,14 +3,14 @@
 
 import type React from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { User } from '@/types/loan'; // User type is updated based on JWT
+import type { User } from '@/types/loan';
 import { Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { loginUser, logoutUser, getCurrentUser } from '@/app/auth/actions'; // Import server actions
+import { loginUser, logoutUser, getCurrentUser } from '@/app/auth/actions';
 
 interface AuthContextType {
   user: User | null;
-  isLoading: boolean; // Reflects combined loading states
+  isLoading: boolean;
   login: (phoneNumber: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -19,19 +19,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isInitialLoadingUser, setIsInitialLoadingUser] = useState(true); // For fetching user on mount
-  const [isProcessingAuthAction, setIsProcessingAuthAction] = useState(false); // For login/logout actions
+  const [isInitialLoadingUser, setIsInitialLoadingUser] = useState(true);
+  const [isProcessingAuthAction, setIsProcessingAuthAction] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   const fetchAndSetCurrentUser = useCallback(async () => {
     setIsInitialLoadingUser(true);
     try {
-      const { user: currentUserData } = await getCurrentUser(); // Server action call
+      const { user: currentUserData } = await getCurrentUser();
       setUser(currentUserData);
     } catch (error) {
       console.error("Error fetching current user:", error);
-      setUser(null); // Ensure user is null if fetch fails
+      setUser(null);
     } finally {
       setIsInitialLoadingUser(false);
     }
@@ -43,11 +43,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginContext = async (phoneNumberInput: string, passwordInput: string = ''): Promise<{ success: boolean; error?: string }> => {
     setIsProcessingAuthAction(true);
-    const result = await loginUser(phoneNumberInput, passwordInput); // Call server action
+    const result = await loginUser(phoneNumberInput, passwordInput);
     if (result.success && result.user) {
       setUser(result.user);
     } else {
-      setUser(null); // Ensure user is null on login failure
+      setUser(null);
     }
     setIsProcessingAuthAction(false);
     return { success: result.success, error: result.error };
@@ -55,15 +55,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logoutContext = async () => {
     setIsProcessingAuthAction(true);
-    await logoutUser(); // Call server action
+    await logoutUser();
     setUser(null);
-    // Navigation will be handled by useEffect below
     setIsProcessingAuthAction(false);
   };
 
   useEffect(() => {
     if (isInitialLoadingUser || isProcessingAuthAction) {
-      return; // Don't navigate while loading or processing
+      return;
     }
 
     if (user && pathname === '/login') {
@@ -75,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
 
-  if (isInitialLoadingUser && pathname !== '/login') { // Show full screen loader only if not on login and still fetching user
+  if (isInitialLoadingUser && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -92,8 +91,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-
-  // If initial load is complete, not processing auth, but user is not set AND we are on a protected page (and not initial load for user)
   if (!isInitialLoadingUser && !user && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">

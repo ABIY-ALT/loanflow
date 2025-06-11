@@ -2,27 +2,22 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import type { User } from '@/types/loan'; // Assuming User type is updated for JWT claims
-import { jwtDecode } from 'jwt-decode'; // Using jwt-decode to parse token claims
+import type { User } from '@/types/loan';
+import { jwtDecode } from 'jwt-decode';
 
 // Helper function to parse JWT and map to User type
-// In a real app, you'd also validate the token signature here using a library like 'jose'
 function parseAndMapJwtToUser(token: string): User | null {
   try {
-    const decoded: any = jwtDecode(token); // Use 'any' for flexibility with claims
-    // console.log("Decoded JWT claims:", decoded);
+    const decoded: any = jwtDecode(token);
 
-    // Map JWT claims to your User type
-    // Ensure claim names match exactly what's in your JWT
     const user: User = {
-      id: decoded.sub, // Subject (user ID)
+      id: decoded.sub,
       email: decoded.email,
       firstName: decoded.firstName,
       lastName: decoded.lastName,
       fullName: decoded.unique_name || `${decoded.firstName || ''} ${decoded.lastName || ''}`.trim(),
       phoneNumber: decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/mobilephone'],
-      role: decoded.role, // Role claim
-      // Add other claims as needed
+      role: decoded.role,
     };
     return user;
   } catch (error) {
@@ -39,7 +34,6 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
   }
 
   try {
-    // console.log(`Attempting login for phone: ${phoneNumberInput} to ${identityServiceUrl}/api/auth/login`);
     const response = await fetch(`${identityServiceUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -47,7 +41,6 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     });
 
     const data = await response.json();
-    // console.log("Login response from identity service:", data);
 
     if (!response.ok || !data.isSuccess) {
       return { success: false, error: data.errors?.[0]?.description || data.errors || 'Login failed from identity service.' };
@@ -64,23 +57,19 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       return { success: false, error: "Failed to parse user details from access token." };
     }
 
-    // Store tokens in HTTP-only cookies
     const cookieStore = cookies();
     cookieStore.set('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      // maxAge: decodedToken.exp ? decodedToken.exp - Math.floor(Date.now() / 1000) : 3600, // Set dynamically
     });
     cookieStore.set('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      // Consider a longer maxAge for refresh token, e.g., 7 days
     });
-    // console.log("Tokens set in cookies. User parsed:", user);
     return { success: true, user };
 
   } catch (error: any) {
@@ -95,24 +84,19 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
   const accessToken = cookieStore.get('accessToken')?.value;
   const refreshToken = cookieStore.get('refreshToken')?.value;
 
-  // Always clear local cookies regardless of identity service call success
   cookieStore.delete('accessToken');
   cookieStore.delete('refreshToken');
-  // console.log("Local tokens cleared from cookies.");
 
   if (!identityServiceUrl) {
-    // Log an error but still consider logout successful locally
     console.error("Identity service URL not configured for server-side logout call.");
-    return { success: true }; // Local logout successful
+    return { success: true };
   }
 
   if (!accessToken || !refreshToken) {
-    // console.log("No tokens found to send to identity service for logout. Local logout completed.");
-    return { success: true }; // Local logout successful
+    return { success: true };
   }
 
   try {
-    // console.log("Calling identity service logout endpoint...");
     const response = await fetch(`${identityServiceUrl}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -120,22 +104,16 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      // const errorData = await response.json();
       // console.error("Logout failed on identity service:", errorData);
-      // Even if server logout fails, client-side session is cleared, so proceed.
-      // You might want to log this server-side for monitoring.
-    } else {
-      // console.log("Successfully logged out from identity service.");
     }
     return { success: true };
   } catch (error: any) {
     console.error("Error calling identity service logout:", error);
-    // Local logout is already done, so still return success.
     return { success: true };
   }
 }
 
-// Placeholder for refresh token logic
 export async function refreshAccessToken(): Promise<{ success: boolean; newAccessToken?: string; error?: string }> {
   const identityServiceUrl = process.env.NEXT_PUBLIC_IDENTITY_SERVICE_URL;
   const cookieStore = cookies();
@@ -156,7 +134,6 @@ export async function refreshAccessToken(): Promise<{ success: boolean; newAcces
     const data = await response.json();
 
     if (!response.ok || !data.isSuccess) {
-      // If refresh fails, logout the user by clearing cookies
       cookieStore.delete('accessToken');
       cookieStore.delete('refreshToken');
       return { success: false, error: data.errors?.[0]?.description || 'Failed to refresh token.' };
@@ -172,7 +149,6 @@ export async function refreshAccessToken(): Promise<{ success: boolean; newAcces
   }
 }
 
-// New Server Action to get current user from token (used by AuthContext)
 export async function getCurrentUser(): Promise<{ user: User | null }> {
   const cookieStore = cookies();
   const accessToken = cookieStore.get('accessToken')?.value;
@@ -180,34 +156,26 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
   if (!accessToken) {
     return { user: null };
   }
-  // Here, you'd typically validate the token against the JWT_SECRET_KEY
-  // For simplicity, we'll just parse. In production, VALIDATE THE SIGNATURE.
-  // Example validation using 'jose' (install it: npm install jose):
+  // IMPORTANT: In a production environment, you MUST validate the token signature here
+  // using a library like 'jose' and your JWT secret or public key.
+  // The 'jwt-decode' library only decodes the payload and does not verify authenticity.
+  // Example (conceptual, needs actual 'jose' setup):
   /*
   try {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET_KEY);
     const { payload } = await jwtVerify(accessToken, secret, {
-      issuer: 'LoanFlowAuthServer', // Expected issuer
-      audience: 'LoanFlowAuthClient', // Expected audience
+      issuer: 'LoanFlowAuthServer',
+      audience: 'LoanFlowAuthClient',
     });
-    // payload now contains the validated claims
     const user = parseAndMapJwtToUser(accessToken); // or map from payload
     return { user };
   } catch (err) {
     console.error("Token validation failed or token expired:", err);
-    // If token is invalid/expired, try to refresh it
-    const refreshResult = await refreshAccessToken();
-    if (refreshResult.success && refreshResult.newAccessToken) {
-      const user = parseAndMapJwtToUser(refreshResult.newAccessToken);
-      return { user };
-    }
-    // If refresh also fails, clear tokens and return null user
-    cookieStore.delete('accessToken');
-    cookieStore.delete('refreshToken');
+    // Attempt to refresh token, then clear if refresh fails
     return { user: null };
   }
   */
-  // Simplified parsing for now:
   const user = parseAndMapJwtToUser(accessToken);
   return { user };
 }
+

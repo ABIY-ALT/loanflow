@@ -16,7 +16,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const authContext = useAuth();
-  const [phoneNumber, setPhoneNumber] = useState(''); // Changed from email to phoneNumber
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,13 +26,13 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setError(null);
 
-    // Call context's login, which now calls the server action
+    // Call context's login, which now calls the server action with phoneNumber
     const result = await authContext.login(phoneNumber, password);
 
     if (result.success) {
       toast({ title: "Login Successful", description: "Welcome back!" });
       // Navigation is handled by AuthContext's useEffect after user state updates
-      // router.push('/'); // Removed direct navigation from here
+      // router.push('/'); // This line was correctly removed previously as AuthContext handles redirect
     } else {
       const friendlyMessage = result.error || "Login failed. Please check your credentials and try again.";
       setError(friendlyMessage);
@@ -41,12 +41,8 @@ export default function LoginPage() {
     setIsSubmitting(false);
   };
 
-  // If authContext.isLoading is true, it means AuthProvider is doing something global (like initial load or redirecting)
-  // We might want to disable the form or show a different message, but for now, local isSubmitting handles the button.
-  if (authContext.isLoading && !isSubmitting) { // Only show global loader if not already submitting form
-     // This implies AuthProvider is handling a redirect or initial load.
-     // The login form itself might be part of the children, so we don't want to overlay it
-     // unless strictly necessary (which AuthProvider's own loaders handle).
+  if (authContext.isLoading && !isSubmitting) {
+     // AuthProvider is handling a redirect or initial load.
   }
 
 
@@ -64,7 +60,7 @@ export default function LoginPage() {
               <Label htmlFor="phoneNumber">Phone Number</Label>
               <Input
                 id="phoneNumber"
-                type="tel" // Changed type to tel
+                type="tel"
                 placeholder="e.g., +251912345678"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
