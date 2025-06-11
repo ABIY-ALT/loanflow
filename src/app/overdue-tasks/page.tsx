@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests } from '@/services/loan-service'; 
-import type { LoanRequest } from '@/types/loan';
+import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Ensure this is the correct import path
+import type { LoanRequest, WorkflowDefinition } from '@/types/loan'; // Import WorkflowDefinition
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
@@ -17,22 +17,35 @@ import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleSha
 export default function OverdueTasksPage() {
   const [overdueLoans, setOverdueLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]); // Add state for workflow definitions
   const [error, setError] = useState<string | null>(null);
+
+  // Callback to get stage name from workflow definitions
+  const getStageName = React.useCallback((workflowVersionId?: string, stageId?: string): string => {
+    if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
+    for (const def of fetchedWorkflowDefinitions) {
+      const version = def.versions.find(v => v.id === workflowVersionId);
+      if (version) {
+        const stage = version.stages.find(s => s.id === stageId);
+        if (stage) return stage.name;
+      }
+    }
+    return "Unknown Stage";
+  }, [fetchedWorkflowDefinitions]);
 
   useEffect(() => {
     async function fetchOverdueLoans() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests(); 
+        const [loansResult, wfResult] = await Promise.all([getLoanRequests(), getWorkflowDefinitions()]); // Fetch both loans and workflows
+
+        const result = loansResult; // Use loansResult for overdue loan filtering
         if (result.error) {
           console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
           setError(result.error);
         } else if (result.loans) {
-          setOverdueLoans(result.loans.filter(loan => loan.isOverdue));
-        } else {
-           setError("No loan data received for overdue tasks.");
-           setOverdueLoans([]);
+          setOverdueLoans(result.loans.filter(loan => loan.isOverdue)); // Filter for overdue loans
         }
       } catch (err: any) {
         console.error("Error fetching overdue loans in component:", err);
@@ -41,7 +54,7 @@ export default function OverdueTasksPage() {
       } finally {
         setIsLoading(false);
       }
-    }
+    } // Add fetchedWorkflowDefinitions to dependency array
     fetchOverdueLoans();
   }, []);
 
@@ -134,7 +147,7 @@ export default function OverdueTasksPage() {
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{loan.currentStage}</Badge>
+                      <Badge variant=\"outline\">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge> {/* Use getStageName */}
                     </TableCell>
                     <TableCell className="text-right">
                       {loan.stageDeadline ? (

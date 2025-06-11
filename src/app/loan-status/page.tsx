@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/hooks/use-toast";
 import { useState } from 'react';
 import { Loader2, Search, BotMessageSquare, ListChecks, AlertCircle } from 'lucide-react';
-import { loanStatusLookup, LoanStatusLookupInput, LoanStatusLookupOutput } from '@/ai/flows/loan-status-lookup';
+import { loanStatusLookup, LoanStatusLookupInput, LoanStatusLookupOutput } from '@/ai/flows/loan-status-lookup'; // Corrected import
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const loanStatusSchema = z.object({
