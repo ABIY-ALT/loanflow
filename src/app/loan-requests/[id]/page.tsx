@@ -7,14 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-import { UserRole } from '@/types/loan'; // Import UserRole
-import { mockUsers } from '@/lib/mock-data';
+import { UserRole } from '@/types/loan'; 
+// import { mockUsers } from '@/lib/mock-data'; // Removed direct import of mockUsers
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { useAuth } from '@/contexts/auth-context'; // Import useAuth
+import { useAuth } from '@/contexts/auth-context'; 
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -34,10 +34,10 @@ export default function LoanDetailPage() {
   const params = useParams();
   const { toast } = useToast();
   const loanId = params.id as string;
-  const { user: currentUser } = useAuth(); // Get current user
+  const { user: currentUser } = useAuth(); 
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
-  const [users, setUsers] = useState<UserType[]>(mockUsers);
+  const [users, setUsers] = useState<UserType[]>([]); // Initialize with empty array
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -78,7 +78,7 @@ export default function LoanDetailPage() {
         setLoan(null);
       } else if (loanResult.loan) {
         setLoan(loanResult.loan);
-        setUsers(loanResult.users || mockUsers);
+        setUsers(loanResult.users || []); // Use users from service, or empty array
       } else {
         setError(prev => prev ? `${prev}\nLoan: Loan request with ID "${loanId}" not found.` : `Loan: Loan request with ID "${loanId}" not found.`);
         setLoan(null);
@@ -152,13 +152,14 @@ export default function LoanDetailPage() {
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
     if (finalAssignedTo !== loan.assignedTo) {
         const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.name : 'Unassigned';
+        const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
         historyUpdate.push({
             id: `hist-assign-${Date.now()}`,
             stageName: currentStageDef?.name || loan.currentStageName || 'Current Stage',
             timestamp: formatISO(new Date()),
             userId: currentUser?.id || 'system-prisma', 
-            userName: currentUser?.name || 'System Process',
-            notes: `Case assignment changed. Now assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department by ${currentUser?.name || 'System Process'}.`
+            userName: currentUserName,
+            notes: `Case assignment changed. Now assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department by ${currentUserName}.`
         });
     }
 
@@ -182,10 +183,11 @@ export default function LoanDetailPage() {
       return;
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
+    const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-note-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma', 
-      userName: currentUser?.name || 'System Process',
+      userName: currentUserName,
       notes: noteContent,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
@@ -199,10 +201,11 @@ export default function LoanDetailPage() {
       return;
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
+    const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma', 
-      userName: currentUser?.name || 'System Process',
+      userName: currentUserName,
       notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
     };
@@ -213,13 +216,14 @@ export default function LoanDetailPage() {
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
     if (!loan || isViewOnlyUser) return;
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
+    const currentUserName = currentUser?.fullName || currentUser?.name || 'User';
     const updatedHistory = loan.history.map(h =>
-        h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by ${currentUser?.name || 'User'} on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
+        h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by ${currentUserName} on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
     );
     updatedHistory.push({
         id: `hist-fulfill-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
         userId: currentUser?.id || 'system-prisma', 
-        userName: currentUser?.name || 'System Process',
+        userName: currentUserName,
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
     await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
@@ -252,9 +256,10 @@ export default function LoanDetailPage() {
   }, [loan, currentStageDef, currentWorkflowVersion, toast, isViewOnlyUser]);
 
   const handleMarkStageComplete = async () => { 
-    if (isViewOnlyUser || !loan || !currentStageDef || !validateCurrentStageRequirements()) return;
-    const actingUserId = loan.assignedTo || currentUser?.id || 'system-prisma';
-    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || currentUser?.name || 'Assigned Officer') : (currentUser?.name || 'System Process');
+    if (isViewOnlyUser || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
+    
+    const actingUserId = loan.assignedTo || currentUser.id;
+    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || currentUser.name || 'Assigned Officer') : (currentUser.fullName || currentUser.name || 'System Process');
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -272,11 +277,12 @@ export default function LoanDetailPage() {
     if (currentStageIndex === -1 || currentStageIndex === currentWorkflowVersion.stages.length - 1) {
       toast({ title: "Workflow End", description: "This is the last stage in the workflow. Consider closing or finalizing the loan.", variant: "info" });
       if (currentStageIndex === currentWorkflowVersion.stages.length -1) {
+          const currentUserName = currentUser.fullName || currentUser.name || 'System Process';
           const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
           const finalHistory: LoanHistoryEntry = {
             id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
             userId: currentUser.id,
-            userName: currentUser.name, 
+            userName: currentUserName, 
             notes: terminalNote,
           };
            await handleLocalAndUpdateService({ history: [...loan.history, finalHistory], isReadyForManagerReview: false }, "Loan reached final workflow stage.");
@@ -285,11 +291,11 @@ export default function LoanDetailPage() {
     }
 
     const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
-    
+    const currentUserName = currentUser.fullName || currentUser.name || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
       userId: currentUser.id, 
-      userName: currentUser.name,
+      userName: currentUserName,
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
 
@@ -306,8 +312,7 @@ export default function LoanDetailPage() {
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
-    if (isViewOnlyUser) return;
-    if (!loan || !currentStageDef) {
+    if (isViewOnlyUser || !currentUser || !loan || !currentStageDef) {
         toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
         return;
     }
@@ -315,10 +320,11 @@ export default function LoanDetailPage() {
       toast({ title: "Note Required", description: "Please provide reason for returning.", variant: "destructive" });
       return;
     }
+    const currentUserName = currentUser.fullName || currentUser.name || 'System Process (Manager Action)';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-rework-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-      userId: currentUser?.id || 'system-prisma', 
-      userName: currentUser?.name || 'System Process (Manager Action)',
+      userId: currentUser.id, 
+      userName: currentUserName,
       notes: `Manager returned case for rework in stage '${currentStageDef.name}'. Reason: ${reworkNote}`
     };
     const success = await handleLocalAndUpdateService({
@@ -537,3 +543,5 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+
+    

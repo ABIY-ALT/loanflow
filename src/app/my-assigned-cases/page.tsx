@@ -2,23 +2,20 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react'; // Changed ClipboardUser to ClipboardList
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service';
-import type { LoanRequest, WorkflowDefinition } from '@/types/loan';
+import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma'; // Using Prisma service
+import type { LoanRequest, User, WorkflowDefinition } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { mockUsers } from '@/lib/mock-data'; // For mock user details
-
-// SIMULATED LOGGED-IN USER - REPLACE WITH ACTUAL AUTHENTICATION
-const MOCK_LOGGED_IN_USER_ID = 'user-jane-doe'; // e.g., Jane Doe from mockUsers
-const MOCK_LOGGED_IN_USER_NAME = mockUsers.find(u => u.id === MOCK_LOGGED_IN_USER_ID)?.name || 'Mock User';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 
 export default function MyAssignedCasesPage() {
+  const { user: currentUser, isLoading: authIsLoading } = useAuth();
   const [assignedLoans, setAssignedLoans] = useState<LoanRequest[]>([]);
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +48,10 @@ export default function MyAssignedCasesPage() {
 
   useEffect(() => {
     async function fetchPageData() {
+      if (!currentUser || authIsLoading) { // Wait for user and auth to settle
+        if(!authIsLoading) setIsLoading(false); // If auth is done but no user, stop loading
+        return;
+      }
       setIsLoading(true);
       setError(null);
       try {
@@ -64,7 +65,7 @@ export default function MyAssignedCasesPage() {
           setAssignedLoans([]);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedTo === MOCK_LOGGED_IN_USER_ID && !loan.isReadyForManagerReview
+            loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview
           );
           setAssignedLoans(filteredLoans);
         } else {
@@ -92,10 +93,10 @@ export default function MyAssignedCasesPage() {
       }
     }
     fetchPageData();
-  }, []);
+  }, [currentUser, authIsLoading]);
 
 
-  if (isLoading) {
+  if (authIsLoading || (isLoading && !currentUser)) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -104,6 +105,19 @@ export default function MyAssignedCasesPage() {
     );
   }
   
+  if (!currentUser && !authIsLoading) {
+     return (
+      <div className="space-y-6 text-center">
+        <Alert variant="destructive" className="max-w-lg mx-auto">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitleShadCN>Not Logged In</AlertTitleShadCN>
+            <AlertDescriptionShadCN>You need to be logged in to view your assigned cases.</AlertDescriptionShadCN>
+        </Alert>
+        <Link href="/login" passHref><Button>Login</Button></Link>
+      </div>
+    );
+  }
+
   if (error && (assignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) {
     return (
       <div className="space-y-6">
@@ -113,10 +127,9 @@ export default function MyAssignedCasesPage() {
         </div>
          <Alert variant="default" className="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-600 dark:text-blue-300">
             <AlertCircle className="h-4 w-4 !text-blue-600 dark:!text-blue-400" />
-            <AlertTitleShadCN>Viewing as Mock User</AlertTitleShadCN>
+            <AlertTitleShadCN>Viewing as: {currentUser?.fullName || currentUser?.name || 'Current User'}</AlertTitleShadCN>
             <AlertDescriptionShadCN>
-              This page displays cases assigned to <strong>{MOCK_LOGGED_IN_USER_NAME} (ID: {MOCK_LOGGED_IN_USER_ID})</strong>.
-              In a full application, this would be dynamic based on your login.
+              This page displays cases assigned to you based on your current login.
             </AlertDescriptionShadCN>
         </Alert>
         <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertCircle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescriptionShadCN>{error}</AlertDescriptionShadCN></Alert>
@@ -129,11 +142,11 @@ export default function MyAssignedCasesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
-            <ClipboardList className="mr-3 h-8 w-8 text-primary" /> {/* Changed ClipboardUser to ClipboardList */}
+            <ClipboardList className="mr-3 h-8 w-8 text-primary" />
             My Assigned Cases
           </h1>
           <p className="text-muted-foreground">
-            These are loan requests assigned to you for processing.
+            These are loan requests assigned to you ({currentUser?.fullName || currentUser?.name}) for processing.
           </p>
         </div>
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
@@ -141,10 +154,9 @@ export default function MyAssignedCasesPage() {
       
       <Alert variant="default" className="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-600 dark:text-blue-300">
           <AlertCircle className="h-4 w-4 !text-blue-600 dark:!text-blue-400" />
-          <AlertTitleShadCN>Viewing as Mock User: {MOCK_LOGGED_IN_USER_NAME}</AlertTitleShadCN>
+          <AlertTitleShadCN>Viewing as: {currentUser?.fullName || currentUser?.name || 'Current User'}</AlertTitleShadCN>
           <AlertDescriptionShadCN>
-            This page displays cases assigned to <strong>{MOCK_LOGGED_IN_USER_NAME} (ID: {MOCK_LOGGED_IN_USER_ID})</strong>.
-            In a full application, this would be dynamic based on your login.
+            This page displays cases assigned to you.
           </AlertDescriptionShadCN>
       </Alert>
 
@@ -164,7 +176,7 @@ export default function MyAssignedCasesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {assignedLoans.length === 0 && !isLoading ? (
+          {assignedLoans.length === 0 && !isLoading && !authIsLoading ? (
             <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-folder-check"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Currently Assigned to You</p>
