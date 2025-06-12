@@ -34,15 +34,11 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
   }
 
   try {
-    console.log("Attempting to login with phone number:", phoneNumberInput);
-    console.log("Using identity service URL:", identityServiceUrl+ '/api/auth/login');
-    const response = await fetch(`${identityServiceUrl}api/auth/login`, {
+    const response = await fetch(`${identityServiceUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phoneNumber: phoneNumberInput, password: passwordInput }),
     });
-
-    console.log("Response status:", response.status);
 
     const data = await response.json();
 
@@ -61,7 +57,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       return { success: false, error: "Failed to parse user details from access token." };
     }
 
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     cookieStore.set('accessToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -84,7 +80,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
 
 export async function logoutUser(): Promise<{ success: boolean; error?: string }> {
   const identityServiceUrl = process.env.NEXT_PUBLIC_IDENTITY_SERVICE_URL;
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const accessToken = cookieStore.get('accessToken')?.value;
   const refreshToken = cookieStore.get('refreshToken')?.value;
 
@@ -120,7 +116,7 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
 
 export async function refreshAccessToken(): Promise<{ success: boolean; newAccessToken?: string; error?: string }> {
   const identityServiceUrl = process.env.NEXT_PUBLIC_IDENTITY_SERVICE_URL;
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const currentAccessToken = cookieStore.get('accessToken')?.value;
   const currentRefreshToken = cookieStore.get('refreshToken')?.value;
 
@@ -154,8 +150,7 @@ export async function refreshAccessToken(): Promise<{ success: boolean; newAcces
 }
 
 export async function getCurrentUser(): Promise<{ user: User | null }> {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get('accessToken')?.value;
+  const accessToken = (await cookies()).get('accessToken')?.value;
 
   if (!accessToken) {
     return { user: null };

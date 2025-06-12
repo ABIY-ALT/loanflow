@@ -593,6 +593,15 @@ export default function SettingsPage() {
           Only one version per loan type can be active for new applications.
           Ensure departments are set up via <Link href="/settings/departments" className="text-primary hover:underline">Manage Departments</Link> for stage assignment.
         </p>
+        <div className="mt-4 space-x-4">
+ {/* Add a link for user registration */}
+ <Link href="/settings/register-user" passHref>
+ <Button variant="outline">
+ <PlusCircle className="mr-2 h-4 w-4" />
+ Register New User
+ </Button>
+ </Link>
+ </div>
       </div>
 
       <Card>

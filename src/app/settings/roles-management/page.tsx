@@ -27,7 +27,7 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription as ShadDialogDescription,
+  DialogDescription as ShadDialogDescription, DialogHeader as ShadDialogHeader,
   DialogFooter,
   DialogHeader,
   DialogTitle as ShadDialogTitle,
