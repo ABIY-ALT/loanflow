@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Eye,
   Drama,
+  UserIcon
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -51,7 +52,7 @@ const navItemsConfig: NavItemConfig[] = [
     href: '/loan-requests/new',
     label: 'New Loan Request',
     icon: FilePlus2,
-    roles: [ROLES_FROM_ENUM.ADMIN, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.STAFF]
+    roles: [ROLES_FROM_ENUM.ADMIN, "User", ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.STAFF]
   },
   {
     href: '/my-assigned-cases',
@@ -94,6 +95,12 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/settings/roles-management',
         label: 'Manage Roles',
         icon: Drama,
+        roles: [ROLES_FROM_ENUM.ADMIN]
+      },
+      {
+        href: '/settings/user-assignments', // New page
+        label: 'Manage User Assignments',
+        icon: UserIcon,
         roles: [ROLES_FROM_ENUM.ADMIN]
       },
     ],

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { toast } from '@/hooks/use-toast';
 import { z } from 'zod'; // Assuming you have zod for schema validation
 
 interface RegisterUserFormProps {
@@ -22,7 +23,6 @@ const userSchema = z.object({
 });
 
 export default function RegisterUserForm({ registerUserAction }: RegisterUserFormProps) {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -32,12 +32,6 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
     password: '',
   });
 
-  useEffect(() => {
-    console.log("user : " + user)
-    if (!loading && user && user.role !== 'Admin2') {
-      router.push('/');
-    }
-  }, [user, loading, router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -53,8 +47,10 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
       const form = new FormData(e.currentTarget);
       const result = await registerUserAction(form);
       if (result.isSuccess) {
-        // Handle successful registration (e.g., show a success message, clear form)
-        alert('User registered successfully!');
+        toast({
+          title: "User Registered",
+          description: "The new user has been registered successfully.",
+        });
         setFormData({
           firstName: '',
           lastName: '',
@@ -63,29 +59,29 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
           password: '',
         });
       } else {
-        // Handle registration errors
-        alert(`Registration failed: ${result.errors?.join(', ')}`);
+        toast({
+          title: "Registration Failed",
+          description: result.message || "An error occurred during registration.",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        alert('Validation failed: ' + error.errors.map(err => err.message).join(', '));
+        const validationErrors = error.errors.map(err => err.message).join(', ');
+        toast({
+          title: "Validation Failed",
+          description: validationErrors,
+          variant: "destructive",
+        });
       } else {
-        alert('An unexpected error occurred during registration.');
+        toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
       }
       console.error('Registration error:', error);
     }
   };
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (!user || user.role !== 'ADMIN') {
-    return null; // Or a message indicating unauthorized access
-  }
-
   return (
-    <Card className="w-[350px]">
+    <Card className="w-[350px] mx-auto">
       <CardHeader>
         <CardTitle>Register New User</CardTitle>
         <CardDescription>Enter the details for the new user.</CardDescription>
