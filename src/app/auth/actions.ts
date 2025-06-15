@@ -8,6 +8,7 @@ import type { AppPermission } from '@/lib/permissions';
 import { jwtDecode } from 'jwt-decode';
 import prisma from '@/lib/prisma';
 import type { User as PrismaUser, Department as PrismaDepartment, Role as PrismaRole } from '@prisma/client';
+import { Console } from 'console';
 
 interface MinimalJwtPayload {
   sub: string; // User ID from Identity Server
@@ -17,6 +18,7 @@ interface MinimalJwtPayload {
   lastName?: string;
   unique_name?: string; // If Identity Server still provides these
   ['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/mobilephone']?: string;
+  exp?: number; // Added for explicit check
 }
 
 // Maps Prisma User (with relations) to our application User type
@@ -113,7 +115,7 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
   const identityServiceUrl = process.env.NEXT_PUBLIC_IDENTITY_SERVICE_URL;
   const cookieStore = await cookies();
   const accessToken = cookieStore.get('accessToken')?.value;
-  const refreshToken = cookieStore.get('refreshToken')?.value;
+  const refreshTokenValue = cookieStore.get('refreshToken')?.value; // Renamed to avoid conflict
 
   cookieStore.delete('accessToken');
   cookieStore.delete('refreshToken');
@@ -123,7 +125,7 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
     return { success: true };
   }
 
-  if (!accessToken || !refreshToken) {
+  if (!accessToken || !refreshTokenValue) {
     return { success: true }; // No tokens to revoke
   }
 
@@ -131,7 +133,7 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
     await fetch(`${identityServiceUrl}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: accessToken, refreshToken }),
+      body: JSON.stringify({ token: accessToken, refreshToken: refreshTokenValue }), // Use refreshTokenValue
     });
     // We don't strictly need to check the response, as we're logging out locally regardless.
   } catch (error: any) {
@@ -146,7 +148,10 @@ export async function refreshAccessToken(): Promise<{ success: boolean; newAcces
   const currentAccessToken = cookieStore.get('accessToken')?.value;
   const currentRefreshToken = cookieStore.get('refreshToken')?.value;
 
+
   if (!identityServiceUrl || !currentAccessToken || !currentRefreshToken) {
+    cookieStore.delete('accessToken');
+    cookieStore.delete('refreshToken');
     return { success: false, error: "Missing configuration or tokens for refresh." };
   }
 
@@ -157,21 +162,40 @@ export async function refreshAccessToken(): Promise<{ success: boolean; newAcces
       body: JSON.stringify({ token: currentAccessToken, refreshToken: currentRefreshToken }),
     });
 
-    const data = await response.json();
-
-    if (!response.ok || !data.isSuccess) {
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Could not read error response from identity server.");
+      console.error(`Identity server refresh token failed. Status: ${response.status}. Response: ${errorText.substring(0,500)}`);
       cookieStore.delete('accessToken');
       cookieStore.delete('refreshToken');
-      return { success: false, error: data.errors?.[0]?.description || 'Failed to refresh token.' };
+      return { success: false, error: `Identity server failed to refresh token (Status: ${response.status}). Details: ${errorText.substring(0,100)}...` };
+    }
+
+    // If response.ok, then try to parse JSON
+    const data = await response.json();
+    
+    if (!data.isSuccess) { // Assuming identity server returns { isSuccess: boolean }
+      cookieStore.delete('accessToken');
+      cookieStore.delete('refreshToken');
+      return { success: false, error: data.errors?.[0]?.description || 'Identity server indicated refresh token failure.' };
     }
 
     const { accessToken: newAccessToken, refreshToken: newRefreshToken } = data;
+
+    if (!newAccessToken || !newRefreshToken) {
+        cookieStore.delete('accessToken');
+        cookieStore.delete('refreshToken');
+        return { success: false, error: 'Identity server did not return new tokens upon successful refresh.' };
+    }
+
     cookieStore.set('accessToken', newAccessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
     cookieStore.set('refreshToken', newRefreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
-
     return { success: true, newAccessToken };
-  } catch (error: any) {
-    return { success: false, error: error.message || 'An unexpected error occurred during token refresh.' };
+
+  } catch (error: any) { // Catches network errors or if response.json() fails after being response.ok
+    console.error("Error during refreshAccessToken fetch/processing:", error);
+    cookieStore.delete('accessToken');
+    cookieStore.delete('refreshToken'); // Ensure logout on any failure here
+    return { success: false, error: error.message || 'An unexpected error occurred during token refresh processing.' };
   }
 }
 
@@ -191,10 +215,10 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
       console.log("Access token expired. Attempting refresh...");
       const refreshResult = await refreshAccessToken();
       if (refreshResult.success && refreshResult.newAccessToken) {
-        accessToken = refreshResult.newAccessToken;
+        accessToken = refreshResult.newAccessToken; // Use the new token
         decodedJwt = jwtDecode<MinimalJwtPayload>(accessToken); // Decode new token
       } else {
-        console.log("Token refresh failed or new token not provided.");
+        console.log("Token refresh failed or new token not provided. Error:", refreshResult.error);
         // Cookies are deleted by refreshAccessToken on failure
         return { user: null };
       }
@@ -212,12 +236,13 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
              return { user: null };
         }
       } else {
-        console.log("Token refresh failed after decode error.");
+        console.log("Token refresh failed after decode error. Error:", refreshResult.error);
         return { user: null };
       }
   }
 
   if (!decodedJwt || !decodedJwt.sub) {
+    console.warn("Decoded JWT or 'sub' claim is missing after potential refresh.");
     return { user: null };
   }
 
@@ -241,3 +266,4 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
   const appUser = mapPrismaUserToAppUser(prismaUser);
   return { user: appUser };
 }
+

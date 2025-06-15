@@ -2,20 +2,23 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { User } from '@/types/loan'; // Updated User type
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import type { User } from '@/types/loan';
 import { Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { loginUser as serverLoginUser, logoutUser as serverLogoutUser, getCurrentUser as serverGetCurrentUser } from '@/app/auth/actions';
+import { loginUser as serverLoginUser, logoutUser as serverLogoutUser, getCurrentUser as serverGetCurrentUser, refreshAccessToken } from '@/app/auth/actions';
+import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (phoneNumber: string, password?: string) => Promise<{ success: boolean; error?: string; user?: User }>; // Return user on login
+  login: (phoneNumber: string, password?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const REFRESH_INTERVAL_MS = 13 * 60 * 1000; // 12 minutes
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -23,19 +26,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isProcessingAuthAction, setIsProcessingAuthAction] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { toast } = useToast();
+  const refreshTokenIntervalIdRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearRefreshTokenInterval = useCallback(() => {
+    if (refreshTokenIntervalIdRef.current) {
+      clearInterval(refreshTokenIntervalIdRef.current);
+      refreshTokenIntervalIdRef.current = null;
+      console.log('Refresh token interval cleared.');
+    }
+  }, []);
+
+  const logoutContext = useCallback(async (showToast = true, toastMessage?: string) => {
+    setIsProcessingAuthAction(true);
+    clearRefreshTokenInterval();
+    await serverLogoutUser();
+    setUser(null);
+    setIsProcessingAuthAction(false);
+    if (showToast) {
+      toast({
+        title: toastMessage ? 'Session Ended' : 'Signed Out',
+        description: toastMessage || 'You have been successfully signed out.',
+        variant: toastMessage ? 'destructive' : 'default',
+      });
+    }
+    // Navigation to /login is handled by the other useEffect
+  }, [clearRefreshTokenInterval, toast]);
 
   const fetchAndSetCurrentUser = useCallback(async () => {
     setIsInitialLoadingUser(true);
     try {
       const { user: currentUserData } = await serverGetCurrentUser();
       setUser(currentUserData);
+      if (!currentUserData) { // If no user, ensure interval is cleared
+        clearRefreshTokenInterval();
+      }
     } catch (error) {
       console.error("Error fetching current user:", error);
       setUser(null);
+      clearRefreshTokenInterval();
     } finally {
       setIsInitialLoadingUser(false);
     }
-  }, []);
+  }, [clearRefreshTokenInterval]);
 
   useEffect(() => {
     fetchAndSetCurrentUser();
@@ -47,38 +80,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (result.success && result.user) {
       setUser(result.user);
     } else {
-      setUser(null); // Ensure user is cleared on login failure
+      setUser(null);
+      clearRefreshTokenInterval();
     }
     setIsProcessingAuthAction(false);
-    return result; // Return the full result including user object
-  };
-
-  const logoutContext = async () => {
-    setIsProcessingAuthAction(true);
-    await serverLogoutUser();
-    setUser(null);
-    setIsProcessingAuthAction(false);
-    // router.push('/login'); // Explicitly redirect after logout, though useEffect will also catch this
+    return result;
   };
 
   useEffect(() => {
-    if (isInitialLoadingUser || isProcessingAuthAction) {
-      return; // Don't run navigation logic while loading or processing
+    if (user && !isProcessingAuthAction) {
+      const handleAutoRefreshToken = async () => {
+        console.log('Attempting automatic token refresh...');
+        try {
+          const response = await refreshAccessToken()
+          if (!response.success) {
+            await logoutContext(true, 'Your session has expired. Please log in again.');
+          }
+          console.log('Token refresh successful via API route.');
+          // New tokens are set in HttpOnly cookies by the API route.
+          // Subsequent calls to getCurrentUser (e.g., on page navigation or by fetchAndSetCurrentUser) will pick them up.
+        } catch (error: any) {
+          await logoutContext(true, 'Your session has expired. Please log in again.');
+        }
+      };
+
+      clearRefreshTokenInterval(); // Clear any existing interval
+      refreshTokenIntervalIdRef.current = setInterval(handleAutoRefreshToken, REFRESH_INTERVAL_MS);
+      console.log('Refresh token interval started.');
+
+    } else if (!user) { // If user becomes null (e.g. after logout or initial load with no session)
+      clearRefreshTokenInterval();
     }
 
-    // If user is loaded and is on login page, redirect to dashboard
+    return () => { // Cleanup function for when the component unmounts or dependencies change
+      clearRefreshTokenInterval();
+    };
+  }, [user, isProcessingAuthAction, clearRefreshTokenInterval, logoutContext, toast]);
+
+
+  useEffect(() => {
+    if (isInitialLoadingUser || isProcessingAuthAction) {
+      return;
+    }
     if (user && pathname === '/login') {
       router.replace('/');
-    } 
-    // If no user and not on login page, redirect to login
-    else if (!user && pathname !== '/login') {
+    } else if (!user && pathname !== '/login') {
       router.replace('/login');
     }
   }, [user, pathname, router, isInitialLoadingUser, isProcessingAuthAction]);
 
   const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
 
-  // Show a global loader if we're in a critical loading phase and not on the login page already
   if (isLoadingOverall && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
@@ -88,14 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </p>
       </div>
     );
-  }
-  
-  // If still loading but on login page, or if redirecting, let it render children (which might be the login page or null during redirect flicker)
-  // This ensures login page can be displayed even during initial load.
-  if (isLoadingOverall && pathname === '/login') {
-     // Render children (login page) but provide context value
   } else if (!isInitialLoadingUser && !isProcessingAuthAction && !user && pathname !== '/login') {
-    // This case should be caught by the useEffect redirect, but as a fallback screen:
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -104,9 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-
   return (
-    <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
+    <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: () => logoutContext(true) }}>
       {children}
     </AuthContext.Provider>
   );
