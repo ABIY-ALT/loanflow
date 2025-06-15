@@ -58,32 +58,32 @@ const navItemsConfig: NavItemConfig[] = [
     href: '/my-assigned-cases',
     label: 'My Assigned Cases',
     icon: ClipboardList,
-    roles: [ROLES_FROM_ENUM.STAFF, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
+    roles: [ROLES_FROM_ENUM.STAFF,"User" , ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/manager-review',
     label: 'Manager Review Queue',
     icon: UserCheck,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
+    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/department-queue',
     label: 'Unassigned Cases',
     icon: FolderKanban,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
+    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.ADMIN]
   },
   { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
   {
     href: '/overdue-tasks',
     label: 'Overdue Tasks',
     icon: AlertTriangle,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.ADMIN]
+    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.ADMIN]
   },
   {
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    roles: [ROLES_FROM_ENUM.ADMIN, ROLES_FROM_ENUM.UNDERWRITER],
+    roles: [ROLES_FROM_ENUM.ADMIN,"User" , ROLES_FROM_ENUM.UNDERWRITER],
     subItems: [
       {
         href: '/settings/departments',

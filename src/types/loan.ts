@@ -19,6 +19,8 @@ export interface User {
   phoneNumber?: string; // from "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/mobilephone"
   role: UserRole | string; // Role from JWT, can be specific enum or string
   // Add any other relevant claims you want to use in the app
+  department?: Department; // Added for consistency from mockUsers
+  password?: string; // Added for consistency from mockUsers
 }
 
 // Represents a predefined department in the system (name string)
@@ -69,8 +71,9 @@ export enum LoanDocumentStatus {
 
 export interface LoanDocument {
   id: string;
-  name: string;
+  name: string; // This will store the original conceptual name or user-provided name
   status: LoanDocumentStatus;
+  filePath?: string; // Path to the actual file on the server
   notes?: string;
   uploadedAt?: string; // ISO date string
   createdAt?: string;
@@ -124,3 +127,4 @@ export interface LoanRequest {
   createdAt?: string;
   updatedAt?: string;
 }
+

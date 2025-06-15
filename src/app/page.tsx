@@ -6,15 +6,11 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Briefcase, Users, TrendingUp, AlertTriangle, Loader2, AlertCircle } from "lucide-react";
-import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getLoanRequests } from '@/services/loan-service-prisma'; // Explicitly using prisma service
 import type { LoanRequest } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
-
-// Firestore connection test imports
-import { db } from '@/lib/firebase';
-import { collection, getDocs, limit, query as firestoreQuery } from 'firebase/firestore';
-
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface DashboardStats {
   activeLoansCount: number;
@@ -36,45 +32,12 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
-  // Firestore Connection Test Effect
-  useEffect(() => {
-    const testFirestoreConnection = async () => {
-      console.log("Attempting Firestore connection test...");
-      try {
-        const departmentsColRef = collection(db, "departments");
-        const q = firestoreQuery(departmentsColRef, limit(1));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          console.log("Firestore connection SUCCESSFUL! Found documents in 'departments':");
-          querySnapshot.forEach((doc) => {
-            console.log(doc.id, " => ", doc.data());
-          });
-        } else {
-          console.log("Firestore connection SEEMS OK, but 'departments' collection is empty or does not exist. This is not an error if the collection is indeed empty/absent.");
-        }
-      } catch (e: any) {
-        console.error("Firestore connection FAILED:", e);
-        console.error("Detailed Firebase Error:", {
-          code: e.code,
-          message: e.message,
-          name: e.name,
-        });
-        alert(`Firestore Connection Failed. Check browser console & Firebase setup. Error: ${e.message}`);
-      }
-    };
-    if (process.env.NODE_ENV === 'development') {
-        testFirestoreConnection();
-    }
-  }, []);
-
-
   useEffect(() => {
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
+        const result = await getLoanRequests(); // This now calls the Prisma-backed service
 
         if (result.error) {
           console.error("Error from getLoanRequests service in Dashboard:", result.error, result);
@@ -96,7 +59,7 @@ export default function DashboardPage() {
           setStats({
             activeLoansCount: activeLoans,
             newApplicationsCount: newApplications,
-            approvalRate: "78.5%", // Placeholder
+            approvalRate: "78.5%", // Placeholder, calculate if possible
             overdueTasksCount: overdueTasks,
           });
         } else {
@@ -126,7 +89,7 @@ export default function DashboardPage() {
         <CardContent>
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin" />
-          ) : error && title === "Active Loans" ? ( // Show error specifically on one card if needed, or more generally
+          ) : error && title === "Active Loans" ? ( 
              <div className="flex items-center text-destructive">
                 <AlertCircle className="h-6 w-6 mr-2" />
                 <span>Error</span>
@@ -147,7 +110,7 @@ export default function DashboardPage() {
   };
 
 
-  if (error && !stats && isLoading) { // Initial load fails critically
+  if (error && !stats && isLoading) { 
     return (
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -159,22 +122,18 @@ export default function DashboardPage() {
             <Button>New Loan Request</Button>
           </Link>
         </div>
-        <Card className="border-destructive bg-destructive/10">
-          <CardHeader>
-            <CardTitle className="flex items-center text-destructive">
-              <AlertCircle className="mr-2 h-5 w-5" />
-              Error Loading Dashboard Data
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-destructive whitespace-pre-wrap">
+        <Alert variant="destructive">
+          <AlertCircle className="mr-2 h-5 w-5" />
+          <AlertTitle>Error Loading Dashboard Data</AlertTitle>
+          <AlertDescription>
+            <p className="whitespace-pre-wrap">
               Could not load dashboard statistics. Details: {error}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
                 Please try refreshing the page. If the issue persists, check the browser console for more details.
             </p>
-          </CardContent>
-        </Card>
+          </AlertDescription>
+        </Alert>
         <Card>
             <CardHeader>
                 <CardTitle>Quick Access</CardTitle>
@@ -223,11 +182,11 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {error && !isLoading && ( // Display a non-blocking error message if fetching finished with an error
+      {error && !isLoading && ( 
           <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
-              <CardTitle>Dashboard Update Error</CardTitle>
-              <CardDescription>{error} Some statistics might not be up-to-date.</CardDescription>
+              <AlertTitle>Dashboard Update Error</AlertTitle> 
+              <AlertDescription>{error} Some statistics might not be up-to-date.</AlertDescription> 
           </Alert>
       )}
 
@@ -295,4 +254,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -11,7 +11,10 @@ import {
   CheckCircle,
   XCircle,
   FileText,
-} from 'lucide-react'; // Assuming you're using lucide-react for icons
+  UploadCloud, // Added UploadCloud
+  Loader2,
+  BadgeCheck,
+} from 'lucide-react'; 
 import type { LoanRequest, LoanDocument, WorkflowStageDefinition } from '@/types/loan';
 
 const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
