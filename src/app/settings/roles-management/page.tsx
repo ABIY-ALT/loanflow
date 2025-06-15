@@ -28,11 +28,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription as ShadDialogDescription, 
-  DialogHeader as ShadDialogHeaderCustom, // Renamed to avoid conflict with Radix DialogHeader
+  DialogHeader as ShadDialogHeaderCustom,
   DialogFooter,
-  DialogTitle as ShadDialogTitle, // Renamed
+  DialogTitle as ShadDialogTitle,
   DialogClose,
-} from "@/components/ui/dialog"; // Assuming Radix DialogHeader is not separately exported or used like this.
+} from "@/components/ui/dialog";
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
@@ -292,76 +292,74 @@ export default function ManageRolesPage() {
       </Card>
 
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isSubmitting) { setIsFormDialogOpen(isOpen); if (!isOpen) resetFormDialog(); } }}>
-        <DialogContent className="sm:max-w-2xl">
-          <ShadDialogHeaderCustom> {/* Using renamed import */}
+        <DialogContent className="sm:max-w-2xl h-[90vh] flex flex-col">
+          <ShadDialogHeaderCustom>
             <ShadDialogTitle>{editingRole ? 'Edit Role' : 'Add New Role'}</ShadDialogTitle>
             <ShadDialogDescription>
               {editingRole ? `Update the details for "${editingRole.name}".` : 'Define a new role and assign its permissions.'}
             </ShadDialogDescription>
           </ShadDialogHeaderCustom>
-          <form onSubmit={handleFormSubmit}>
-            <div className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="role-name-dialog" className="block text-sm font-medium mb-1">Role Name</Label>
-                  <Input
-                    id="role-name-dialog"
-                    placeholder="e.g., Loan Reviewer"
-                    value={roleName}
-                    onChange={(e) => setRoleName(e.target.value)}
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="role-description-dialog" className="block text-sm font-medium mb-1">Description (Optional)</Label>
-                  <Textarea
-                    id="role-description-dialog"
-                    placeholder="Briefly describe this role's purpose"
-                    value={roleDescription}
-                    onChange={(e) => setRoleDescription(e.target.value)}
-                    disabled={isSubmitting}
-                    rows={2}
-                  />
-                </div>
-                
-                <div className="space-y-2 pt-2">
-                  <h4 className="text-md font-semibold">Assign Permissions</h4>
-                  <ScrollArea className="max-h-[350px] rounded-md border">
-                    <div className="p-4 space-y-3">
-                      {PERMISSION_CATEGORIES.map(category => (
-                        <div key={category.name} className="space-y-2 p-3 border rounded-md bg-muted/30">
-                          <h5 className="text-sm font-medium text-primary">{category.name}</h5>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                            {category.permissions.map(permissionKey => (
-                               <div key={permissionKey} className="flex items-center space-x-2">
-                                 <Checkbox
-                                   id={`perm-${permissionKey}`}
-                                   checked={selectedPermissions.has(permissionKey)}
-                                   onCheckedChange={(checked) => handlePermissionChange(permissionKey, !!checked)}
-                                   disabled={isSubmitting}
-                                 />
-                                 <Label htmlFor={`perm-${permissionKey}`} className="text-sm font-normal cursor-pointer leading-tight">
-                                   {PERMISSION_DESCRIPTIONS[permissionKey] || permissionKey}
-                                 </Label>
-                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
+          <form id="roleDialogForm" onSubmit={handleFormSubmit} className="flex-grow overflow-y-auto pr-2 space-y-4 py-4">
+            <div>
+              <Label htmlFor="role-name-dialog" className="block text-sm font-medium mb-1">Role Name</Label>
+              <Input
+                id="role-name-dialog"
+                placeholder="e.g., Loan Reviewer"
+                value={roleName}
+                onChange={(e) => setRoleName(e.target.value)}
+                disabled={isSubmitting}
+                required
+              />
             </div>
-            <DialogFooter className="pt-5">
-              <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isSubmitting} onClick={resetFormDialog}>Cancel</Button>
-              </DialogClose>
-              <Button type="submit" disabled={isSubmitting || !roleName.trim()}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingRole ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
-                {editingRole ? 'Save Changes' : 'Add Role'}
-              </Button>
-            </DialogFooter>
+            <div>
+              <Label htmlFor="role-description-dialog" className="block text-sm font-medium mb-1">Description (Optional)</Label>
+              <Textarea
+                id="role-description-dialog"
+                placeholder="Briefly describe this role's purpose"
+                value={roleDescription}
+                onChange={(e) => setRoleDescription(e.target.value)}
+                disabled={isSubmitting}
+                rows={2}
+              />
+            </div>
+            
+            <div className="space-y-2 pt-2">
+              <h4 className="text-md font-semibold">Assign Permissions</h4>
+              <ScrollArea className="rounded-md border"> {/* Removed max-h-* classes */}
+                <div className="p-4 space-y-3">
+                  {PERMISSION_CATEGORIES.map(category => (
+                    <div key={category.name} className="space-y-2 p-3 border rounded-md bg-muted/30">
+                      <h5 className="text-sm font-medium text-primary">{category.name}</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                        {category.permissions.map(permissionKey => (
+                           <div key={permissionKey} className="flex items-center space-x-2">
+                             <Checkbox
+                               id={`perm-${permissionKey}`}
+                               checked={selectedPermissions.has(permissionKey)}
+                               onCheckedChange={(checked) => handlePermissionChange(permissionKey, !!checked)}
+                               disabled={isSubmitting}
+                             />
+                             <Label htmlFor={`perm-${permissionKey}`} className="text-sm font-normal cursor-pointer leading-tight">
+                               {PERMISSION_DESCRIPTIONS[permissionKey] || permissionKey}
+                             </Label>
+                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
           </form>
+          <DialogFooter className="mt-auto pt-4 border-t">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isSubmitting} onClick={resetFormDialog}>Cancel</Button>
+            </DialogClose>
+            <Button type="submit" form="roleDialogForm" disabled={isSubmitting || !roleName.trim()}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingRole ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
+              {editingRole ? 'Save Changes' : 'Add Role'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -369,3 +367,4 @@ export default function ManageRolesPage() {
   );
 }
     
+

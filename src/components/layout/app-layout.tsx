@@ -3,6 +3,7 @@
 
 import type React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image'; // Import next/image
 import {
   SidebarProvider,
   Sidebar,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, Landmark, UserCircle, LogOut, Loader2 } from 'lucide-react';
+import { Bell, UserCircle, LogOut, Loader2 } from 'lucide-react'; // Landmark removed
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -52,7 +53,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <SidebarRail />
         <SidebarHeader className="p-4">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Landmark className="h-8 w-8 text-primary" />
+            <Image 
+              src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg" 
+              alt="LoanFlow Logo" 
+              width={32} 
+              height={32}
+              className="h-8 w-8 text-primary" // Keep similar sizing classes
+            />
             <h1 className="text-xl font-semibold text-primary group-data-[state=expanded]:opacity-100 group-data-[state=collapsed]:opacity-0 group-data-[state=collapsed]:hidden transition-opacity duration-200">LoanFlow</h1>
           </Link>
         </SidebarHeader>

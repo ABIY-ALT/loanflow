@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
+import Image from 'next/image'; // Import next/image
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,7 +50,13 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
-          <LogIn className="mx-auto h-12 w-12 text-primary mb-4" />
+          <Image
+            src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg"
+            alt="LoanFlow Logo"
+            width={48}
+            height={48}
+            className="mx-auto h-12 w-12 text-primary mb-4"
+          />
           <CardTitle className="text-3xl font-bold">Welcome Back</CardTitle>
           <CardDescription>Sign in to your LoanFlow account using your phone number.</CardDescription>
         </CardHeader>
