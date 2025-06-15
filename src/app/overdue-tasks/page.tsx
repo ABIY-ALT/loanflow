@@ -10,18 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition } from '@/types/loan'; // Import WorkflowDefinition
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 
 
 export default function OverdueTasksPage() {
   const [overdueLoans, setOverdueLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]); // Add state for workflow definitions
+  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Callback to get stage name from workflow definitions
-  const getStageName = React.useCallback((workflowVersionId?: string, stageId?: string): string => {
+  const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
     if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
     for (const def of fetchedWorkflowDefinitions) {
       const version = def.versions.find(v => v.id === workflowVersionId);
@@ -34,31 +33,49 @@ export default function OverdueTasksPage() {
   }, [fetchedWorkflowDefinitions]);
 
   useEffect(() => {
-    async function fetchOverdueLoans() {
+    async function fetchPageData() {
       setIsLoading(true);
       setError(null);
       try {
         const [loansResult, wfResult] = await Promise.all([
           getLoanRequests(),
           getWorkflowDefinitions(),
-        ]); // Fetch both loans and workflows
+        ]);
 
-        const result = loansResult; // Use loansResult for overdue loan filtering
-        if (result.error) {
-          console.error("Error from getLoanRequests service in OverdueTasksPage:", result.error, result);
-          setError(result.error);
-        } else if (result.loans) {
-          setOverdueLoans(result.loans.filter((loan) => loan.isOverdue)); // Filter for overdue loans
+        if (loansResult.error) {
+          setError(prev => prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`);
+          setOverdueLoans([]);
+        } else if (loansResult.loans) {
+          setOverdueLoans(loansResult.loans.filter((loan) => loan.isOverdue));
+        } else {
+          setError(prev => prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`);
+          setOverdueLoans([]);
         }
+
+        if (wfResult.error) {
+          setError(prev => prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`);
+          setFetchedWorkflowDefinitions([]);
+        } else if (wfResult.workflows) {
+          setFetchedWorkflowDefinitions(wfResult.workflows);
+        } else {
+          setError(prev => prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`);
+          setFetchedWorkflowDefinitions([]);
+        }
+
       } catch (err: any) {
-        console.error("Error fetching overdue loans in component:", err);
-        const errorMessage = err.message || "An unknown error occurred fetching overdue tasks.";
+        const errorMessage = err.message || "An unknown error occurred fetching page data.";
         setError(errorMessage);
+        setOverdueLoans([]);
+        setFetchedWorkflowDefinitions([]);
       } finally {
         setIsLoading(false);
       }
-    } // Add fetchedWorkflowDefinitions to dependency array
-    fetchOverdueLoans();
+    }
+    fetchPageData();
+    // The dependency array for useEffect should typically include functions or values from the outer scope
+    // that are used inside useEffect and could change, prompting the effect to re-run.
+    // In this case, fetchPageData is defined within the effect and doesn't depend on outside variables that change,
+    // so an empty array [] means it runs once on mount.
   }, []);
 
 
@@ -71,7 +88,7 @@ export default function OverdueTasksPage() {
     );
   }
 
-  if (error) {
+  if (error && overdueLoans.length === 0 && fetchedWorkflowDefinitions.length === 0) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -90,7 +107,7 @@ export default function OverdueTasksPage() {
         </div>
         <Alert variant="destructive" className="max-w-2xl mx-auto">
             <AlertTriangle className="h-5 w-5" />
-            <AlertTitleShadCN>Error Fetching Overdue Tasks</AlertTitleShadCN>
+            <AlertTitleShadCN>Error Fetching Page Data</AlertTitleShadCN>
             <AlertDescShadCN className="whitespace-pre-wrap">
             {error} Please try refreshing the page.
             </AlertDescShadCN>
@@ -118,6 +135,14 @@ export default function OverdueTasksPage() {
           </Button>
         </Link>
       </div>
+      
+      {error && !(overdueLoans.length === 0 && fetchedWorkflowDefinitions.length === 0) && (
+         <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitleShadCN>Partial Data Error</AlertTitleShadCN>
+            <AlertDescriptionShadCN>There was an issue loading some data, but other parts may be available: {error}</AlertDescriptionShadCN>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -150,7 +175,7 @@ export default function OverdueTasksPage() {
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell>
-                      <Badge variant=\"outline\">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge> {/* Use getStageName */}
+                      <Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {loan.stageDeadline ? (
@@ -180,3 +205,4 @@ export default function OverdueTasksPage() {
     </div>
   );
 }
+

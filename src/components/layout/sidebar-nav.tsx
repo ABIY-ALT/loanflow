@@ -14,9 +14,8 @@ import {
   FolderKanban,
   Building,
   ClipboardList,
-  Eye,
   Drama,
-  UserIcon
+  Users2 as UsersIcon,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -25,84 +24,101 @@ import {
 } from '@/components/ui/sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { UserRole } from '@/types/loan'; // UserRole enum for comparison
+import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 
 interface NavItemConfig {
   href: string;
   label: string;
   icon: React.ElementType;
-  roles?: (UserRole | string)[]; // Allow string for JWT roles
+  requiredPermissions?: AppPermission[]; // Permissions needed to see this item
   subItems?: NavItemConfig[];
 }
 
-// UserRole enum values for easier comparison with JWT roles (which are strings)
-const ROLES_FROM_ENUM = {
-  ADMIN: UserRole.ADMIN.toString(), // "Admin"
-  RELATIONSHIP_MANAGER: UserRole.RELATIONSHIP_MANAGER.toString(),
-  UNDERWRITER: UserRole.UNDERWRITER.toString(),
-  STAFF: UserRole.STAFF.toString(),
-  VIEW_ONLY: UserRole.VIEW_ONLY.toString(),
-};
-
-
 const navItemsConfig: NavItemConfig[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutGrid },
-  { href: '/loan-process', label: 'Loan Pipeline', icon: KanbanSquare },
+  { 
+    href: '/', 
+    label: 'Dashboard', 
+    icon: LayoutGrid,
+    requiredPermissions: [PERMISSIONS.VIEW_DASHBOARD]
+  },
+  { 
+    href: '/loan-process', 
+    label: 'Loan Pipeline', 
+    icon: KanbanSquare,
+    requiredPermissions: [PERMISSIONS.VIEW_LOAN_PIPELINE]
+  },
   {
     href: '/loan-requests/new',
     label: 'New Loan Request',
     icon: FilePlus2,
-    roles: [ROLES_FROM_ENUM.ADMIN, "User", ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.STAFF]
+    requiredPermissions: [PERMISSIONS.CREATE_LOAN_REQUEST]
   },
   {
     href: '/my-assigned-cases',
     label: 'My Assigned Cases',
     icon: ClipboardList,
-    roles: [ROLES_FROM_ENUM.STAFF,"User" , ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.UNDERWRITER, ROLES_FROM_ENUM.ADMIN]
+    requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
   },
   {
     href: '/manager-review',
     label: 'Manager Review Queue',
     icon: UserCheck,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.ADMIN]
+    requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
   },
   {
     href: '/department-queue',
     label: 'Unassigned Cases',
     icon: FolderKanban,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.ADMIN]
+    requiredPermissions: [PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE]
   },
-  { href: '/loan-status', label: 'Loan Status Lookup', icon: SearchCheck },
+  { 
+    href: '/loan-status', 
+    label: 'Loan Status Lookup', 
+    icon: SearchCheck,
+    requiredPermissions: [PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP]
+  },
   {
     href: '/overdue-tasks',
     label: 'Overdue Tasks',
     icon: AlertTriangle,
-    roles: [ROLES_FROM_ENUM.UNDERWRITER,"User" , ROLES_FROM_ENUM.RELATIONSHIP_MANAGER, ROLES_FROM_ENUM.ADMIN]
+    requiredPermissions: [PERMISSIONS.VIEW_OVERDUE_TASKS_REPORT]
   },
   {
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    roles: [ROLES_FROM_ENUM.ADMIN,"User" , ROLES_FROM_ENUM.UNDERWRITER],
+    // A user needs at least one settings-related permission to see the main Settings link
+    requiredPermissions: [
+        PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS, 
+        PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS,
+        PERMISSIONS.MANAGE_SETTINGS_ROLES,
+        PERMISSIONS.MANAGE_USERS, // Added for register user link if it's inside settings
+    ], 
     subItems: [
       {
         href: '/settings/departments',
         label: 'Manage Departments',
         icon: Building,
-        roles: [ROLES_FROM_ENUM.ADMIN]
+        requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS]
       },
       {
         href: '/settings/roles-management',
         label: 'Manage Roles',
         icon: Drama,
-        roles: [ROLES_FROM_ENUM.ADMIN]
+        requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_ROLES]
       },
       {
-        href: '/settings/user-assignments', // New page
+        href: '/settings/user-assignments',
         label: 'Manage User Assignments',
-        icon: UserIcon,
-        roles: [ROLES_FROM_ENUM.ADMIN]
+        icon: UsersIcon,
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Or a more specific one if created
       },
+      {
+        href: '/settings/register-user', // Added link for user registration page
+        label: 'Register New User',
+        icon: FilePlus2, // Reusing icon, consider a UserPlus icon if available
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Typically admin/user manager
+      }
     ],
   },
 ];
@@ -129,35 +145,25 @@ export default function SidebarNav() {
   }
 
   if (!user) {
-    return null; // No user, no sidebar nav items (except potentially public ones if any)
+    return null; 
   }
 
-  const currentUserRoleString = String(user.role); // Role from JWT is a string
+  const userPermissions = new Set(user.permissions || []);
 
-  const canView = (itemRoles?: (UserRole | string)[]): boolean => {
-    if (!currentUserRoleString) return false;
-    if (!itemRoles || itemRoles.length === 0) return true; // Public item
+  const canView = (itemRequiredPermissions?: AppPermission[]): boolean => {
+    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public item or no specific permission needed beyond login
 
-    // Admin sees everything
-    if (currentUserRoleString === ROLES_FROM_ENUM.ADMIN) return true;
-
-    // For VIEW_ONLY, it's a specific check, not general visibility.
-    // This will be handled by the viewOnlyAllowedPaths for now.
-    // A more robust permission system would be based on specific permissions, not just role names.
-    
-    return itemRoles.includes(currentUserRoleString);
+    // Check if user has AT LEAST ONE of the required permissions for the item
+    return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
+  
+  const visibleNavItems = navItemsConfig.filter(item => 
+    canView(item.requiredPermissions)
+  ).map(item => ({
+      ...item,
+      subItems: item.subItems?.filter(sub => canView(sub.requiredPermissions))
+  }));
 
-  const isViewOnlyUser = currentUserRoleString === ROLES_FROM_ENUM.VIEW_ONLY;
-  const viewOnlyAllowedPaths = ['/', '/loan-process', '/loan-status', '/loan-requests']; // Added /loan-requests for detail view
-
-  const visibleNavItems = navItemsConfig.filter(item => {
-    if (isViewOnlyUser) {
-      // VIEW_ONLY can see specific paths, and loan detail pages (which start with /loan-requests/)
-      return viewOnlyAllowedPaths.some(allowedPath => item.href === allowedPath || (allowedPath === '/loan-requests' && item.href.startsWith('/loan-requests/')));
-    }
-    return canView(item.roles);
-  });
 
   return (
     <SidebarMenu>
@@ -168,14 +174,10 @@ export default function SidebarNav() {
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
 
-        const filteredSubItems = item.subItems?.filter(sub => {
-            if (isViewOnlyUser) {
-                // VIEW_ONLY generally doesn't see settings sub-items
-                return false;
-            }
-            return canView(sub.roles);
-        });
-        const openSubMenu = filteredSubItems && filteredSubItems.length > 0 && currentPathname.startsWith(item.href) && item.href !== '/';
+        // Open sub-menu if the current path starts with the main item's href,
+        // it has sub-items, and it's not the root dashboard page (which has no settings sub-menu).
+        const openSubMenu = item.subItems && item.subItems.length > 0 && 
+                            currentPathname.startsWith(item.href) && item.href !== '/';
 
         return (
           <SidebarMenuItem key={item.href}>
@@ -192,9 +194,9 @@ export default function SidebarNav() {
                 </a>
               </SidebarMenuButton>
             </Link>
-            {openSubMenu && filteredSubItems && filteredSubItems.length > 0 && (
+            {openSubMenu && item.subItems && item.subItems.length > 0 && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
-                {filteredSubItems.map(subItem => {
+                {item.subItems.map(subItem => {
                   const SubIcon = subItem.icon;
                   const subItemIsActive = currentPathname === subItem.href;
                   return (

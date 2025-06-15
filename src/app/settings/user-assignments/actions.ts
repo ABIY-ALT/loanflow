@@ -2,14 +2,13 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { UserRole as AppUserRole } from '@/types/loan'; // Enum for built-in roles
 import { getCurrentUser } from '@/app/auth/actions';
+import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
 
 export interface UserForAssignment {
   id: string;
   name: string;
   email: string;
-  // role: AppUserRole | string | null; // Removed built-in role from here for this page's specific use case
   departmentId: string | null;
   departmentName: string | null;
   customRoleId: string | null;
@@ -35,8 +34,8 @@ const createErrorReturn = (message: string, statusCode = 500) => {
 export async function getUsersForAssignment(): Promise<{ users?: UserForAssignment[]; error?: string }> {
   try {
     const { user: adminUser } = await getCurrentUser();
-    if (!adminUser || adminUser.role !== AppUserRole.ADMIN) {
-      return { error: "Unauthorized: Admin access required." };
+    if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
+      return { error: "Unauthorized: Admin access required (MANAGE_USERS permission)." };
     }
 
     const users = await prisma.user.findMany({
@@ -51,7 +50,6 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
       id: u.id,
       name: u.name,
       email: u.email,
-      // role: u.role as AppUserRole | string | null, // No longer mapping built-in role here
       departmentId: u.departmentId,
       departmentName: u.department?.name || null,
       customRoleId: u.customRoleId,
@@ -67,8 +65,8 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
 export async function getAssignableData(): Promise<{ data?: AssignableData; error?: string }> {
   try {
     const { user: adminUser } = await getCurrentUser();
-    if (!adminUser || adminUser.role !== AppUserRole.ADMIN) {
-      return { error: "Unauthorized: Admin access required." };
+    if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
+      return { error: "Unauthorized: Admin access required (MANAGE_USERS permission)." };
     }
 
     const departments = await prisma.department.findMany({
@@ -93,8 +91,8 @@ export async function updateUserAssignments(
 ): Promise<{ success: boolean; error?: string; user?: UserForAssignment }> {
   try {
     const { user: adminUser } = await getCurrentUser();
-    if (!adminUser || adminUser.role !== AppUserRole.ADMIN) {
-      return createErrorReturn("Unauthorized: Admin access required.", 403);
+    if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
+      return createErrorReturn("Unauthorized: Admin access required (MANAGE_USERS permission).", 403);
     }
 
     if (!userId) {
@@ -142,7 +140,6 @@ export async function updateUserAssignments(
       id: updatedUserPrisma.id,
       name: updatedUserPrisma.name,
       email: updatedUserPrisma.email,
-      // role: updatedUserPrisma.role as AppUserRole | string | null, // Not mapping built-in role
       departmentId: updatedUserPrisma.departmentId,
       departmentName: updatedUserPrisma.department?.name || null,
       customRoleId: updatedUserPrisma.customRoleId,

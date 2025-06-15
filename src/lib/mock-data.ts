@@ -1,22 +1,50 @@
 
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
-import { UserRole } from '@/types/loan';
+// UserRole enum is removed from types/loan.ts, so it should not be imported or used here.
+// We will assign custom role names directly in the mock user data if needed.
 
 const MOCK_REFERENCE_DATE = new Date('2024-07-15T10:00:00.000Z').getTime();
 
-export const mockUsers: User[] = [
-  { id: 'user-jane-doe', name: 'Jane Doe', email: 'jane@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination", password: 'password' },
-  { id: 'user-john-smith', name: 'John Smith', email: 'john@example.com', role: UserRole.RELATIONSHIP_MANAGER, department: "Origination", password: 'password' },
-  { id: 'user-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', role: UserRole.UNDERWRITER, department: "Origination", password: 'password' },
-  { id: 'user-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', role: UserRole.ADMIN, password: 'password' },
-  { id: 'user-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', role: UserRole.UNDERWRITER, department: "Underwriting", password: 'password' },
-  { id: 'user-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', role: UserRole.UNDERWRITER, department: "Underwriting", password: 'password' },
-  { id: 'user-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', role: UserRole.STAFF, department: "Closing", password: 'password' },
-  { id: 'user-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', role: UserRole.STAFF, department: "Closing", password: 'password' },
-  { id: 'user-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', role: UserRole.STAFF, department: "Credit Analysis", password: 'password' },
-  // System user for Prisma seeding - ensure this ID matches what seed.ts uses
-  { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', role: UserRole.ADMIN, password: 'systempassword' },
-  { id: 'user-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', role: UserRole.VIEW_ONLY, password: 'password' },
+// App-level User type for mocks (no longer uses UserRole enum)
+interface MockAppUser {
+  id: string; // This will be Prisma's User ID
+  userId?: string; // This would be the ID from Identity Server if syncing
+  name: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  department?: Department;
+  customRoleName?: string; // Assign custom role by name
+  password?: string; // For identity server mock, not stored in Prisma User directly
+}
+
+
+export const mockUsers: MockAppUser[] = [
+  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
+  { id: 'user-john-smith', userId: 'identity-john-smith', name: 'John Smith', email: 'john@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
+  { id: 'user-manager-mike', userId: 'identity-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', customRoleName: "Administrator", department: "Origination", password: 'password' }, // Example admin
+  { id: 'user-admin-alice', userId: 'identity-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', customRoleName: "Administrator", password: 'password' },
+  { id: 'user-underwriter-bob', userId: 'identity-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', customRoleName: "Loan Officer", department: "Underwriting", password: 'password' }, // Example role
+  { id: 'user-uw-manager-sara', userId: 'identity-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', customRoleName: "Administrator", department: "Underwriting", password: 'password' },
+  { id: 'user-staff-carol', userId: 'identity-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
+  { id: 'user-closing-manager-dave', userId: 'identity-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
+  { id: 'user-credit-analyst', userId: 'identity-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', customRoleName: "Loan Officer", department: "Credit Analysis", password: 'password' },
+  { id: 'user-victor-viewer', userId: 'identity-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', customRoleName: "Viewer", password: 'password' },
+  {
+    id: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Prisma User ID
+    userId: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Identity Server User ID (using same for consistency)
+    name: 'Getaye Temesgen',
+    email: 'tgech71@gmail.com',
+    firstName: 'Getaye',
+    lastName: 'Temesgen',
+    phoneNumber: '0912345678',
+    customRoleName: "Administrator", // This role should grant all permissions
+    department: undefined, // Or assign a default department if needed
+    password: 'password' // Default password for mock identity server
+  },
+  // System user for Prisma seeding (already handled in seed.ts)
+  // { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', customRoleName: "Administrator", password: 'systempassword' },
 ];
 
 export const mockDepartments: Department[] = [
@@ -28,7 +56,7 @@ export const mockDepartments: Department[] = [
   "Servicing"
 ];
 
-// --- Workflow Mock Data ---
+// --- Workflow Mock Data (remains the same) ---
 const personalLoan_v1_stages: WorkflowStageDefinition[] = [
   { id: 'pl_v1_s1', name: 'Application Intake (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 2, requiredDocumentNames: ['Identification Card', 'Application Form'], percentageWeight: 10, order: 0 },
   { id: 'pl_v1_s2', name: 'Initial Document Review (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Proof of Income', 'Bank Statement'], percentageWeight: 20, order: 1 },
@@ -118,7 +146,6 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
   },
 ];
 
-// --- Initial Loan Requests (Examples) ---
 const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: string, versionId: string, stages: WorkflowStageDefinition[] } | null => {
   const definition = mockWorkflowDefinitions.find(def => def.loanType === loanType);
   if (!definition) return null;
@@ -126,7 +153,6 @@ const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: s
   if (activeVersion) {
     return { definitionId: definition.id, versionId: activeVersion.id, stages: activeVersion.stages };
   }
-  // Fallback to latest version if no active one is explicitly set for the loan type
   if (definition.versions.length > 0) {
     const latestVersion = [...definition.versions].sort((a,b) => b.versionNumber - a.versionNumber)[0];
     console.warn(`No active version for loan type "${loanType}". Falling back to latest version ${latestVersion.versionNumber}.`);
@@ -138,8 +164,8 @@ const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: s
 
 const personalLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Personal Loan');
 const autoLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Auto Loan');
-const mortgageLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Mortgage');
 
+// LoanRequest mock data remains mostly the same, assignedTo will use Prisma User IDs
 export let mockLoanRequests: LoanRequest[] = [
   {
     id: 'loan-001',
@@ -155,7 +181,7 @@ export let mockLoanRequests: LoanRequest[] = [
     workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
     currentStageId: personalLoanActiveWfInfo?.stages[0].id || '',
     assignedDepartment: personalLoanActiveWfInfo?.stages[0].responsibleDepartment,
-    assignedTo: undefined, // Unassigned
+    assignedTo: undefined, 
     submittedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [],
@@ -164,8 +190,8 @@ export let mockLoanRequests: LoanRequest[] = [
         id: 'hist-1',
         stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A',
         timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        userId: 'system',
-        userName: 'System',
+        userId: 'system-prisma', // System user ID
+        userName: 'System Process',
         notes: `Loan application submitted. Workflow Version ID: ${personalLoanActiveWfInfo?.versionId}. Initial stage: ${personalLoanActiveWfInfo?.stages[0].name}. Awaiting assignment in ${personalLoanActiveWfInfo?.stages[0].responsibleDepartment}.`,
       },
     ],
@@ -190,9 +216,9 @@ export let mockLoanRequests: LoanRequest[] = [
     assignedTo: undefined,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'Submitted', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString() } ],
+    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/po.pdf' } ],
     history: [
-      { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
+      { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + ((autoLoanActiveWfInfo?.stages[0].defaultTimelineDays || 1) ) * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: false,
@@ -212,10 +238,10 @@ export let mockLoanRequests: LoanRequest[] = [
     workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
     currentStageId: personalLoanActiveWfInfo?.stages[3].id || '',
     assignedDepartment: personalLoanActiveWfInfo?.stages[3].responsibleDepartment,
-    assignedTo: 'user-underwriter-bob',
+    assignedTo: 'user-underwriter-bob', // Prisma User ID for Bob
     submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'Verified', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString() } ],
+    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/risk.pdf' } ],
     history: [
       { id: 'hist-3prev', stageName: personalLoanActiveWfInfo?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'Credit Scoring complete. Promoted to Underwriting for final review.'},
       { id: 'hist-3', stageName: personalLoanActiveWfInfo?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
@@ -235,15 +261,15 @@ export let mockLoanRequests: LoanRequest[] = [
     loanType: 'Personal Loan',
     loanPurpose: 'Travel',
     workflowDefinitionId: 'wf_def_personal_loan',
-    workflowVersionId: 'pl_v_1', // Specifically tied to V1 (which is isActive: false)
+    workflowVersionId: 'pl_v_1', 
     currentStageId: personalLoan_v1_stages[1].id,
     assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment,
-    assignedTo: 'user-jane-doe',
+    assignedTo: 'user-jane-doe', // Prisma User ID for Jane
     submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'Verified', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString() } ],
+    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/id_diana.pdf' } ],
     history: [
-      { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
+      { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: true,
@@ -263,12 +289,12 @@ export let mockLoanRequests: LoanRequest[] = [
     workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
     currentStageId: personalLoanActiveWfInfo?.stages[1].id || '',
     assignedDepartment: personalLoanActiveWfInfo?.stages[1].responsibleDepartment,
-    assignedTo: undefined, // Unassigned
+    assignedTo: undefined,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'Submitted', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString()}],
+    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/digi_id_edward.png'}],
     history: [
-      { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system', userName: 'System', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
+      { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
     ],
     stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[1].defaultTimelineDays || 1) - 2) * 24 * 60 * 60 * 1000).toISOString(),
     isOverdue: false,
@@ -276,24 +302,18 @@ export let mockLoanRequests: LoanRequest[] = [
   },
 ];
 
-export const logActiveVersionForLoanType = (loanType: string) => {
-    const wfDef = mockWorkflowDefinitions.find(def => def.loanType === loanType);
-    if (!wfDef) {
-        console.log(`No workflow definition found for loan type: ${loanType}`);
-        return;
-    }
-    const activeVersion = wfDef.versions.find(v => v.isActive);
-    if (activeVersion) {
-        console.log(`Active version for ${loanType}: Version ${activeVersion.versionNumber} (ID: ${activeVersion.id}) from Workflow Definition: ${wfDef.name}`);
-    } else {
-        console.log(`No active version found for loan type: ${loanType} in definition: ${wfDef.name}`);
-    }
-};
+// Update mockUsers to include firstName and lastName if name is a fullName
+mockUsers.forEach(user => {
+  if (user.name && (!user.firstName || !user.lastName)) {
+    const nameParts = user.name.split(' ');
+    user.firstName = nameParts[0];
+    user.lastName = nameParts.slice(1).join(' ');
+  }
+});
 
-// Ensure all mockUsers have a password defined; if not, default it.
 mockUsers.forEach(user => {
   if (user.password === undefined) {
-    user.password = 'password'; // Default password if none is set
+    user.password = 'password'; 
   }
 });
 

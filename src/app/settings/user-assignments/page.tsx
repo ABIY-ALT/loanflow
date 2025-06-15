@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { UserRole as AppUserRoleEnum } from '@/types/loan'; // For built-in roles
+import { PERMISSIONS } from '@/lib/permissions';
 import { getUsersForAssignment, getAssignableData, updateUserAssignments, type UserForAssignment, type AssignableData, type UserAssignmentUpdatePayload } from './actions';
 import { Badge } from '@/components/ui/badge';
 
@@ -37,9 +37,10 @@ export default function ManageUserAssignmentsPage() {
   const [editingUser, setEditingUser] = useState<UserForAssignment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form state for the dialog
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null | undefined>(undefined);
   const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string | null | undefined>(undefined);
+
+  const canManageAssignments = currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
   const fetchPageData = useCallback(async () => {
     setIsLoadingData(true);
@@ -67,12 +68,13 @@ export default function ManageUserAssignmentsPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (currentUser?.role === AppUserRoleEnum.ADMIN) {
+    if (canManageAssignments) {
       fetchPageData();
     }
-  }, [currentUser, fetchPageData]);
+  }, [currentUser, fetchPageData, canManageAssignments]);
 
   const handleOpenEditDialog = (userToEdit: UserForAssignment) => {
+    if (!canManageAssignments) return;
     setEditingUser(userToEdit);
     setSelectedDepartmentId(userToEdit.departmentId);
     setSelectedCustomRoleId(userToEdit.customRoleId);
@@ -81,7 +83,7 @@ export default function ManageUserAssignmentsPage() {
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || !canManageAssignments) return;
 
     setIsSubmitting(true);
     const payload: UserAssignmentUpdatePayload = {};
@@ -104,7 +106,7 @@ export default function ManageUserAssignmentsPage() {
 
     if (result.success && result.user) {
       toast({ title: "Assignments Updated", description: `Assignments for ${result.user.name} saved successfully.` });
-      await fetchPageData(); // Refresh users list
+      await fetchPageData(); 
       setIsFormDialogOpen(false);
     } else {
       toast({ title: "Update Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -121,12 +123,12 @@ export default function ManageUserAssignmentsPage() {
     );
   }
 
-  if (!currentUser || currentUser.role !== AppUserRoleEnum.ADMIN) {
+  if (!canManageAssignments) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
-        <p className="text-muted-foreground mb-6">You do not have permission to manage user assignments. This feature is for Administrators only.</p>
+        <p className="text-muted-foreground mb-6">You do not have permission to manage user assignments. This requires the '{PERMISSIONS.MANAGE_USERS}' permission.</p>
         <Link href="/settings" passHref>
           <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Settings</Button>
         </Link>
@@ -254,7 +256,7 @@ export default function ManageUserAssignmentsPage() {
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None (Unassign)</SelectItem>
+                      <SelectItem value="none">None (Unassign</SelectItem>
                       {assignableData.customRoles.map(cRole => (
                         <SelectItem key={cRole.id} value={cRole.id}>{cRole.name}</SelectItem>
                       ))}
@@ -281,4 +283,3 @@ export default function ManageUserAssignmentsPage() {
     </div>
   );
 }
-

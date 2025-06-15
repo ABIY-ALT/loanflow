@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { UserRole } from '@/types/loan';
+import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
 
 interface DepartmentItem {
   id: string;
@@ -37,6 +37,8 @@ export default function ManageDepartmentsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const canManageDepartments = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS);
 
   const fetchDepartmentsCallback = useCallback(async () => {
     setIsLoading(true);
@@ -61,12 +63,13 @@ export default function ManageDepartmentsPage() {
   }, []);
 
   useEffect(() => {
-    if (currentUser && currentUser.role === UserRole.ADMIN) {
+    if (canManageDepartments) {
         fetchDepartmentsCallback();
     }
-  }, [fetchDepartmentsCallback, currentUser]);
+  }, [fetchDepartmentsCallback, canManageDepartments]);
 
   const handleAddDepartment = async () => {
+    if (!canManageDepartments) return;
     if (!newDepartmentName.trim()) {
       toast({ title: "Validation Error", description: "Department name cannot be empty.", variant: "destructive" });
       return;
@@ -86,22 +89,14 @@ export default function ManageDepartmentsPage() {
           await fetchDepartmentsCallback();
         }
     } catch (error: any) {
-        let errorMessage = "An unexpected error occurred while adding department.";
-        if (error && typeof error.message === 'string') {
-            errorMessage = error.message;
-        }
-        toast({
-            title: "Action Failed",
-            description: `Error: ${errorMessage}`,
-            variant: "destructive",
-            duration: 9000,
-        });
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive", duration: 9000 });
     } finally {
         setIsSaving(false);
     }
   };
 
   const handleDeleteDepartment = async (departmentId: string, departmentName: string) => {
+    if (!canManageDepartments) return;
     setIsSaving(true);
     try {
         const result = await deleteDepartmentService(departmentId);
@@ -112,22 +107,13 @@ export default function ManageDepartmentsPage() {
           await fetchDepartmentsCallback();
         }
     } catch (error: any) {
-        let errorMessage = "An unexpected error occurred while deleting department.";
-        if (error && typeof error.message === 'string') {
-            errorMessage = error.message;
-        }
-        toast({
-            title: "Action Failed",
-            description: `Error: ${errorMessage}`,
-            variant: "destructive",
-            duration: 9000,
-        });
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive", duration: 9000 });
     } finally {
         setIsSaving(false);
     }
   };
   
-  if (authLoading || (isLoading && !departments.length)) {
+  if (authLoading || (isLoading && !departments.length && canManageDepartments)) {
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -136,14 +122,14 @@ export default function ManageDepartmentsPage() {
     );
   }
 
-  if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+  if (!canManageDepartments) {
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
             <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
             <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
-            <p className="text-muted-foreground mb-6">You do not have permission to manage departments. Please contact an administrator.</p>
-            <Link href="/" passHref>
-                <Button variant="outline">Go to Dashboard</Button>
+            <p className="text-muted-foreground mb-6">You do not have permission to manage departments. This requires the '{PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS}' permission.</p>
+            <Link href="/settings" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Settings</Button>
             </Link>
         </div>
     );
@@ -240,7 +226,7 @@ export default function ManageDepartmentsPage() {
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
                               This action cannot be undone. Deleting department "{dept.name}" might affect existing workflow configurations if it&apos;s in use.
-                              Ensure no workflow stages depend on this department before deleting.
+                              Ensure no workflow stages or users depend on this department before deleting.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

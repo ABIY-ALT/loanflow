@@ -34,7 +34,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
-import { UserRole } from '@/types/loan';
+import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -365,6 +365,8 @@ export default function SettingsPage() {
   const [overdueThreshold, setOverdueThreshold] = useState(2);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
+  const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
+
   const fetchInitialData = useCallback(async () => {
       setIsLoadingData(true);
       setError(null);
@@ -394,28 +396,34 @@ export default function SettingsPage() {
 
 
   useEffect(() => {
-    if (currentUser && currentUser.role === UserRole.ADMIN) {
+    // Check for MANAGE_SETTINGS_WORKFLOWS or any other relevant top-level settings permission
+    if (currentUser && (currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || 
+                        currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) ||
+                        currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) ||
+                        currentUser.permissions.includes(PERMISSIONS.MANAGE_USERS)
+                        )) {
         fetchInitialData();
     }
   }, [fetchInitialData, currentUser]);
 
 
   const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
+    if (!canManageWorkflows) return;
     const targetDef = workflowDefinitions.find(d => d.id === definitionIdToActivate);
     if (!targetDef) return;
 
     setWorkflowDefinitions(prevDefs =>
       prevDefs.map(def => {
-        if (def.loanType === targetDef.loanType) {
+        if (def.loanType === targetDef.loanType) { // Ensure only one version PER LOAN TYPE is active
           return {
             ...def,
             versions: def.versions.map(v => ({
               ...v,
-              isActive: (v.id === versionIdToActivate && def.id === definitionIdToActivate)
+              isActive: (v.id === versionIdToActivate && def.id === definitionIdToActivate) // Activate if it's the target def and target version
             }))
           };
         }
-        return def;
+        return def; // Return other definitions (for different loan types) as they are
       })
     );
     const activatedVersion = targetDef.versions.find(v => v.id === versionIdToActivate);
@@ -424,12 +432,14 @@ export default function SettingsPage() {
 
 
   const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion) => {
+    if (!canManageWorkflows) return;
     setCurrentWorkflowDefForEdit(def);
     setCurrentVersionToEdit(version);
     setIsEditVersionDialogOpen(true);
   };
 
   const handleAddNewVersion = (definitionId: string) => {
+    if (!canManageWorkflows) return;
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
       if (def.id === definitionId) {
         const latestVersionNum = def.versions.length > 0 ? Math.max(...def.versions.map(v => v.versionNumber)) : 0;
@@ -439,41 +449,80 @@ export default function SettingsPage() {
           versionNumber: latestVersionNum + 1,
           createdAt: new Date().toISOString(),
           stages: [],
-          isActive: false,
+          isActive: false, // New versions are not active by default
         };
+        
+        // If no other version is active for this definition's loan type, make this new one active.
+        // This check needs to span across all definitions for the same loan type.
+        const isAnyVersionActiveForThisLoanType = workflowDefinitions
+            .filter(d => d.loanType === def.loanType) // Consider all definitions for this loan type
+            .some(dInner => dInner.versions.some(vInner => vInner.isActive));
+
 
         let makeNewActive = newVersion.isActive;
-        if (!def.versions.some(v => v.isActive)) {
+        if (!isAnyVersionActiveForThisLoanType) {
             makeNewActive = true;
         }
+        
+        let updatedVersionsForThisDef = [...def.versions, {...newVersion, isActive: makeNewActive}];
 
-        const updatedVersions = def.versions.map(v => ({...v, isActive: makeNewActive && v.id === newVersion.id ? true : (makeNewActive ? false : v.isActive) }));
-
-        return { ...def, versions: [...updatedVersions, {...newVersion, isActive: makeNewActive}].sort((a,b) => b.versionNumber - a.versionNumber) };
+        // If we just made the new version active, ensure all other versions for THIS loan type (across all definitions) are inactive
+        if (makeNewActive) {
+            return {
+                ...def,
+                versions: updatedVersionsForThisDef.map(v => ({
+                    ...v,
+                    // if this is the new version we just added, its active state is already set.
+                    // otherwise, if another version was active, it becomes inactive because new one is active now.
+                    isActive: (v.id === newVersion.id) ? makeNewActive : false 
+                })).sort((a,b) => b.versionNumber - a.versionNumber)
+            };
+        } else {
+             return { ...def, versions: updatedVersionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
+        }
       }
       return def;
     }));
-    toast({title: "New Version Added (Local)", description: "Empty new version added. Edit to add stages. Active status set if no other version was active for this loan type. Remember to Save All Settings."});
+    toast({title: "New Version Added (Local)", description: "Empty new version added. Edit to add stages. Active status updated if needed. Remember to Save All Settings."});
   };
 
   const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
+     if (!canManageWorkflows) return;
      setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
        if (def.id === definitionId) {
-         let versionsToUpdate = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
+         // Apply updated version to this definition
+         let versionsForThisDef = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
+         
+         // If the updated version is marked active, ensure all other versions for THIS LOAN TYPE are inactive
          if (updatedVersion.isActive) {
-            versionsToUpdate = versionsToUpdate.map(v => ({
-                ...v,
-                isActive: v.id === updatedVersion.id
-            }));
+            return {
+                ...def,
+                versions: versionsForThisDef.map(v => ({
+                    ...v,
+                    isActive: v.id === updatedVersion.id // Only the updated one is active within this definition
+                })).sort((a,b) => b.versionNumber - a.versionNumber)
+            };
+         } else {
+            // If the updated version is marked inactive, just update it.
+            // (Activation logic for other versions is handled by handleActivateWorkflowVersion)
+            return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
          }
-         return { ...def, versions: versionsToUpdate.sort((a,b) => b.versionNumber - a.versionNumber) };
        }
-       return def;
+       // If another definition shares the same loanType and the updatedVersion was made active,
+       // ensure its versions are marked inactive.
+       else if (def.loanType === workflowDefinitions.find(d=>d.id === definitionId)?.loanType && updatedVersion.isActive) {
+         return {
+           ...def,
+           versions: def.versions.map(v => ({...v, isActive: false})).sort((a,b) => b.versionNumber - a.versionNumber)
+         };
+       }
+       return def; // Return other definitions as is
      }));
      toast({title: "Version Changes Applied (Local)", description: `Version ${updatedVersion.versionNumber} changes staged. Save all settings to persist.`});
   };
 
   const handleAddNewWorkflowDefinition = async () => {
+    if (!canManageWorkflows) return;
     if (!newWorkflowName.trim() || !newWorkflowLoanType.trim()) {
         toast({ title: "Validation Error", description: "Workflow name and loan type are required.", variant: "destructive", duration: 9000 });
         return;
@@ -499,8 +548,8 @@ export default function SettingsPage() {
           const newDefinitionFromDb: WorkflowDefinition = {
               id: result.id,
               ...definitionData,
-              versions: [],
-              createdAt: new Date().toISOString(),
+              versions: [], // New def has no versions initially
+              createdAt: new Date().toISOString(), // Approximate, real value is from DB
               updatedAt: new Date().toISOString(),
           };
           setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
@@ -510,41 +559,33 @@ export default function SettingsPage() {
           toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to DB.` });
       }
     } catch (error: any) {
-        let errorMessage = "An unexpected error occurred while adding workflow definition.";
-        if (error && typeof error.message === 'string') {
-            errorMessage = error.message;
-        }
-        toast({
-            title: "Action Failed",
-            description: `Error: ${errorMessage}`,
-            variant: "destructive",
-            duration: 9000,
-        });
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive", duration: 9000 });
     } finally {
         setIsSavingData(false);
     }
   };
 
   const handleSaveChanges = async () => {
+    if (!canManageWorkflows && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES)) {
+         toast({ title: "Permission Denied", description: "You do not have permission to save settings.", variant: "destructive" });
+        return;
+    }
     setIsSavingAll(true);
     setError(null);
     try {
-        const result = await saveWorkflowDefinitions(workflowDefinitions);
-        if (result.error) {
-            throw new Error(result.error);
-        }
-        toast({ title: "All Settings Saved to Database", description: "Workflow configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData();
-    } catch (err: any) {
-        let errorMessage = "Failed to save settings to Database.";
-        if (err && typeof err.message === 'string') {
-            errorMessage = err.message;
-             if (err.message.includes("query requires an index")) {
-                errorMessage += " Please check database logs or Prisma error details.";
+        // Only save workflow definitions if user has MANAGE_SETTINGS_WORKFLOWS permission
+        if (canManageWorkflows) {
+            const result = await saveWorkflowDefinitions(workflowDefinitions);
+            if (result.error) {
+                throw new Error(result.error);
             }
         }
-        setError(errorMessage);
-        toast({ title: "Saving Failed", description: `Error: ${errorMessage}`, variant: "destructive", duration: 9000 });
+        // TODO: Add saving for other settings like departments, roles if they are modified on this page
+        // For now, this button mainly saves workflow definitions.
+        toast({ title: "Settings Saved to Database", description: "Configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
+        await fetchInitialData(); // Re-fetch to confirm saved state
+    } catch (err: any) {
+        toast({ title: "Saving Failed", description: `Error: ${err.message || "Unknown error"}`, variant: "destructive", duration: 9000 });
     } finally {
         setIsSavingAll(false);
     }
@@ -559,19 +600,27 @@ export default function SettingsPage() {
     );
   }
 
-  if (!currentUser || currentUser.role !== UserRole.ADMIN) {
+  // Broader check for any settings access
+  const canAccessAnySettings = currentUser?.permissions.some(p => 
+    p === PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS ||
+    p === PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS ||
+    p === PERMISSIONS.MANAGE_SETTINGS_ROLES ||
+    p === PERMISSIONS.MANAGE_USERS
+  );
+
+  if (!currentUser || !canAccessAnySettings) {
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
             <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
             <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
-            <p className="text-muted-foreground mb-6">You do not have permission to view this page. Please contact an administrator if you believe this is an error.</p>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the settings page.</p>
             <Link href="/" passHref>
                 <Button variant="outline">Go to Dashboard</Button>
             </Link>
         </div>
     );
   }
-
+  
   if (error && workflowDefinitions.length === 0 && departments.length === 0) {
      return (
         <div className="space-y-6 p-4 text-center">
@@ -589,21 +638,25 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Define workflow definitions for loan types. Each definition can have multiple versions.
-          Only one version per loan type can be active for new applications.
-          Ensure departments are set up via <Link href="/settings/departments" className="text-primary hover:underline">Manage Departments</Link> for stage assignment.
+          Configure various aspects of the LoanFlow application. Access to specific sections depends on your permissions.
         </p>
-        <div className="mt-4 space-x-4">
- {/* Add a link for user registration */}
- <Link href="/settings/register-user" passHref>
- <Button variant="outline">
- <PlusCircle className="mr-2 h-4 w-4" />
- Register New User
- </Button>
- </Link>
- </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && (
+             <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
+          )}
+          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) && (
+             <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
+          )}
+          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+             <Link href="/settings/user-assignments" passHref><Button variant="outline">Manage User Assignments</Button></Link>
+          )}
+           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+             <Link href="/settings/register-user" passHref><Button variant="outline">Register New User</Button></Link>
+          )}
+        </div>
       </div>
 
+    {canManageWorkflows && (
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
@@ -672,6 +725,7 @@ export default function SettingsPage() {
             </div>
         </CardContent>
       </Card>
+    )}
 
       <EditWorkflowVersionDialog
         isOpen={isEditVersionDialogOpen}
@@ -708,6 +762,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-
-    

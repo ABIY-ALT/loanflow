@@ -27,7 +27,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Info, Phone, DollarSign, Type, Landmark } from 'lucide-react';
+import { Loader2, User as UserIconLucide, Info, Phone, DollarSign, Type, Landmark } from 'lucide-react'; // Renamed User import
 import type { LoanRequest, User as UserType, Department } from '@/types/loan';
 import { useEffect } from 'react';
 
@@ -97,7 +97,7 @@ export function EditLoanDetailsDialog({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
             <div className="grid md:grid-cols-2 gap-6">
-              <FormField control={form.control} name="customerName" render={({ field }) => ( <FormItem> <FormLabel>Customer Name</FormLabel> <FormControl><div className="relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSaving} /></div></FormControl> <FormMessage /> </FormItem> )} />
+              <FormField control={form.control} name="customerName" render={({ field }) => ( <FormItem> <FormLabel>Customer Name</FormLabel> <FormControl><div className="relative"><UserIconLucide className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSaving} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <FormControl><div className="relative"><Info className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSaving} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <FormControl><div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSaving} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <FormControl><div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSaving} /></div></FormControl> <FormMessage /> </FormItem> )} />
@@ -119,9 +119,9 @@ export function EditLoanDetailsDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned to Staff</SelectItem>
-                        {users.map(user => ( // Users should be pre-filtered by department if possible
+                        {users.map(user => ( 
                           <SelectItem key={user.id} value={user.id}>
-                            {user.name} ({user.role}) {user.department && user.department !== currentDepartment ? `(${user.department} Dept)`: ''}
+                            {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''} {user.department && user.department !== currentDepartment ? `(${user.department} Dept)`: ''}
                           </SelectItem>
                         ))}
                       </SelectContent>

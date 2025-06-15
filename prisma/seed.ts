@@ -1,7 +1,8 @@
 
-import { PrismaClient, UserRole as PrismaUserRole } from '@prisma/client';
-import { mockDepartments, mockUsers } from '../src/lib/mock-data';
-import type { Department as AppDepartment } from '../src/types/loan'; // For type consistency
+import { PrismaClient } from '@prisma/client';
+import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
+import type { Department as AppDepartment } from '../src/types/loan';
+import { ALL_PERMISSIONS } from '../src/lib/permissions'; // Import all permissions
 
 const prisma = new PrismaClient();
 
@@ -23,25 +24,77 @@ async function main() {
   }
   console.log('Departments seeded.');
 
-  // Seed Users (including the system user)
+  // Seed Roles
+  console.log('Seeding Custom Roles...');
+  const viewerRole = await prisma.role.upsert({
+    where: { name: 'Viewer' },
+    update: {},
+    create: {
+      name: 'Viewer',
+      description: 'Can view loan data but cannot make changes.',
+      permissions: ['VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 'VIEW_LOAN_STATUS_LOOKUP'],
+    },
+  });
+  console.log(`Created/verified role: ${viewerRole.name}`);
+
+  const loanOfficerRole = await prisma.role.upsert({
+    where: { name: 'Loan Officer' },
+    update: {},
+    create: {
+      name: 'Loan Officer',
+      description: 'Can manage assigned loan requests.',
+      permissions: [
+        'VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 
+        'CREATE_LOAN_REQUEST', 'VIEW_OWN_ASSIGNED_CASES', 'EDIT_LOAN_DETAILS',
+        'ADD_LOAN_NOTES', 'LOG_INFO_REQUEST', 'FULFILL_INFO_REQUEST',
+        'UPLOAD_LOAN_DOCUMENTS', 'VERIFY_LOAN_DOCUMENTS', 'MARK_STAGE_COMPLETE'
+      ],
+    },
+  });
+  console.log(`Created/verified role: ${loanOfficerRole.name}`);
+
+  const adminRole = await prisma.role.upsert({
+    where: { name: 'Administrator' },
+    update: { // Ensure admin role always has all permissions
+      permissions: ALL_PERMISSIONS,
+    },
+    create: {
+      name: 'Administrator',
+      description: 'Full access to all system features and settings.',
+      permissions: ALL_PERMISSIONS, // Assign all permissions from the AppPermission type
+    },
+  });
+  console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
+  console.log('Custom Roles seeded.');
+
+
+  // Seed Users
   console.log('Seeding Users...');
+  // Add the system user directly to the list of users to be seeded
   const allUsersToSeed = [
-    ...mockUsers,
-    // Add the 'system-prisma' user explicitly if not in mockUsers
+    ...appMockUsers,
     {
-      id: 'system-prisma',
+      id: 'system-prisma', 
+      userId: 'system-prisma-identity', 
       name: 'System Process',
-      email: 'system@loanflow.app', // Ensure this email is unique
-      role: PrismaUserRole.ADMIN, // Prisma's UserRole enum
-      department: undefined, // System user might not belong to a department
+      email: 'system@loanflow.app',
+      department: undefined, 
+      customRoleName: 'Administrator', 
+      firstName: 'System',
+      lastName: 'Process',
+      phoneNumber: '0000000000',
     },
   ];
+
 
   for (const userData of allUsersToSeed) {
     let departmentDataConnect = {};
     if (userData.department) {
+      // Type assertion needed as userData.department might be string | undefined,
+      // but we check for its existence.
+      const deptName = (userData.department as AppDepartment).toLowerCase();
       const deptRecord = await prisma.department.findUnique({
-        where: { nameLowercase: (userData.department as AppDepartment).toLowerCase() },
+        where: { nameLowercase: deptName },
       });
       if (deptRecord) {
         departmentDataConnect = { department: { connect: { id: deptRecord.id } } };
@@ -49,56 +102,50 @@ async function main() {
         console.warn(`Department "${userData.department}" not found for user "${userData.name}". User will be created without department linkage.`);
       }
     }
-
-    // Map AppUserRole to PrismaUserRole before seeding
-    let prismaRole: PrismaUserRole;
-    // The 'role' in mockUsers is from 'src/types/loan.ts UserRole'
-    // We need to cast/map it to Prisma's generated UserRole enum
-    const appRoleKey = userData.role.toUpperCase() as keyof typeof PrismaUserRole;
-    if (PrismaUserRole[appRoleKey]) {
-        prismaRole = PrismaUserRole[appRoleKey];
-    } else {
-        console.warn(`Invalid role "${userData.role}" for user "${userData.name}". Defaulting to STAFF. Check UserRole enum consistency.`);
-        prismaRole = PrismaUserRole.STAFF; // Fallback role
+    
+    let customRoleDataConnect = {};
+    if (userData.customRoleName) {
+        const roleRecord = await prisma.role.findUnique({
+            where: { name: userData.customRoleName },
+        });
+        if (roleRecord) {
+            customRoleDataConnect = { customRole: { connect: { id: roleRecord.id }}};
+        } else {
+            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}". User will be created without this role.`);
+        }
+    } else if (userData.email === 'alice.admin@example.com' || userData.id === 'system-prisma') {
+        // Default Alice Admin and system-prisma to Administrator role if not specified
+        // This assumes adminRole is already fetched or created
+        customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
 
     const user = await prisma.user.upsert({
-      where: { email: userData.email }, // Using email as the unique identifier for upsert
-      update: {
+      where: { email: userData.email },
+      update: { // Fields to update if user exists
         name: userData.name,
-        role: prismaRole,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phoneNumber: userData.phoneNumber,
+        userId: userData.userId || userData.id, // Update userId if provided
         ...departmentDataConnect,
-        // id: userData.id, // Do not update ID on existing records if email matches
+        ...customRoleDataConnect,
       },
-      create: {
-        id: userData.id, // Use the mock ID for creation
+      create: { // Fields to set when creating a new user
+        id: userData.id, 
+        userId: userData.userId || userData.id, // Use Identity Server ID or local ID if not available
         name: userData.name,
         email: userData.email,
-        role: prismaRole,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phoneNumber: userData.phoneNumber,
         ...departmentDataConnect,
+        ...customRoleDataConnect,
       },
     });
-    console.log(`Created/updated user with id: ${user.id} (${user.name})`);
+    console.log(`Created/updated user with id: ${user.id} (${user.name}), customRoleID: ${user.customRoleId}`);
   }
   console.log('Users seeded.');
-
-  // IMPORTANT: Seed Loan Requests, Workflow Definitions, etc.
-  // This part is more complex due to relationships and requires careful handling.
-  // For now, I'm focusing on Departments and Users which are common prerequisites.
-  // You would expand this section to seed other entities like WorkflowDefinitions,
-  // WorkflowVersions, WorkflowStageDefinitions, and then LoanRequests,
-  // making sure to connect them correctly using the IDs of already seeded records.
-
-  // Example (conceptual) for seeding workflow definitions (would need more detail):
-  /*
-  console.log('Seeding Workflow Definitions (Conceptual)...');
-  // const sampleWorkflowDef = await prisma.workflowDefinition.create({ ... });
-  // const sampleVersion = await prisma.workflowVersion.create({ data: { definitionId: sampleWorkflowDef.id, ... }});
-  // const sampleStage = await prisma.workflowStageDefinition.create({ data: { versionId: sampleVersion.id, ... }});
-  console.log('Workflow Definitions (Conceptual) seeded.');
-  */
-
   console.log(`Seeding finished.`);
 }
 

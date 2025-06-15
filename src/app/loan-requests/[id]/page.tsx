@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-import { UserRole, LoanDocumentStatus } from '@/types/loan';
+import { LoanDocumentStatus } from '@/types/loan'; // Removed UserRole
+import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
@@ -49,7 +50,19 @@ export default function LoanDetailPage() {
   const [currentConceptualDocumentToUpload, setCurrentConceptualDocumentToUpload] = useState<string | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
 
-  const isViewOnlyUser = currentUser?.role === UserRole.VIEW_ONLY;
+  const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
+
+  const canPerformAnyWriteAction = 
+    userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) ||
+    userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) ||
+    userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) ||
+    userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) ||
+    userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ||
+    userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ||
+    userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) ||
+    userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) ||
+    userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
+
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowDefinitionId || !loan.workflowVersionId) return null;
@@ -108,8 +121,8 @@ export default function LoanDetailPage() {
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
   ): Promise<boolean> => {
-    if (isViewOnlyUser) {
-      toast({ title: "Permission Denied", description: "View-only users cannot make changes.", variant: "destructive" });
+    if (!canPerformAnyWriteAction) {
+      toast({ title: "Permission Denied", description: "You do not have permissions to make changes.", variant: "destructive" });
       return false;
     }
     if (!loan) return false;
@@ -122,23 +135,20 @@ export default function LoanDetailPage() {
       documents: updatedFields.documents ? [...updatedFields.documents] : [...loan.documents],
       lastUpdatedDate: formatISO(new Date()),
     };
-    // Optimistically update UI for documents and history.
-    // For other fields, UI might already reflect or will be updated on success.
     if (updatedFields.documents || updatedFields.history) {
         setLoan(newLoanState);
     }
 
-
     try {
-      const serviceResult = await updateLoanRequest(loan.id, newLoanState); // Pass full new state or just diff
+      const serviceResult = await updateLoanRequest(loan.id, newLoanState); 
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
         await fetchLoanData();
         return false;
       }
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
-      if(serviceResult.updatedLoan) setLoan(serviceResult.updatedLoan); // Ensure UI reflects confirmed state
-      else await fetchLoanData(); // Or refetch if service doesn't return full updated object
+      if(serviceResult.updatedLoan) setLoan(serviceResult.updatedLoan);
+      else await fetchLoanData(); 
       return true;
     } catch (err: any) {
       toast({ title: "System Error", description: err.message || "A critical error occurred.", variant: "destructive" });
@@ -147,17 +157,17 @@ export default function LoanDetailPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [loan, toast, fetchLoanData, isViewOnlyUser]);
+  }, [loan, toast, fetchLoanData, canPerformAnyWriteAction]);
 
 
   const onEditLoanSubmit = async (data: any) => {
-    if (!loan || isViewOnlyUser) return;
+    if (!loan || !userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS)) return;
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
 
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
     if (finalAssignedTo !== loan.assignedTo) {
-        const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.name : 'Unassigned';
-        const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
+        const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.fullName : 'Unassigned';
+        const currentUserName = currentUser?.fullName || 'System Process';
         historyUpdate.push({
             id: `hist-assign-${Date.now()}`,
             stageName: currentStageDef?.name || loan.currentStageName || 'Current Stage',
@@ -182,13 +192,13 @@ export default function LoanDetailPage() {
   };
 
   const onAddNoteSubmit = async (noteContent: string) => {
-    if (isViewOnlyUser) return;
+    if (!userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES)) return;
     if (!noteContent.trim() || !loan) {
       toast({ title: "Note Required", description: "Please enter content for the note.", variant: "destructive" });
       return;
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
-    const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
+    const currentUserName = currentUser?.fullName || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-note-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
@@ -200,13 +210,13 @@ export default function LoanDetailPage() {
   };
 
   const onLogInfoRequestSubmit = async (infoToRequest: string) => {
-    if (isViewOnlyUser) return;
+    if (!userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST)) return;
     if (!infoToRequest.trim() || !loan) {
       toast({ title: "Info Required", description: "Please specify information needed.", variant: "destructive" });
       return;
     }
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
-    const currentUserName = currentUser?.fullName || currentUser?.name || 'System Process';
+    const currentUserName = currentUser?.fullName || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
@@ -219,9 +229,9 @@ export default function LoanDetailPage() {
   };
 
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
-    if (!loan || isViewOnlyUser) return;
+    if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST)) return;
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
-    const currentUserName = currentUser?.fullName || currentUser?.name || 'User';
+    const currentUserName = currentUser?.fullName || 'User';
     const updatedHistory = loan.history.map(h =>
         h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by ${currentUserName} on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
     );
@@ -235,7 +245,7 @@ export default function LoanDetailPage() {
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
-    if (isViewOnlyUser) return false;
+    if (!canPerformAnyWriteAction) return false;
     if (!loan || !currentStageDef || !currentWorkflowVersion) {
         if (!currentStageDef) toast({title: "Workflow Info Missing", description: "Cannot validate requirements as current stage definition is missing.", variant: "warning", duration: 5000});
         return false;
@@ -249,7 +259,7 @@ export default function LoanDetailPage() {
 
     if (currentStageDef.requiredDocumentNames.length > 0) {
       const pendingDocs = currentStageDef.requiredDocumentNames.filter(reqDocName => {
-        const uploadedDoc = loan.documents.find(d => d.name === reqDocName); // Check conceptual name
+        const uploadedDoc = loan.documents.find(d => d.name === reqDocName);
         return !uploadedDoc || uploadedDoc.status !== LoanDocumentStatus.VERIFIED;
       });
       if (pendingDocs.length > 0) {
@@ -258,13 +268,13 @@ export default function LoanDetailPage() {
       }
     }
     return true;
-  }, [loan, currentStageDef, currentWorkflowVersion, toast, isViewOnlyUser]);
+  }, [loan, currentStageDef, currentWorkflowVersion, toast, canPerformAnyWriteAction]);
 
   const handleMarkStageComplete = async () => {
-    if (isViewOnlyUser || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
+    if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
 
     const actingUserId = loan.assignedTo || currentUser.id;
-    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.name || currentUser.name || 'Assigned Officer') : (currentUser.fullName || currentUser.name || 'System Process');
+    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.fullName || currentUser.fullName || 'Assigned Officer') : (currentUser.fullName || 'System Process');
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -276,13 +286,13 @@ export default function LoanDetailPage() {
   };
 
   const handleManagerPromoteLoan = async () => {
-    if (isViewOnlyUser || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
+    if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
 
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (currentStageIndex === -1 || currentStageIndex === currentWorkflowVersion.stages.length - 1) {
       toast({ title: "Workflow End", description: "This is the last stage in the workflow. Consider closing or finalizing the loan.", variant: "info" });
       if (currentStageIndex === currentWorkflowVersion.stages.length -1) {
-          const currentUserName = currentUser.fullName || currentUser.name || 'System Process';
+          const currentUserName = currentUser.fullName || 'System Process';
           const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
           const finalHistory: LoanHistoryEntry = {
             id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -296,7 +306,7 @@ export default function LoanDetailPage() {
     }
 
     const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
-    const currentUserName = currentUser.fullName || currentUser.name || 'System Process';
+    const currentUserName = currentUser.fullName || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
       userId: currentUser.id,
@@ -317,7 +327,7 @@ export default function LoanDetailPage() {
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
-    if (isViewOnlyUser || !currentUser || !loan || !currentStageDef) {
+    if (!userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) || !currentUser || !loan || !currentStageDef) {
         toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
         return;
     }
@@ -325,7 +335,7 @@ export default function LoanDetailPage() {
       toast({ title: "Note Required", description: "Please provide reason for returning.", variant: "destructive" });
       return;
     }
-    const currentUserName = currentUser.fullName || currentUser.name || 'System Process (Manager Action)';
+    const currentUserName = currentUser.fullName || 'System Process (Manager Action)';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-rework-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
       userId: currentUser.id,
@@ -340,16 +350,15 @@ export default function LoanDetailPage() {
     if (success) setIsReturnForReworkDialogOpen(false);
   };
 
-  // Updated to handle filePath and use originalFileName for the document name
   const handleDocumentUploaded = async (conceptualDocName: string, uploadedFilePath: string, originalUploadedFileName: string) => {
-    if (!loan || isViewOnlyUser) return;
-    const existingDocIndex = loan.documents.findIndex(d => d.name === conceptualDocName); // Check against conceptual name for replacement
+    if (!loan || !userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) return;
+    const existingDocIndex = loan.documents.findIndex(d => d.name === conceptualDocName);
     let updatedDocuments: LoanDocument[];
     const timestamp = formatISO(new Date());
 
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
-        name: originalUploadedFileName, // Use the actual uploaded file's name
+        name: originalUploadedFileName, 
         status: LoanDocumentStatus.SUBMITTED,
         notes: `File uploaded for requirement: ${conceptualDocName}.`,
         uploadedAt: timestamp,
@@ -358,12 +367,11 @@ export default function LoanDetailPage() {
 
     if (existingDocIndex > -1) {
         updatedDocuments = loan.documents.map((doc, index) =>
-            index === existingDocIndex ? { ...newDocData, id: doc.id } : doc // Preserve ID if replacing
+            index === existingDocIndex ? { ...newDocData, id: doc.id } : doc 
         );
     } else {
-        // If it's a new conceptual requirement, or an additional document
         const findByName = loan.documents.findIndex(d => d.name === originalUploadedFileName);
-        if(findByName > -1){ // if a doc with this exact filename already exists, replace it.
+        if(findByName > -1){ 
            updatedDocuments = loan.documents.map((doc, index) => index === findByName ? newDocData : doc);
         } else {
           updatedDocuments = [...loan.documents, newDocData];
@@ -375,16 +383,11 @@ export default function LoanDetailPage() {
   };
 
 
-  const handleVerifyDocument = async (docName: string) => { // docName here is the conceptual name from required docs
-    if (!loan || isViewOnlyUser) return;
+  const handleVerifyDocument = async (docName: string) => { 
+    if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
 
-    // Find the actual document record, which might have a different 'name' (original filename)
-    // if it was uploaded for this conceptual requirement.
-    // This assumes the UI for "Verify" is next to the conceptual requirement.
-    // A more robust way might be to pass the actual document ID or its unique stored name.
-    // For now, we find the *first* submitted document that matches the conceptual name.
     const docToVerify = loan.documents.find(d =>
-        (d.notes?.includes(docName) || d.name === docName) && // Looser check based on notes or exact match
+        (d.notes?.includes(docName) || d.name === docName) && 
         d.status === LoanDocumentStatus.SUBMITTED
     );
 
@@ -435,11 +438,11 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (!loan) {
+  if (!loan) { // Should not happen if above checks are correct
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
             <AlertCircle className="h-8 w-8 text-destructive mr-2" />
-            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null after loading attempts.</p>
+            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null.</p>
         </div>
     );
   }
@@ -455,7 +458,6 @@ export default function LoanDetailPage() {
   let progressPercentage = 0;
   if (currentWorkflowVersion && loan?.currentStageId) {
       const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
-
       if (currentStageIndexInWorkflow > -1 && currentWorkflowVersion.stages.length > 0) {
           progressPercentage = currentWorkflowVersion.stages
               .slice(0, currentStageIndexInWorkflow)
@@ -471,12 +473,12 @@ export default function LoanDetailPage() {
         loan={loan}
         currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
         onBack={() => router.back()}
-        onOpenEditDialog={() => setIsEditLoanDialogOpen(true)}
-        onOpenAddNoteDialog={() => setIsAddNoteDialogOpen(true)}
-        onOpenLogInfoDialog={() => setIsLogInfoDialogOpen(true)}
+        onOpenEditDialog={() => userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && setIsEditLoanDialogOpen(true)}
+        onOpenAddNoteDialog={() => userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && setIsAddNoteDialogOpen(true)}
+        onOpenLogInfoDialog={() => userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && setIsLogInfoDialogOpen(true)}
         onMarkStageComplete={handleMarkStageComplete}
         onManagerPromoteLoan={handleManagerPromoteLoan}
-        onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
+        onOpenReturnForReworkDialog={() => userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable && !!currentStageDef}
       />
@@ -516,16 +518,16 @@ export default function LoanDetailPage() {
             <LoanDocumentsManager
               loan={loan}
               currentStageDef={currentStageDef}
-              onOpenUploadDialog={isViewOnlyUser ? undefined : (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); }}
-              onVerifyDocument={isViewOnlyUser ? undefined : handleVerifyDocument}
+              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
+              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ? handleVerifyDocument : undefined}
               isSavingGlobal={isSaving}
-              isViewOnly={isViewOnlyUser}
+              isViewOnly={!canPerformAnyWriteAction} 
             />
             <LoanHistoryTimeline
               loan={loan}
-              onFulfillInfoRequest={isViewOnlyUser ? undefined : handleFulfillInfoRequest}
+              onFulfillInfoRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) ? handleFulfillInfoRequest : undefined}
               isSavingGlobal={isSaving}
-              isViewOnly={isViewOnlyUser}
+              isViewOnly={!canPerformAnyWriteAction}
             />
           </div>
         </CardContent>
@@ -536,46 +538,13 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {!isViewOnlyUser && (
+      {canPerformAnyWriteAction && (
         <>
-          <EditLoanDetailsDialog
-            isOpen={isEditLoanDialogOpen}
-            onOpenChange={setIsEditLoanDialogOpen}
-            loan={loan}
-            users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)}
-            currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
-            onSubmit={onEditLoanSubmit}
-            isSaving={isSaving}
-          />
-          <AddNoteToLoanDialog
-            isOpen={isAddNoteDialogOpen}
-            onOpenChange={setIsAddNoteDialogOpen}
-            onSubmit={onAddNoteSubmit}
-            isSaving={isSaving}
-          />
-          <LogInfoRequestForLoanDialog
-            isOpen={isLogInfoDialogOpen}
-            onOpenChange={setIsLogInfoDialogOpen}
-            onSubmit={onLogInfoRequestSubmit}
-            isSaving={isSaving}
-          />
-          <UploadLoanDocumentDialog
-            isOpen={isUploadDocDialogOpen}
-            onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}}
-            loanId={loan.id}
-            conceptualDocumentName={currentConceptualDocumentToUpload}
-            onSubmitAfterUpload={handleDocumentUploaded} // Changed prop name
-            isParentSaving={isSaving}
-          />
-          <ReturnLoanForReworkDialog
-            isOpen={isReturnForReworkDialogOpen}
-            onOpenChange={setIsReturnForReworkDialogOpen}
-            loan={loan}
-            users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.department)}
-            currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)}
-            onSubmit={onReturnForReworkSubmit}
-            isSaving={isSaving}
-          />
+          {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+          {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
+          {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
+          {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
+          {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
         </>
       )}
     </div>

@@ -10,15 +10,16 @@ import type {
   User as PrismaUser,
   LoanDocument as PrismaLoanDocument,
   LoanHistoryEntry as PrismaLoanHistoryEntry,
+  Role as PrismaRole, // Import PrismaRole
 } from '@prisma/client';
 
-import { LoanDocumentStatus as PrismaLoanDocumentStatus, UserRole as PrismaUserRole } from '@prisma/client';
-
+import { LoanDocumentStatus as PrismaLoanDocumentStatus } from '@prisma/client';
 
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry } from '@/types/loan';
-import { UserRole as AppUserRole, LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
+import { LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
+import type { AppPermission } from '@/lib/permissions';
 
-import { formatISO, parseISO, addDays, isBefore, isValid, isAfter } from 'date-fns';
+import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   let detailedMessage = `Prisma Loan Service Error (Context: ${context || 'Unknown'}): ${message}.`;
@@ -30,26 +31,34 @@ const createErrorResult = (message: string, context?: string, originalError?: an
   return { error: detailedMessage };
 };
 
-const mapPrismaUserToAppUser = (prismaUser: PrismaUser & { department?: PrismaDepartment | null }): User => {
+// Updated to map to the new App User type
+const mapPrismaUserToAppUser = (
+  prismaUser: PrismaUser & {
+    department?: PrismaDepartment | null;
+    customRole?: PrismaRole | null;
+  }
+): User => {
   return {
     id: prismaUser.id,
-    name: prismaUser.name,
     email: prismaUser.email,
-    firstName: prismaUser.firstName || '',
-    lastName: prismaUser.lastName || '',
-    fullName: prismaUser.name,
+    firstName: prismaUser.firstName || undefined,
+    lastName: prismaUser.lastName || undefined,
+    fullName: prismaUser.name || `${prismaUser.firstName || ''} ${prismaUser.lastName || ''}`.trim() || prismaUser.email,
     phoneNumber: prismaUser.phoneNumber || undefined,
-    role: prismaUser.role as AppUserRole,
+    departmentId: prismaUser.departmentId || undefined,
     department: prismaUser.department?.name as Department | undefined,
+    customRoleId: prismaUser.customRoleId || undefined,
+    customRoleName: prismaUser.customRole?.name || undefined,
+    permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
   };
 };
 
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
-        assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null }) | null;
+        assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null;
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition }) | null;
-        history?: (PrismaLoanHistoryEntry & { user?: PrismaUser | null })[];
+        history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
         documents?: PrismaLoanDocument[];
     }
 ): LoanRequest => {
@@ -86,7 +95,7 @@ const mapPrismaLoanToAppLoan = (
     isReadyForManagerReview: prismaLoan.isReadyForManagerReview,
     isOverdue: isOverdueCalc,
     isTerminalStage: isTerminal,
-    history: prismaLoan.history?.map((h: PrismaLoanHistoryEntry & { user?: PrismaUser | null }) => ({
+    history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,
       userName: h.user?.name || (h.userId === 'system-prisma' ? 'System Process' : 'Unknown User'),
@@ -97,9 +106,9 @@ const mapPrismaLoanToAppLoan = (
       createdAt: h.createdAt ? formatISO(new Date(h.createdAt)) : undefined,
       updatedAt: h.updatedAt ? formatISO(new Date(h.updatedAt)) : undefined,
     })) || [],
-    documents: prismaLoan.documents?.map((d: PrismaLoanDocument) => ({
+    documents: prismaLoan.documents?.map((d) => ({
       id: d.id,
-      name: d.name, // This is the original uploaded filename or conceptual name
+      name: d.name,
       status: d.status as AppLoanDocumentStatus,
       filePath: d.filePath || undefined,
       notes: d.notes || undefined,
@@ -141,31 +150,21 @@ export async function addLoanRequest(
 
     const firstStage = activeWorkflowVersion.stages[0];
 
-    if (typeof firstStage.defaultTimelineDays !== 'number' || isNaN(firstStage.defaultTimelineDays)) {
-        return createErrorResult(
-            `Invalid defaultTimelineDays for the first stage ("${firstStage.name}", ID: ${firstStage.id}). Expected a number, got: ${firstStage.defaultTimelineDays}. Loan Type: ${loanData.loanType}`,
-            "addLoanRequest"
-        );
-    }
-    if (firstStage.defaultTimelineDays < 0) {
-         return createErrorResult(
-            `Negative defaultTimelineDays (${firstStage.defaultTimelineDays}) for the first stage ("${firstStage.name}", ID: ${firstStage.id}) is not allowed. Loan Type: ${loanData.loanType}`,
-            "addLoanRequest"
-        );
+    if (typeof firstStage.defaultTimelineDays !== 'number' || isNaN(firstStage.defaultTimelineDays) || firstStage.defaultTimelineDays < 0) {
+      return createErrorResult(
+        `Invalid or negative defaultTimelineDays (${firstStage.defaultTimelineDays}) for the first stage ("${firstStage.name}").`, "addLoanRequest"
+      );
     }
 
     const currentDate = new Date();
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
     if (!isValid(stageDeadlineDate)) {
-        return createErrorResult(
-            `Failed to calculate a valid stageDeadlineDate. currentDate: ${currentDate.toISOString()}, defaultTimelineDays: ${firstStage.defaultTimelineDays}. This indicates an issue with the timeline value from the workflow stage definition.`,
-            "addLoanRequest"
-        );
+      return createErrorResult("Failed to calculate a valid stageDeadlineDate.", "addLoanRequest");
     }
 
-    const systemUserId = 'system-prisma';
-    const systemUserName = 'LoanFlow System';
+    const systemUserId = 'system-prisma'; // Ensure this user exists in your User table
+    const initialHistoryNote = `Loan application submitted. Workflow: ${activeWorkflowVersion.workflowDefinition.name} (V${activeWorkflowVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment in ${firstStage.responsibleDepartment.name}. Branch: ${loanData.customerBranch || 'N/A'}.`;
 
     const newLoan = await prisma.loanRequest.create({
       data: {
@@ -190,22 +189,23 @@ export async function addLoanRequest(
         isReadyForManagerReview: false,
         isOverdue: false,
         isTerminalStage: false,
-
-        assignedToUserId: null, // New loans are unassigned
+        assignedToUserId: null,
 
         history: {
           create: [{
-            // userId is implicitly set by the 'user' connect relation
             user: { connect: { id: systemUserId } },
             stageName: firstStage.name,
             timestamp: currentDate,
-            notes: `Loan application submitted. Workflow: ${activeWorkflowVersion.workflowDefinition.name} (V${activeWorkflowVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment in ${firstStage.responsibleDepartment.name}. Branch: ${loanData.customerBranch || 'N/A'}.`,
+            notes: initialHistoryNote,
           }],
         },
       },
     });
     return { id: newLoan.id };
   } catch (e: any) {
+    if (e.code === 'P2025' && e.message.includes("'User' record(s) (needed to inline the relation on 'LoanHistoryEntry' record(s)) was not found")) {
+        return createErrorResult("Failed to add loan request: The 'system-prisma' user ID was not found. Please ensure this user exists in the database (check seed script).", "addLoanRequest_systemUserMissing", e);
+    }
     return createErrorResult("Failed to add loan request.", "addLoanRequest", e);
   }
 }
@@ -215,17 +215,17 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     const prismaLoans = await prisma.loanRequest.findMany({
       orderBy: { lastUpdatedDate: 'desc' },
       include: {
-        assignedToUser: { include: { department: true } },
+        assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true } },
         workflowVersion: { include: { workflowDefinition: true } },
-        history: { include: { user: true }, orderBy: { timestamp: 'desc' } },
+        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
 
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
 
-    const prismaUsers = await prisma.user.findMany({ include: { department: true } });
+    const prismaUsers = await prisma.user.findMany({ include: { department: true, customRole: true } });
     const appUsers = prismaUsers.map(mapPrismaUserToAppUser);
 
     return { loans: appLoans, users: appUsers };
@@ -239,7 +239,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { id },
       include: {
-        assignedToUser: { include: { department: true } },
+        assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true } },
         workflowVersion: {
           include: {
@@ -247,7 +247,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true} },
           },
         },
-        history: { include: { user: true }, orderBy: { timestamp: 'desc' } },
+        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -257,7 +257,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
     }
 
     const appLoan = mapPrismaLoanToAppLoan(prismaLoan as any);
-    const prismaUsers = await prisma.user.findMany({ include: { department: true } });
+    const prismaUsers = await prisma.user.findMany({ include: { department: true, customRole: true } });
     const appUsers = prismaUsers.map(mapPrismaUserToAppUser);
 
     const wfDefsResult = await getWorkflowDefinitions();
@@ -310,14 +310,13 @@ export async function updateLoanRequest(
         for (const entry of dataToUpdate.history) {
            let effectiveUserId = entry.userId;
            let notesSuffix = '';
-
-           // Check if user exists, unless it's the system user
+           
            if (entry.userId !== 'system-prisma') {
              const userExists = await tx.user.findUnique({ where: { id: entry.userId } });
              if (!userExists) {
                console.error(`[Critical] User with ID ${entry.userId} for history entry (ID: ${entry.id || 'new'}) not found. Falling back to 'system-prisma' user.`);
                notesSuffix = ` (Original intended user ID: ${entry.userId} - not found, logged by system)`;
-               effectiveUserId = 'system-prisma'; // Fallback to system user
+               effectiveUserId = 'system-prisma';
              }
            }
 
@@ -325,18 +324,18 @@ export async function updateLoanRequest(
             where: { id: entry.id || `_non_existent_hist_id_${Date.now()}` },
             create: {
               id: entry.id || undefined,
-              loanRequest: { connect: { id: id } },
-              user: { connect: { id: effectiveUserId } }, // Connects the user relation
+              loanRequest: { connect: { id } },
+              user: { connect: { id: effectiveUserId } },
               stageName: entry.stageName,
               timestamp: isValid(parseISO(entry.timestamp)) ? parseISO(entry.timestamp) : new Date(),
               notes: (entry.notes || '') + notesSuffix,
               requiredFulfilment: entry.requiredFulfilment,
             },
-            update: { // Ensure update also correctly sets userId if it were to change, though less common
+            update: { 
               notes: (entry.notes || '') + notesSuffix,
               requiredFulfilment: entry.requiredFulfilment,
               updatedAt: new Date(),
-              ...(effectiveUserId !== entry.userId && { user: { connect: { id: effectiveUserId } } }), // If userId changed due to fallback
+              ...(effectiveUserId !== entry.userId && { user: { connect: { id: effectiveUserId } } }),
             },
           });
         }
@@ -348,18 +347,18 @@ export async function updateLoanRequest(
             where: { id: doc.id || `_non_existent_doc_id_for_loan_${id}_${Date.now()}` },
             create: {
               id: doc.id || undefined,
-              loanRequest: { connect: { id: id } },
+              loanRequest: { connect: { id } },
               name: doc.name,
               status: doc.status as PrismaLoanDocumentStatus,
               notes: doc.notes,
-              filePath: doc.filePath, // Save filePath
+              filePath: doc.filePath,
               uploadedAt: doc.uploadedAt ? (isValid(parseISO(doc.uploadedAt)) ? parseISO(doc.uploadedAt) : new Date()) : null,
             },
             update: {
               name: doc.name,
               status: doc.status as PrismaLoanDocumentStatus,
               notes: doc.notes,
-              filePath: doc.filePath, // Save filePath
+              filePath: doc.filePath,
               uploadedAt: doc.uploadedAt ? (isValid(parseISO(doc.uploadedAt)) ? parseISO(doc.uploadedAt) : new Date()) : (doc.status === AppLoanDocumentStatus.SUBMITTED ? new Date() : null),
               updatedAt: new Date(),
             },
@@ -386,28 +385,22 @@ export async function updateLoanRequest(
 
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
         updatePayload.workflowVersion = { connect: {id: wfVerId } };
-
         updatePayload.workflowDefinitionIdMirror = wfDefId;
         updatePayload.workflowVersionIdMirror = wfVerId;
         updatePayload.currentStageIdMirror = newStageDef.id;
-
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
         updatePayload.isReadyForManagerReview = false;
-
         const isTerminal = newStageDef.name.toLowerCase().includes("closed") ||
                            newStageDef.name.toLowerCase().includes("rejected") ||
                            newStageDef.name.toLowerCase().includes("disbursed") ||
                            newStageDef.name.toLowerCase().includes("funded");
         updatePayload.isTerminalStage = isTerminal;
         updatePayload.isOverdue = isBefore(newStageDeadline, new Date()) && !isTerminal;
-
         if (!dataToUpdate.hasOwnProperty('assignedTo')) {
             updatePayload.assignedToUser = { disconnect: true };
         }
-
-
       } else {
         const currentStageForStatus = existingLoan.currentWorkflowStage;
         if (currentStageForStatus) {
@@ -417,7 +410,6 @@ export async function updateLoanRequest(
             currentStageForStatus.name.toLowerCase().includes("disbursed") ||
             currentStageForStatus.name.toLowerCase().includes("funded")
           );
-
           const deadlineToUse = dataToUpdate.stageDeadline ? parseISO(dataToUpdate.stageDeadline) : (existingLoan.stageDeadline);
           if (deadlineToUse && isValid(new Date(deadlineToUse))) {
             updatePayload.isOverdue = isBefore(new Date(deadlineToUse), new Date()) && !updatePayload.isTerminalStage;
@@ -430,15 +422,14 @@ export async function updateLoanRequest(
         updatePayload.stageDeadline = parseISO(dataToUpdate.stageDeadline);
       }
 
-
       return tx.loanRequest.update({
         where: { id },
         data: updatePayload,
         include: {
-          assignedToUser: { include: { department: true } },
+          assignedToUser: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true } },
           workflowVersion: { include: { workflowDefinition: true } },
-          history: { include: { user: true }, orderBy: { timestamp: 'desc' } },
+          history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { orderBy: { createdAt: 'asc' } },
         },
       });
@@ -451,7 +442,6 @@ export async function updateLoanRequest(
     return createErrorResult(`Failed to update loan request ID: ${id}.`, "updateLoanRequest", e);
   }
 }
-
 
 export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDefinition[]; error?: string }> {
   try {
@@ -697,7 +687,7 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
         versions: {
           some: {
             isActive: true,
-            stages: { some: {} },
+            stages: { some: {} }, // Ensure the active version has at least one stage
           },
         },
       },

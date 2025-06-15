@@ -94,9 +94,9 @@ export function ReturnLoanForReworkDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned to Staff</SelectItem>
-                {users.map(user => ( // Users should be pre-filtered for the department
+                {users.map(user => ( 
                   <SelectItem key={user.id} value={user.id}>
-                    {user.name} ({user.role})
+                    {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -121,3 +121,4 @@ export function ReturnLoanForReworkDialog({
     </Dialog>
   );
 }
+

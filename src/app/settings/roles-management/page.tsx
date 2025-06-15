@@ -11,8 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getRoles, addRole, deleteRole, updateRole, type AppRole } from '@/services/role-service';
-import { ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS, PERMISSION_CATEGORIES, type AppPermission } from '@/lib/permissions';
-import { Loader2, PlusCircle, Trash2, AlertTriangle, ShieldAlert, ArrowLeft, Drama, Edit, Save, BadgeCheck, XCircle } from 'lucide-react';
+import { ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS, PERMISSION_CATEGORIES, type AppPermission, PERMISSIONS } from '@/lib/permissions';
+import { Loader2, PlusCircle, Trash2, AlertTriangle, ShieldAlert, ArrowLeft, Drama, Edit, Save, BadgeCheck } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,15 +27,14 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription as ShadDialogDescription, DialogHeader as ShadDialogHeader,
+  DialogDescription as ShadDialogDescription, 
+  DialogHeader as ShadDialogHeaderCustom, // Renamed to avoid conflict with Radix DialogHeader
   DialogFooter,
-  DialogHeader,
-  DialogTitle as ShadDialogTitle,
+  DialogTitle as ShadDialogTitle, // Renamed
   DialogClose,
-} from "@/components/ui/dialog";
+} from "@/components/ui/dialog"; // Assuming Radix DialogHeader is not separately exported or used like this.
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { UserRole as AppUserRoleEnum } from '@/types/loan';
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -51,12 +50,13 @@ export default function ManageRolesPage() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // State for Add/Edit Dialog
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<AppRole | null>(null);
   const [roleName, setRoleName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<Set<AppPermission>>(new Set());
+
+  const canManageRoles = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES);
 
   const fetchRolesCallback = useCallback(async () => {
     setIsLoadingData(true);
@@ -73,10 +73,10 @@ export default function ManageRolesPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (currentUser?.role === AppUserRoleEnum.ADMIN) {
+    if (canManageRoles) {
       fetchRolesCallback();
     }
-  }, [currentUser, fetchRolesCallback]);
+  }, [currentUser, fetchRolesCallback, canManageRoles]);
 
   const resetFormDialog = () => {
     setEditingRole(null);
@@ -87,11 +87,13 @@ export default function ManageRolesPage() {
   };
 
   const handleOpenAddDialog = () => {
+    if (!canManageRoles) return;
     resetFormDialog();
     setIsFormDialogOpen(true);
   };
 
   const handleOpenEditDialog = (role: AppRole) => {
+    if (!canManageRoles) return;
     setEditingRole(role);
     setRoleName(role.name);
     setRoleDescription(role.description || '');
@@ -113,6 +115,7 @@ export default function ManageRolesPage() {
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!canManageRoles) return;
     if (!roleName.trim()) {
       toast({ title: "Validation Error", description: "Role name cannot be empty.", variant: "destructive" });
       return;
@@ -137,6 +140,7 @@ export default function ManageRolesPage() {
   };
 
   const handleDeleteRole = async (roleId: string, roleNameForToast: string) => {
+    if (!canManageRoles) return;
     setIsDeleting(roleId);
     const result = await deleteRole(roleId);
     if (result.error) {
@@ -157,12 +161,12 @@ export default function ManageRolesPage() {
     );
   }
 
-  if (!currentUser || currentUser.role !== AppUserRoleEnum.ADMIN) {
+  if (!canManageRoles) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
-        <p className="text-muted-foreground mb-6">You do not have permission to manage roles. This feature is for Administrators only.</p>
+        <p className="text-muted-foreground mb-6">You do not have permission to manage roles. This requires the '{PERMISSIONS.MANAGE_SETTINGS_ROLES}' permission.</p>
         <Link href="/settings" passHref>
           <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Settings</Button>
         </Link>
@@ -289,12 +293,12 @@ export default function ManageRolesPage() {
 
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isSubmitting) { setIsFormDialogOpen(isOpen); if (!isOpen) resetFormDialog(); } }}>
         <DialogContent className="sm:max-w-2xl">
-          <ShadDialogHeader>
+          <ShadDialogHeaderCustom> {/* Using renamed import */}
             <ShadDialogTitle>{editingRole ? 'Edit Role' : 'Add New Role'}</ShadDialogTitle>
             <ShadDialogDescription>
               {editingRole ? `Update the details for "${editingRole.name}".` : 'Define a new role and assign its permissions.'}
             </ShadDialogDescription>
-          </ShadDialogHeader>
+          </ShadDialogHeaderCustom>
           <form onSubmit={handleFormSubmit}>
             <div className="space-y-4 py-4">
                 <div>

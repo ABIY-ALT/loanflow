@@ -1,30 +1,26 @@
 
-// Enums remain useful for defining allowed string values
-export enum UserRole {
-  ADMIN = "Admin", // Matches JWT role claim
-  RELATIONSHIP_MANAGER = "Relationship Manager", // Example, adjust if JWT provides different strings
-  UNDERWRITER = "Underwriter", // Example
-  STAFF = "Staff", // Example
-  VIEW_ONLY = "ViewOnly", // Example
-  // Add other roles from your JWT as needed
-}
-
-// Client-side/Application-level User type based on JWT claims
-export interface User {
-  id: string; // from "sub" claim
-  firstName: string;
-  lastName: string;
-  fullName: string; // from "unique_name"
-  email: string;
-  phoneNumber?: string; // from "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/mobilephone"
-  role: UserRole | string; // Role from JWT, can be specific enum or string
-  // Add any other relevant claims you want to use in the app
-  department?: Department; // Added for consistency from mockUsers
-  password?: string; // Added for consistency from mockUsers
-}
+import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
 export type Department = string;
+
+// Application-level User type, populated from Prisma after token validation
+export interface User {
+  id: string; // This is the Prisma User ID, which should align with JWT 'sub' after registration
+  firstName?: string; // Made optional as not all systems might provide it
+  lastName?: string; // Made optional
+  fullName: string; // Typically derived if firstName/lastName exist, or from a 'name' claim
+  email: string;
+  phoneNumber?: string;
+
+  departmentId?: string;
+  department?: Department; // Name of the department
+
+  customRoleId?: string;
+  customRoleName?: string; // Name of the custom role
+  permissions: AppPermission[]; // All permissions granted by the custom role
+}
+
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
@@ -62,7 +58,7 @@ export interface WorkflowDefinition {
 }
 
 export enum LoanDocumentStatus {
-  PENDING = "PENDING", // Match Prisma schema
+  PENDING = "PENDING",
   SUBMITTED = "SUBMITTED",
   VERIFIED = "VERIFIED",
   REJECTED = "REJECTED",
@@ -71,11 +67,11 @@ export enum LoanDocumentStatus {
 
 export interface LoanDocument {
   id: string;
-  name: string; // This will store the original conceptual name or user-provided name
+  name: string;
   status: LoanDocumentStatus;
-  filePath?: string; // Path to the actual file on the server
+  filePath?: string;
   notes?: string;
-  uploadedAt?: string; // ISO date string
+  uploadedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -112,7 +108,7 @@ export interface LoanRequest {
   lastUpdatedDate: string; // ISO date string
 
   assignedDepartment?: string;
-  assignedTo?: string; // User ID
+  assignedTo?: string; // User ID (Prisma User ID)
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
@@ -127,4 +123,3 @@ export interface LoanRequest {
   createdAt?: string;
   updatedAt?: string;
 }
-
