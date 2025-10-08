@@ -20,11 +20,11 @@ export function LoanInfoDisplay({ loan, assignedUser, assignedDepartment }: Loan
       <InfoItem icon={<User />} label="Customer Email" value={loan.customerEmail} />
       <InfoItem icon={<Phone />} label="Customer Phone" value={loan.customerPhone} />
       <InfoItem icon={<Building />} label="Responsible Department" value={assignedDepartment || 'N/A'} />
-      {assignedUser ? (
-        <InfoItem icon={<Landmark />} label="Currently Assigned To" value={`${assignedUser.name} (${assignedUser.role})`} />
-      ) : (
-        <InfoItem icon={<Landmark />} label="Currently Assigned To" value="N/A (Unassigned to staff)" />
-      )}
+      <InfoItem
+        icon={<Landmark />}
+        label="Currently Assigned To"
+        value={assignedUser ? `${assignedUser.fullName || assignedUser.name} ${assignedUser.customRoleName ? `(${assignedUser.customRoleName})` : ''}`.trim() : "N/A (Unassigned to staff)"}
+      />
     </div>
   );
 }
