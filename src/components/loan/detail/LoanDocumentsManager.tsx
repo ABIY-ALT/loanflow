@@ -11,10 +11,10 @@ import {
   CheckCircle,
   XCircle,
   FileText,
-  UploadCloud, // Added UploadCloud
+  UploadCloud,
   Loader2,
   BadgeCheck,
-  Download, // Import Download icon
+  Download,
 } from 'lucide-react'; 
 import type { LoanRequest, LoanDocument, WorkflowStageDefinition } from '@/types/loan';
 
@@ -43,10 +43,9 @@ const getDocumentBadgeVariant = (status: LoanDocument['status'] | 'Missing'): "d
 interface LoanDocumentsManagerProps {
   loan: LoanRequest;
   currentStageDef: WorkflowStageDefinition | null;
-  onOpenUploadDialog?: (docName: string) => void; // Optional for view-only
-  onVerifyDocument?: (docName: string) => Promise<void>; // Optional for view-only
+  onOpenUploadDialog?: (docName: string) => void;
+  onVerifyDocument?: (docName: string) => Promise<void>;
   isSavingGlobal: boolean;
-  isViewOnly: boolean; // New prop
 }
 
 export function LoanDocumentsManager({
@@ -55,7 +54,6 @@ export function LoanDocumentsManager({
   onOpenUploadDialog,
   onVerifyDocument,
   isSavingGlobal,
-  isViewOnly,
 }: LoanDocumentsManagerProps) {
   const requiredDocumentsForCurrentStage = currentStageDef?.requiredDocumentNames || [];
   const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);
@@ -92,16 +90,19 @@ export function LoanDocumentsManager({
                   >
                     {status}
                   </Badge>
-                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') && ( // Added Submitted to allow re-upload
+                  
+                  {onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') && (
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
                   )}
-                  {onVerifyDocument && status === 'Submitted' && !isSavingGlobal && (
+                  
+                  {onVerifyDocument && status === 'Submitted' && (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>
                   )}
+
                   {uploadedDoc?.filePath && (
                     <a href={uploadedDoc.filePath} download>
                       <Button variant="ghost" size="icon">
