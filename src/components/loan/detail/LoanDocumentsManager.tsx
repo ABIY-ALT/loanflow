@@ -62,7 +62,7 @@ export function LoanDocumentsManager({
 
 
   const handleVerify = async (docName: string) => {
-    if (isViewOnly || !onVerifyDocument) return;
+    if (!onVerifyDocument) return;
     setIsVerifyingDoc(docName);
     await onVerifyDocument(docName);
     setIsVerifyingDoc(null);
@@ -97,7 +97,7 @@ export function LoanDocumentsManager({
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
                   )}
-                  {!isViewOnly && onVerifyDocument && status === 'Submitted' && !isSavingGlobal && (
+                  {onVerifyDocument && status === 'Submitted' && !isSavingGlobal && (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>
@@ -144,5 +144,3 @@ export function LoanDocumentsManager({
     </div>
   );
 }
-
-    
