@@ -175,7 +175,7 @@ export default function LoanDetailPage() {
             timestamp: formatISO(new Date()),
             userId: currentUser?.id || 'system-prisma',
             userName: currentUserName,
-            notes: `Case assignment changed. Now assigned to ${assignedUserName || 'Unassigned'} within ${loan.assignedDepartment || 'N/A'} department by ${currentUserName}.`
+            notes: `Case assignment changed. Now as...`
         });
     }
 
@@ -549,3 +549,4 @@ export default function LoanDetailPage() {
   );
 }
 
+    

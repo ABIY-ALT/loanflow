@@ -14,6 +14,7 @@ import {
   UploadCloud, // Added UploadCloud
   Loader2,
   BadgeCheck,
+  Download, // Import Download icon
 } from 'lucide-react'; 
 import type { LoanRequest, LoanDocument, WorkflowStageDefinition } from '@/types/loan';
 
@@ -91,15 +92,23 @@ export function LoanDocumentsManager({
                   >
                     {status}
                   </Badge>
-                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') ? ( // Added Submitted to allow re-upload
+                  {!isViewOnly && onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') && ( // Added Submitted to allow re-upload
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
-                  ) : !isViewOnly && onVerifyDocument && status === 'Submitted' && !isSavingGlobal ? (
+                  )}
+                  {!isViewOnly && onVerifyDocument && status === 'Submitted' && !isSavingGlobal && (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>
-                  ) : null}
+                  )}
+                  {uploadedDoc?.filePath && (
+                    <a href={uploadedDoc.filePath} download>
+                      <Button variant="ghost" size="icon">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  )}
                 </div>
               </li>
             );
@@ -117,7 +126,14 @@ export function LoanDocumentsManager({
             {loan.documents.filter(doc => !requiredDocumentsForCurrentStage.includes(doc.name)).map(doc => (
                <li key={doc.id} className="flex items-center justify-between p-3 border rounded-md bg-background/50 text-sm">
                  <div className="flex items-center">
-                   {getDocumentStatusIcon(doc.status)} <span className="ml-2">{doc.name}</span>
+                   {getDocumentStatusIcon(doc.status)}
+                   {doc.filePath ? (
+                     <a href={doc.filePath} download className="ml-2 hover:underline" title={`Download ${doc.name}`}>
+                       {doc.name}
+                     </a>
+                   ) : (
+                     <span className="ml-2">{doc.name}</span>
+                   )}
                  </div>
                  <Badge variant={getDocumentBadgeVariant(doc.status)}>{doc.status}</Badge>
                </li>
@@ -128,3 +144,5 @@ export function LoanDocumentsManager({
     </div>
   );
 }
+
+    
