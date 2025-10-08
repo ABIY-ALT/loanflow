@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -358,27 +359,24 @@ export default function LoanDetailPage() {
 
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
-        name: originalUploadedFileName, 
+        name: conceptualDocName, // Use the conceptual name for the document record's name
         status: LoanDocumentStatus.SUBMITTED,
-        notes: `File uploaded for requirement: ${conceptualDocName}.`,
+        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}.`, // Store original filename in notes
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
     };
 
     if (existingDocIndex > -1) {
+        // If a doc with this conceptual name exists, update it
         updatedDocuments = loan.documents.map((doc, index) =>
             index === existingDocIndex ? { ...newDocData, id: doc.id } : doc 
         );
     } else {
-        const findByName = loan.documents.findIndex(d => d.name === originalUploadedFileName);
-        if(findByName > -1){ 
-           updatedDocuments = loan.documents.map((doc, index) => index === findByName ? newDocData : doc);
-        } else {
-          updatedDocuments = [...loan.documents, newDocData];
-        }
+        // Otherwise, add a new document record
+        updatedDocuments = [...loan.documents, newDocData];
     }
 
-    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document ${originalUploadedFileName} status updated to '${LoanDocumentStatus.SUBMITTED}'.`);
+    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' status updated to '${LoanDocumentStatus.SUBMITTED}'.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
 
@@ -387,19 +385,19 @@ export default function LoanDetailPage() {
     if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
 
     const docToVerify = loan.documents.find(d =>
-        (d.notes?.includes(docName) || d.name === docName) && 
+        d.name === docName && 
         d.status === LoanDocumentStatus.SUBMITTED
     );
 
     if (!docToVerify) {
-        toast({ title: "Cannot Verify", description: `No submitted document found for conceptual name '${docName}'.`, variant: "warning"});
+        toast({ title: "Cannot Verify", description: `No submitted document found for requirement '${docName}'.`, variant: "warning"});
         return;
     }
 
     const updatedDocuments = loan.documents.map(doc =>
-        doc.id === docToVerify.id ? { ...doc, status: LoanDocumentStatus.VERIFIED, notes: `Document verified (Original: ${docToVerify.name}). Requirement: ${docName}` } : doc
+        doc.id === docToVerify.id ? { ...doc, status: LoanDocumentStatus.VERIFIED, notes: `${doc.notes || ''} Document verified.` } : doc
     );
-    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for requirement '${docName}' (file: ${docToVerify.name}) status updated to '${LoanDocumentStatus.VERIFIED}'.`);
+    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document '${docName}' status updated to '${LoanDocumentStatus.VERIFIED}'.`);
   };
 
 
@@ -550,3 +548,4 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+
