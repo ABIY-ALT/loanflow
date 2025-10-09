@@ -104,7 +104,7 @@ export function LoanDocumentsManager({
                   )}
 
                   {uploadedDoc?.filePath && (
-                    <a href={uploadedDoc.filePath} download>
+                    <a href={uploadedDoc.filePath} target="_blank" rel="noopener noreferrer">
                       <Button variant="ghost" size="icon">
                         <Download className="h-4 w-4" />
                       </Button>
@@ -129,7 +129,7 @@ export function LoanDocumentsManager({
                  <div className="flex items-center">
                    {getDocumentStatusIcon(doc.status)}
                    {doc.filePath ? (
-                     <a href={doc.filePath} download className="ml-2 hover:underline" title={`Download ${doc.name}`}>
+                     <a href={doc.filePath} target="_blank" rel="noopener noreferrer" className="ml-2 hover:underline" title={`Download ${doc.name}`}>
                        {doc.name}
                      </a>
                    ) : (

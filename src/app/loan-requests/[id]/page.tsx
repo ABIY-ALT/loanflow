@@ -455,12 +455,12 @@ export default function LoanDetailPage() {
         loan={loan}
         currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
         onBack={() => router.back()}
-        onOpenEditDialog={() => userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && setIsEditLoanDialogOpen(true)}
-        onOpenAddNoteDialog={() => userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && setIsAddNoteDialogOpen(true)}
-        onOpenLogInfoDialog={() => userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && setIsLogInfoDialogOpen(true)}
+        onOpenEditDialog={() => setIsEditLoanDialogOpen(true)}
+        onOpenAddNoteDialog={() => setIsAddNoteDialogOpen(true)}
+        onOpenLogInfoDialog={() => setIsLogInfoDialogOpen(true)}
         onMarkStageComplete={handleMarkStageComplete}
         onManagerPromoteLoan={handleManagerPromoteLoan}
-        onOpenReturnForReworkDialog={() => userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && setIsReturnForReworkDialogOpen(true)}
+        onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable && !!currentStageDef}
       />
