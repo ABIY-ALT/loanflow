@@ -181,17 +181,14 @@ export default function SidebarNav() {
 
         return (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href} legacyBehavior passHref>
+            <Link href={item.href} passHref>
               <SidebarMenuButton
-                asChild
                 isActive={mainButtonIsActive}
                 className="justify-start"
                 tooltip={item.label}
               >
-                <a>
-                  <Icon className="h-5 w-5" />
-                  <span>{item.label}</span>
-                </a>
+                <Icon className="h-5 w-5" />
+                <span>{item.label}</span>
               </SidebarMenuButton>
             </Link>
             {openSubMenu && item.subItems && item.subItems.length > 0 && (
@@ -201,17 +198,14 @@ export default function SidebarNav() {
                   const subItemIsActive = currentPathname === subItem.href;
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
-                       <Link href={subItem.href} legacyBehavior passHref>
+                       <Link href={subItem.href} passHref>
                          <SidebarMenuButton
-                            asChild
                             isActive={subItemIsActive}
                             className="justify-start text-sm h-8"
                             tooltip={subItem.label}
                          >
-                            <a>
-                                <SubIcon className="h-4 w-4 mr-2.5" />
-                                <span>{subItem.label}</span>
-                            </a>
+                            <SubIcon className="h-4 w-4 mr-2.5" />
+                            <span>{subItem.label}</span>
                          </SidebarMenuButton>
                        </Link>
                     </SidebarMenuItem>
