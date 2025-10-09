@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
-import { LoanDocumentStatus } from '@/types/loan'; // Removed UserRole
+import { LoanDocumentStatus } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -344,8 +344,8 @@ export default function LoanDetailPage() {
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
         name: conceptualDocName, // Use the conceptual name for the document record's name
-        status: LoanDocumentStatus.SUBMITTED,
-        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}.`, // Store original filename in notes
+        status: LoanDocumentStatus.VERIFIED,
+        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}. Status automatically set to Verified.`, // Store original filename in notes
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
     };
@@ -360,7 +360,7 @@ export default function LoanDetailPage() {
         updatedDocuments = [...loan.documents, newDocData];
     }
 
-    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' status updated to '${LoanDocumentStatus.SUBMITTED}'.`);
+    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' uploaded and auto-verified.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
 
@@ -463,6 +463,7 @@ export default function LoanDetailPage() {
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable && !!currentStageDef}
+        userPermissions={userPermissions}
       />
 
       <Card className="shadow-lg">
