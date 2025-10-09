@@ -46,7 +46,6 @@ interface LoanDocumentsManagerProps {
   onOpenUploadDialog?: (docName: string) => void;
   onVerifyDocument?: (docName: string) => Promise<void>;
   isSavingGlobal: boolean;
-  isViewOnly?: boolean;
 }
 
 export function LoanDocumentsManager({
@@ -55,7 +54,6 @@ export function LoanDocumentsManager({
   onOpenUploadDialog,
   onVerifyDocument,
   isSavingGlobal,
-  isViewOnly,
 }: LoanDocumentsManagerProps) {
   const requiredDocumentsForCurrentStage = currentStageDef?.requiredDocumentNames || [];
   const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);

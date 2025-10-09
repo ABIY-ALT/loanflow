@@ -53,17 +53,6 @@ export default function LoanDetailPage() {
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
-  const canPerformAnyWriteAction = 
-    userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) ||
-    userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) ||
-    userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) ||
-    userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) ||
-    userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ||
-    userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ||
-    userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) ||
-    userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) ||
-    userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
-
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowDefinitionId || !loan.workflowVersionId) return null;
@@ -122,10 +111,6 @@ export default function LoanDetailPage() {
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
   ): Promise<boolean> => {
-    if (!canPerformAnyWriteAction) {
-      toast({ title: "Permission Denied", description: "You do not have permissions to make changes.", variant: "destructive" });
-      return false;
-    }
     if (!loan) return false;
     setIsSaving(true);
 
@@ -158,7 +143,7 @@ export default function LoanDetailPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [loan, toast, fetchLoanData, canPerformAnyWriteAction]);
+  }, [loan, toast, fetchLoanData]);
 
 
   const onEditLoanSubmit = async (data: any) => {
@@ -246,7 +231,6 @@ export default function LoanDetailPage() {
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
-    if (!canPerformAnyWriteAction) return false;
     if (!loan || !currentStageDef || !currentWorkflowVersion) {
         if (!currentStageDef) toast({title: "Workflow Info Missing", description: "Cannot validate requirements as current stage definition is missing.", variant: "warning", duration: 5000});
         return false;
@@ -269,7 +253,7 @@ export default function LoanDetailPage() {
       }
     }
     return true;
-  }, [loan, currentStageDef, currentWorkflowVersion, toast, canPerformAnyWriteAction]);
+  }, [loan, currentStageDef, currentWorkflowVersion, toast]);
 
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
@@ -519,13 +503,11 @@ export default function LoanDetailPage() {
               onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
               onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ? handleVerifyDocument : undefined}
               isSavingGlobal={isSaving}
-              isViewOnly={!canPerformAnyWriteAction} 
             />
             <LoanHistoryTimeline
               loan={loan}
               onFulfillInfoRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) ? handleFulfillInfoRequest : undefined}
               isSavingGlobal={isSaving}
-              isViewOnly={!canPerformAnyWriteAction}
             />
           </div>
         </CardContent>
@@ -536,17 +518,12 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {canPerformAnyWriteAction && (
-        <>
-          {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
-          {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
-          {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
-          {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
-          {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
-        </>
-      )}
+      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
+
     </div>
   );
 }
-
-    
