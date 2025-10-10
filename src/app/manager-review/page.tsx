@@ -12,8 +12,10 @@ import type { LoanRequest, WorkflowDefinition, User, Department } from '@/types/
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function ManagerReviewQueuePage() {
+  const { user: currentUser, isLoading: authIsLoading } = useAuth();
   const [reviewLoans, setReviewLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +36,18 @@ export default function ManagerReviewQueuePage() {
 
   useEffect(() => {
     async function fetchPageData() {
+      if (authIsLoading) return; // Wait for user authentication to resolve
+      
       setIsLoading(true);
       setError(null);
+
+      if (!currentUser?.department) {
+        setError("Your user profile does not have an assigned department. Cannot display department-specific review queue.");
+        setIsLoading(false);
+        setReviewLoans([]);
+        return;
+      }
+
       try {
         const [loansResult, wfResult] = await Promise.all([
           getLoanRequests(),
@@ -45,7 +57,11 @@ export default function ManagerReviewQueuePage() {
         if (loansResult.error) {
           setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`));
         } else if (loansResult.loans) {
-          const filteredLoans = loansResult.loans.filter(loan => loan.isReadyForManagerReview && loan.assignedTo);
+          const filteredLoans = loansResult.loans.filter(loan => 
+            loan.isReadyForManagerReview && 
+            loan.assignedTo &&
+            loan.assignedDepartment === currentUser.department
+          );
           setReviewLoans(filteredLoans);
           setUsers(loansResult.users || []); // Store users from the service
         } else {
@@ -74,7 +90,7 @@ export default function ManagerReviewQueuePage() {
       }
     }
     fetchPageData();
-  }, []);
+  }, [currentUser, authIsLoading]);
 
   const getAssignedUserName = (userId?: string) => {
     if (!userId) return "N/A";
@@ -82,7 +98,7 @@ export default function ManagerReviewQueuePage() {
     return user ? user.name : "Unknown User";
   };
 
-  if (isLoading) { 
+  if (isLoading || authIsLoading) { 
      return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -112,7 +128,7 @@ export default function ManagerReviewQueuePage() {
             Manager Review Queue
           </h1>
           <p className="text-muted-foreground">
-            These loans have been marked complete by staff and are awaiting your review and action.
+            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department are awaiting your review.
           </p>
         </div>
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
@@ -138,7 +154,7 @@ export default function ManagerReviewQueuePage() {
              <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-check-circle-2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Awaiting Review</p>
-              <p>There are currently no loan requests flagged for manager review.</p>
+              <p>There are currently no loan requests flagged for manager review in your department.</p>
             </div>
           ) : (
             <Table>
@@ -177,5 +193,3 @@ export default function ManagerReviewQueuePage() {
     </div>
   );
 }
-
-    
