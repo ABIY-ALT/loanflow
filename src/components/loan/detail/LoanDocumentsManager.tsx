@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState } from 'react';
@@ -80,7 +81,7 @@ export function LoanDocumentsManager({
               <li key={reqDocName} className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/50 transition-colors">
                 <div className="flex items-center">
                   {getDocumentStatusIcon(status)}
-                  <span className="ml-2">{reqDocName}</span>
+                  <span className="ml-2 font-medium">{reqDocName}</span>
                    {status === 'Missing' && <Badge variant="outline" className="ml-2 text-xs border-dashed">Missing</Badge>}
                 </div>
                 <div className="flex items-center gap-2">
@@ -91,7 +92,7 @@ export function LoanDocumentsManager({
                     {status}
                   </Badge>
                   
-                  {onOpenUploadDialog && (status === 'Missing' || status === 'Pending' || status === 'Rejected' || status === 'Submitted') && (
+                  {onOpenUploadDialog && (
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
@@ -104,7 +105,7 @@ export function LoanDocumentsManager({
                   )}
 
                   {uploadedDoc?.filePath && (
-                    <a href={uploadedDoc.filePath} target="_blank" rel="noopener noreferrer">
+                    <a href={uploadedDoc.filePath} target="_blank" rel="noopener noreferrer" download>
                       <Button variant="ghost" size="icon">
                         <Download className="h-4 w-4" />
                       </Button>
@@ -129,7 +130,7 @@ export function LoanDocumentsManager({
                  <div className="flex items-center">
                    {getDocumentStatusIcon(doc.status)}
                    {doc.filePath ? (
-                     <a href={doc.filePath} target="_blank" rel="noopener noreferrer" className="ml-2 hover:underline" title={`Download ${doc.name}`}>
+                     <a href={doc.filePath} target="_blank" rel="noopener noreferrer" className="ml-2 hover:underline" download title={`Download ${doc.name}`}>
                        {doc.name}
                      </a>
                    ) : (

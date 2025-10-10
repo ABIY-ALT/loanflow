@@ -344,7 +344,7 @@ export default function LoanDetailPage() {
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
         name: conceptualDocName, // Use the conceptual name for the document record's name
-        status: LoanDocumentStatus.VERIFIED,
+        status: LoanDocumentStatus.VERIFIED, // Automatically verify
         notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}. Status automatically set to Verified.`, // Store original filename in notes
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
@@ -363,27 +363,6 @@ export default function LoanDetailPage() {
     const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' uploaded and auto-verified.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
-
-
-  const handleVerifyDocument = async (docName: string) => { 
-    if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
-
-    const docToVerify = loan.documents.find(d =>
-        d.name === docName && 
-        d.status === LoanDocumentStatus.SUBMITTED
-    );
-
-    if (!docToVerify) {
-        toast({ title: "Cannot Verify", description: `No submitted document found for requirement '${docName}'.`, variant: "warning"});
-        return;
-    }
-
-    const updatedDocuments = loan.documents.map(doc =>
-        doc.id === docToVerify.id ? { ...doc, status: LoanDocumentStatus.VERIFIED, notes: `${doc.notes || ''} Document verified.` } : doc
-    );
-    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document '${docName}' status updated to '${LoanDocumentStatus.VERIFIED}'.`);
-  };
-
 
   if (isLoading && !loan) {
     return (
@@ -448,6 +427,12 @@ export default function LoanDetailPage() {
   }
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
+  const loanCurrentDept = loan.assignedDepartment || currentStageDef?.responsibleDepartment;
+  const usersForDialog = users.filter(u => 
+    !u.departmentId || // Users with no department
+    u.customRoleName?.toLowerCase() === 'administrator' || // Administrators
+    u.department === loanCurrentDept // Users in the same department as the loan
+  );
 
   return (
     <div className="space-y-6">
@@ -463,7 +448,6 @@ export default function LoanDetailPage() {
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable}
-        userPermissions={userPermissions}
       />
 
       <Card className="shadow-lg">
@@ -477,7 +461,7 @@ export default function LoanDetailPage() {
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}>
                   Stage: {currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
                 </Badge>
-                 <Badge variant="outline" className="text-sm">Dept: {loan.assignedDepartment || (currentStageDef?.responsibleDepartment) || 'N/A'}</Badge>
+                 <Badge variant="outline" className="text-sm">Dept: {loanCurrentDept || 'N/A'}</Badge>
                 {loan.isReadyForManagerReview && isActionable && (
                     <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                         Awaiting Manager Review
@@ -495,14 +479,14 @@ export default function LoanDetailPage() {
             </Alert>
           )}
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
-          <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} />
+          <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loanCurrentDept} />
           <Separator className="my-8" />
           <div className="grid md:grid-cols-2 gap-8">
             <LoanDocumentsManager
               loan={loan}
               currentStageDef={currentStageDef}
               onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
-              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ? handleVerifyDocument : undefined}
+              onVerifyDocument={undefined}
               isSavingGlobal={isSaving}
             />
             <LoanHistoryTimeline
@@ -519,11 +503,11 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || u.customRoleName?.toLowerCase() === 'administrator' || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
-      {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
 
     </div>
   );
