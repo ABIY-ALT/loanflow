@@ -339,10 +339,12 @@ export default function LoanDetailPage() {
     }
     const currentUserName = currentUser.fullName || 'System Process (Manager Action)';
     const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-rework-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
+      id: `hist-rework-${Date.now()}`,
+      stageName: currentStageDef.name,
+      timestamp: formatISO(new Date()),
       userId: currentUser.id,
       userName: currentUserName,
-      notes: `Manager returned case for rework in stage '${currentStageDef.name}'. Reason: ${reworkNote}`
+      notes: `Manager returned case for rework. Reason: ${reworkNote}`
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
