@@ -435,7 +435,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 }
 
 export async function addWorkflowDefinition(
-  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'departmentName'>
+  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'departmentName' | 'loanType'>
 ): Promise<{ id?: string; error?: string }> {
   try {
     const existing = await prisma.workflowDefinition.findUnique({
@@ -605,3 +605,4 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
+

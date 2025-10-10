@@ -61,7 +61,7 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   requiredDocumentNames: [],
   percentageWeight: weight,
   order: order,
-  availableStatuses: ['Initiated', 'In Progress', 'Completed'], // Default statuses
+  availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed'] }, // Default statuses
 });
 
 interface DepartmentObject {
@@ -78,8 +78,8 @@ interface WorkflowStageConfigItemProps {
   onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
   onRemoveRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
   onRequiredDocumentNameChange: (versionId: string, stageId: string, docName: string, newName: string) => void;
-  onAddStatus: (versionId: string, stageId: string, statusName: string) => void;
-  onRemoveStatus: (versionId: string, stageId: string, statusName: string) => void;
+  onAddStatus: (versionId: string, stageId: string, department: string, statusName: string) => void;
+  onRemoveStatus: (versionId: string, stageId: string, department: string, statusName: string) => void;
 }
 
 function WorkflowStageConfigItem({
@@ -98,6 +98,9 @@ function WorkflowStageConfigItem({
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 100 : 'auto', opacity: isDragging ? 0.8 : 1, position: 'relative' as 'relative' };
   const [newReqDocName, setNewReqDocName] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
+  
+  // Use the stage's responsible department for the status input
+  const departmentForStatus = stage.responsibleDepartment;
 
   const handleAddDoc = () => {
     if (newReqDocName.trim()) {
@@ -107,8 +110,8 @@ function WorkflowStageConfigItem({
   };
 
   const handleAddStatus = () => {
-    if (newStatusName.trim() && !stage.availableStatuses.includes(newStatusName.trim())) {
-      onAddStatus(workflowVersionId, stage.id, newStatusName.trim());
+    if (newStatusName.trim() && departmentForStatus) {
+      onAddStatus(workflowVersionId, stage.id, departmentForStatus, newStatusName.trim());
       setNewStatusName('');
     }
   };
@@ -167,13 +170,15 @@ function WorkflowStageConfigItem({
         </div>
         <Separator />
         <div>
-          <h5 className="text-md font-medium mb-2">Available Statuses for this Stage</h5>
-          {(stage.availableStatuses || []).length === 0 && (<p className="text-sm text-muted-foreground">No statuses defined. Add one below.</p>)}
+          <h5 className="text-md font-medium mb-2">Available Statuses for <span className="font-bold text-primary">{departmentForStatus}</span> Department</h5>
+          {(!stage.availableStatuses || !stage.availableStatuses[departmentForStatus] || stage.availableStatuses[departmentForStatus].length === 0) && (
+            <p className="text-sm text-muted-foreground">No statuses defined for this department. Add one below.</p>
+          )}
           <ul className="space-y-2">
-            {(stage.availableStatuses || []).map((statusName, index) => (
-              <li key={`${stage.id}-status-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
+            {(stage.availableStatuses?.[departmentForStatus] || []).map((statusName, index) => (
+              <li key={`${stage.id}-status-${departmentForStatus}-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
                 <span className="flex-grow text-sm">{statusName}</span>
-                <Button variant="ghost" size="icon" onClick={() => onRemoveStatus(workflowVersionId, stage.id, statusName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                <Button variant="ghost" size="icon" onClick={() => onRemoveStatus(workflowVersionId, stage.id, departmentForStatus, statusName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
               </li>
             ))}
           </ul>
@@ -216,7 +221,10 @@ function EditWorkflowVersionDialog({
     if (versionToEdit) {
       const versionWithStatuses = {
         ...versionToEdit,
-        stages: versionToEdit.stages.map(s => ({ ...s, availableStatuses: s.availableStatuses || [] })),
+        stages: versionToEdit.stages.map(s => ({
+          ...s,
+          availableStatuses: s.availableStatuses || {},
+        })),
       };
       setEditedVersion(JSON.parse(JSON.stringify(versionWithStatuses)));
     } else {
@@ -225,10 +233,11 @@ function EditWorkflowVersionDialog({
   }, [versionToEdit]);
 
   useEffect(() => {
+    // Only set default department for NEW stages if it hasn't been set yet
     if (isOpen && departments.length > 0 && !newStageDept) {
         setNewStageDept(departments[0].name);
     }
-  }, [isOpen, departments]);
+  }, [isOpen, departments, newStageDept]);
 
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
@@ -269,7 +278,8 @@ function EditWorkflowVersionDialog({
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
     });
     setNewStageName('');
-    setNewStageDept(departments.length > 0 ? departments[0].name : '');
+    // Do not reset the department so the user can add multiple stages to the same dept easily
+    // setNewStageDept(departments.length > 0 ? departments[0].name : '');
     setNewStageTimeline(3);
     setNewStageWeight(10);
   };
@@ -306,27 +316,44 @@ function EditWorkflowVersionDialog({
     });
   };
 
-  const handleInternalAddStatus = (versionId: string, stageId: string, statusName: string) => {
+  const handleInternalAddStatus = (versionId: string, stageId: string, department: string, statusName: string) => {
     setEditedVersion(prev => {
-        if (!prev) return null;
-        return {
-            ...prev,
-            stages: prev.stages.map(s =>
-                s.id === stageId ? { ...s, availableStatuses: [...(s.availableStatuses || []), statusName] } : s
-            ),
-        };
+      if (!prev) return null;
+      return {
+        ...prev,
+        stages: prev.stages.map(s => {
+          if (s.id !== stageId) return s;
+          const currentStatuses = s.availableStatuses?.[department] || [];
+          if (currentStatuses.includes(statusName)) return s; // Don't add duplicates
+          return {
+            ...s,
+            availableStatuses: {
+              ...s.availableStatuses,
+              [department]: [...currentStatuses, statusName]
+            }
+          };
+        })
+      };
     });
   };
 
-  const handleInternalRemoveStatus = (versionId: string, stageId: string, statusName: string) => {
+  const handleInternalRemoveStatus = (versionId: string, stageId: string, department: string, statusName: string) => {
     setEditedVersion(prev => {
-        if (!prev) return null;
-        return {
-            ...prev,
-            stages: prev.stages.map(s =>
-                s.id === stageId ? { ...s, availableStatuses: (s.availableStatuses || []).filter(name => name !== statusName) } : s
-            ),
-        };
+      if (!prev) return null;
+      return {
+        ...prev,
+        stages: prev.stages.map(s => {
+          if (s.id !== stageId) return s;
+          const currentStatuses = s.availableStatuses?.[department] || [];
+          return {
+            ...s,
+            availableStatuses: {
+              ...s.availableStatuses,
+              [department]: currentStatuses.filter(name => name !== statusName)
+            }
+          };
+        })
+      };
     });
   };
 
@@ -351,7 +378,7 @@ function EditWorkflowVersionDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Edit Workflow Version {editedVersion.versionNumber} for: {workflowDefinition.name} ({workflowDefinition.loanType})</DialogTitle>
+          <DialogTitle>Edit Workflow Version {editedVersion.versionNumber} for: {workflowDefinition.name}</DialogTitle>
           <DialogDescription>
             Modify stages for this version. Drag to reorder. Total Stage Weight: <span className={`font-semibold ${currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}`}>{currentTotalWeight}% / 100%</span>
             {currentTotalWeight > 100 && <span className="text-destructive ml-2">(Exceeds 100%)</span>}
@@ -427,7 +454,7 @@ export default function SettingsPage() {
   const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
 
   const [newWorkflowName, setNewWorkflowName] = useState('');
-  const [newWorkflowLoanType, setNewWorkflowLoanType] = useState('');
+  const [newWorkflowDeptId, setNewWorkflowDeptId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
 
   const [enableNotifications, setEnableNotifications] = useState(true);
@@ -450,7 +477,11 @@ export default function SettingsPage() {
 
 
         if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
-        setDepartments(deptResult.departments || []);
+        const fetchedDepts = deptResult.departments || [];
+        setDepartments(fetchedDepts);
+        if(fetchedDepts.length > 0) {
+            setNewWorkflowDeptId(fetchedDepts[0].id);
+        }
 
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -478,25 +509,29 @@ export default function SettingsPage() {
 
   const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
     if (!canManageWorkflows) return;
-    const targetDef = workflowDefinitions.find(d => d.id === definitionIdToActivate);
-    if (!targetDef) return;
 
-    setWorkflowDefinitions(prevDefs =>
-      prevDefs.map(def => {
-        if (def.loanType === targetDef.loanType) { // Ensure only one version PER LOAN TYPE is active
-          return {
-            ...def,
-            versions: def.versions.map(v => ({
-              ...v,
-              isActive: (v.id === versionIdToActivate && def.id === definitionIdToActivate) // Activate if it's the target def and target version
-            }))
-          };
-        }
-        return def; // Return other definitions (for different loan types) as they are
-      })
-    );
-    const activatedVersion = targetDef.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDef.name}' (${targetDef.loanType}) is now marked as active. Click "Save All Settings" to persist.` });
+    setWorkflowDefinitions(prevDefs => {
+        const targetDef = prevDefs.find(d => d.id === definitionIdToActivate);
+        if (!targetDef) return prevDefs;
+
+        return prevDefs.map(def => {
+            // Only definitions for the same department are affected
+            if (def.departmentId === targetDef.departmentId) {
+                return {
+                    ...def,
+                    versions: def.versions.map(v => ({
+                        ...v,
+                        isActive: v.id === versionIdToActivate
+                    }))
+                };
+            }
+            return def;
+        });
+    });
+
+    const targetDef = workflowDefinitions.find(d => d.id === definitionIdToActivate);
+    const activatedVersion = targetDef?.versions.find(v => v.id === versionIdToActivate);
+    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDef?.name}' is now marked as active. Click "Save All Settings" to persist.` });
   };
 
 
@@ -521,34 +556,12 @@ export default function SettingsPage() {
           isActive: false, // New versions are not active by default
         };
         
-        // If no other version is active for this definition's loan type, make this new one active.
-        // This check needs to span across all definitions for the same loan type.
-        const isAnyVersionActiveForThisLoanType = workflowDefinitions
-            .filter(d => d.loanType === def.loanType) // Consider all definitions for this loan type
-            .some(dInner => dInner.versions.some(vInner => vInner.isActive));
-
-
-        let makeNewActive = newVersion.isActive;
-        if (!isAnyVersionActiveForThisLoanType) {
-            makeNewActive = true;
+        const isAnyVersionActive = def.versions.some(v => v.isActive);
+        if (!isAnyVersionActive) {
+            newVersion.isActive = true;
         }
         
-        let updatedVersionsForThisDef = [...def.versions, {...newVersion, isActive: makeNewActive}];
-
-        // If we just made the new version active, ensure all other versions for THIS loan type (across all definitions) are inactive
-        if (makeNewActive) {
-            return {
-                ...def,
-                versions: updatedVersionsForThisDef.map(v => ({
-                    ...v,
-                    // if this is the new version we just added, its active state is already set.
-                    // otherwise, if another version was active, it becomes inactive because new one is active now.
-                    isActive: (v.id === newVersion.id) ? makeNewActive : false 
-                })).sort((a,b) => b.versionNumber - a.versionNumber)
-            };
-        } else {
-             return { ...def, versions: updatedVersionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
-        }
+        return { ...def, versions: [...def.versions, newVersion].sort((a,b) => b.versionNumber - a.versionNumber) };
       }
       return def;
     }));
@@ -559,53 +572,25 @@ export default function SettingsPage() {
      if (!canManageWorkflows) return;
      setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
        if (def.id === definitionId) {
-         // Apply updated version to this definition
          let versionsForThisDef = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
-         
-         // If the updated version is marked active, ensure all other versions for THIS LOAN TYPE are inactive
-         if (updatedVersion.isActive) {
-            return {
-                ...def,
-                versions: versionsForThisDef.map(v => ({
-                    ...v,
-                    isActive: v.id === updatedVersion.id // Only the updated one is active within this definition
-                })).sort((a,b) => b.versionNumber - a.versionNumber)
-            };
-         } else {
-            // If the updated version is marked inactive, just update it.
-            // (Activation logic for other versions is handled by handleActivateWorkflowVersion)
-            return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
-         }
+         return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
        }
-       // If another definition shares the same loanType and the updatedVersion was made active,
-       // ensure its versions are marked inactive.
-       else if (def.loanType === workflowDefinitions.find(d=>d.id === definitionId)?.loanType && updatedVersion.isActive) {
-         return {
-           ...def,
-           versions: def.versions.map(v => ({...v, isActive: false})).sort((a,b) => b.versionNumber - a.versionNumber)
-         };
-       }
-       return def; // Return other definitions as is
+       return def;
      }));
      toast({title: "Version Changes Applied (Local)", description: `Version ${updatedVersion.versionNumber} changes staged. Save all settings to persist.`});
   };
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowLoanType.trim()) {
-        toast({ title: "Validation Error", description: "Workflow name and loan type are required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDeptId) {
+        toast({ title: "Validation Error", description: "Workflow name and department are required.", variant: "destructive", duration: 9000 });
         return;
     }
-    const existingForLoanType = workflowDefinitions.find(wd => wd.loanType.trim().toLowerCase() === newWorkflowLoanType.trim().toLowerCase());
-    if(existingForLoanType){
-        toast({ title: "Validation Error", description: `A workflow definition for loan type '${newWorkflowLoanType}' already exists: '${existingForLoanType.name}'. Each loan type should have one definition container. Add versions to it.`, variant: "destructive", duration: 9000 });
-        return;
-    }
-
+    
     setIsSavingData(true);
-    const definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt'> = {
+    const definitionData = {
         name: newWorkflowName,
-        loanType: newWorkflowLoanType.trim(),
+        departmentId: newWorkflowDeptId,
         description: newWorkflowDescription,
     };
 
@@ -614,18 +599,12 @@ export default function SettingsPage() {
       if (result.error || !result.id) {
           toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Prisma DB.", variant: "destructive", duration: 9000 });
       } else {
-          const newDefinitionFromDb: WorkflowDefinition = {
-              id: result.id,
-              ...definitionData,
-              versions: [], // New def has no versions initially
-              createdAt: new Date().toISOString(), // Approximate, real value is from DB
-              updatedAt: new Date().toISOString(),
-          };
-          setWorkflowDefinitions(prev => [...prev, newDefinitionFromDb]);
           setNewWorkflowName('');
-          setNewWorkflowLoanType('');
           setNewWorkflowDescription('');
-          toast({ title: "Workflow Definition Added", description: `Workflow '${newDefinitionFromDb.name}' for '${newDefinitionFromDb.loanType}' saved to DB.` });
+          if (departments.length > 0) setNewWorkflowDeptId(departments[0].id); // Reset to first dept
+          
+          toast({ title: "Workflow Definition Added", description: `Workflow '${definitionData.name}' created. Now fetching updated list.` });
+          await fetchInitialData(); // Re-fetch all data
       }
     } catch (error: any) {
         toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive", duration: 9000 });
@@ -729,7 +708,7 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows for different loan types. New loans will use the active version for their specific loan type. </CardDescription>
+          <CardDescription>Manage workflows for different departments. New loans will use the active version for their specific department. </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {workflowDefinitions.length === 0 && !isLoadingData && (
@@ -743,7 +722,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-xl">{def.name} (Loan Type: {def.loanType})</CardTitle>
+                    <CardTitle className="text-xl">{def.name} (Department: {def.departmentName})</CardTitle>
                     <CardDescription>{def.description || "No description."}</CardDescription>
                   </div>
                 </div>
@@ -784,7 +763,16 @@ export default function SettingsPage() {
                 <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
                 <div className="grid md:grid-cols-2 gap-4">
                     <div><Label htmlFor="new-wf-name">Workflow Definition Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e=>setNewWorkflowName(e.target.value)} placeholder="e.g., Small Business Loan Process" disabled={isSavingAll || isSavingData}/></div>
-                    <div><Label htmlFor="new-wf-loantype">Loan Type (e.g., Personal, Mortgage, Auto)</Label><Input id="new-wf-loantype" value={newWorkflowLoanType} onChange={e=>setNewWorkflowLoanType(e.target.value)} placeholder="e.g., Small Business Loan" disabled={isSavingAll || isSavingData}/></div>
+                     <div>
+                        <Label htmlFor="new-wf-dept">For Department</Label>
+                        <Select value={newWorkflowDeptId} onValueChange={(value) => setNewWorkflowDeptId(value)}>
+                            <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                            <SelectContent>
+                                {departments.length === 0 && <SelectItem value="no-depts-new" disabled>No departments found</SelectItem>}
+                                {departments.map(dept => <SelectItem key={`new-wf-dept-option-${dept.id}`} value={dept.id}>{dept.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                     </div>
                 </div>
                 <div><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e=>setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData}/></div>
                 <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}>
@@ -831,4 +819,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
