@@ -482,14 +482,26 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
 
         for (const version of versions) {
           const { stages, ...versionData } = version;
-          const upsertedVersion = await tx.workflowVersion.upsert({
-            where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
-            create: {
+          const createPayload: any = {
               ...versionData,
               id: version.id || undefined,
               workflowDefinition: { connect: { id: definitionId } },
-            },
-            update: { ...versionData, id: undefined, workflowDefinitionId: undefined, updatedAt: new Date() },
+          };
+          delete createPayload.workflowDefinitionId; // Ensure this is not in the payload
+
+          const updatePayload: any = {
+              ...versionData,
+              id: undefined,
+              workflowDefinitionId: undefined,
+              updatedAt: new Date(),
+          };
+          delete updatePayload.workflowDefinitionId; // Ensure this is not in the payload
+
+
+          const upsertedVersion = await tx.workflowVersion.upsert({
+            where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
+            create: createPayload,
+            update: updatePayload,
           });
           const versionId = upsertedVersion.id;
 
@@ -595,6 +607,3 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
-
-
-    
