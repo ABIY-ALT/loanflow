@@ -16,6 +16,7 @@ import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -121,7 +122,7 @@ export default function LoanDetailPage() {
       documents: updatedFields.documents ? [...updatedFields.documents] : [...loan.documents],
       lastUpdatedDate: formatISO(new Date()),
     };
-    if (updatedFields.documents || updatedFields.history) {
+    if (updatedFields.documents || updatedFields.history || updatedFields.currentStageStatus) {
         setLoan(newLoanState);
     }
 
@@ -160,7 +161,7 @@ export default function LoanDetailPage() {
             timestamp: formatISO(new Date()),
             userId: currentUser?.id || 'system-prisma',
             userName: currentUserName,
-            notes: `Case assignment changed. Now as...`
+            notes: `Case assignment changed. Now assigned to: ${assignedUserName}.`
         });
     }
 
@@ -298,9 +299,12 @@ export default function LoanDetailPage() {
       userName: currentUserName,
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
+    
+    const initialStatusForNextStage = nextStageDef.availableStatuses && nextStageDef.availableStatuses.length > 0 ? nextStageDef.availableStatuses[0] : 'Initiated';
 
     await handleLocalAndUpdateService({
       currentStageId: nextStageDef.id,
+      currentStageStatus: initialStatusForNextStage,
       assignedDepartment: nextStageDef.responsibleDepartment,
       assignedTo: undefined,
       history: [...loan.history, newHistoryEntry],
@@ -343,37 +347,55 @@ export default function LoanDetailPage() {
 
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
-        name: conceptualDocName, // Use the conceptual name for the document record's name
+        name: conceptualDocName,
         status: LoanDocumentStatus.VERIFIED, // Automatically verify
-        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}. Status automatically set to Verified.`, // Store original filename in notes
+        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}. Status automatically set to Verified.`,
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
     };
 
     if (existingDocIndex > -1) {
-        // If a doc with this conceptual name exists, update it
         updatedDocuments = loan.documents.map((doc, index) =>
             index === existingDocIndex ? { ...newDocData, id: doc.id } : doc 
         );
     } else {
-        // Otherwise, add a new document record
         updatedDocuments = [...loan.documents, newDocData];
     }
 
     const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' uploaded and auto-verified.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
-
+  
   const handleVerifyDocument = async (docId: string) => {
     if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
-
+    
     const updatedDocuments = loan.documents.map(doc =>
-      doc.id === docId ? { ...doc, status: LoanDocumentStatus.VERIFIED } : doc
+      doc.id === docId ? { ...doc, status: LoanDocumentStatus.VERIFIED, notes: (doc.notes || '') + `\nManually verified by ${currentUser?.fullName} on ${new Date().toLocaleDateString()}` } : doc
     );
     
     const docName = loan.documents.find(d => d.id === docId)?.name || 'Unknown';
 
     await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document "${docName}" marked as Verified.`);
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!loan || !currentStageDef?.availableStatuses.includes(newStatus)) return;
+    if (loan.currentStageStatus === newStatus) return;
+    
+    const currentUserName = currentUser?.fullName || 'System';
+    const newHistoryEntry: LoanHistoryEntry = {
+        id: `hist-statuschange-${Date.now()}`,
+        stageName: currentStageDef.name,
+        timestamp: formatISO(new Date()),
+        userId: currentUser?.id || 'system-prisma',
+        userName: currentUserName,
+        notes: `Stage status changed from "${loan.currentStageStatus || 'None'}" to "${newStatus}".`,
+    };
+    
+    await handleLocalAndUpdateService({ 
+      currentStageStatus: newStatus,
+      history: [...loan.history, newHistoryEntry] 
+    }, `Status updated to "${newStatus}".`);
   };
 
 
@@ -442,6 +464,7 @@ export default function LoanDetailPage() {
 
   const loanCurrentDept = loan.assignedDepartment || currentStageDef?.responsibleDepartment;
   const usersForDialog = users.filter(u => u.department === loanCurrentDept);
+  const availableStatuses = currentStageDef?.availableStatuses || [];
 
 
   return (
@@ -471,6 +494,23 @@ export default function LoanDetailPage() {
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}>
                   Stage: {currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
                 </Badge>
+                {availableStatuses.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Status:</span>
+                    <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving}>
+                      <SelectTrigger className="h-8 text-sm" disabled={!isActionable}>
+                        <SelectValue placeholder="Set Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableStatuses.map(status => (
+                          <SelectItem key={status} value={status}>{status}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge>
+                )}
                  <Badge variant="outline" className="text-sm">Dept: {loanCurrentDept || 'N/A'}</Badge>
                 {loan.isReadyForManagerReview && isActionable && (
                     <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">

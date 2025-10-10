@@ -1,4 +1,5 @@
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -84,6 +85,7 @@ const mapPrismaLoanToAppLoan = (
     workflowDefinitionId: prismaLoan.workflowDefinitionIdMirror,
     workflowVersionId: prismaLoan.workflowVersionIdMirror,
     currentStageId: prismaLoan.currentStageIdMirror,
+    currentStageStatus: prismaLoan.currentStageStatus || undefined,
 
     currentStageName: prismaLoan.currentWorkflowStage?.name || 'Unknown Stage',
     assignedDepartment: prismaLoan.currentWorkflowStage?.responsibleDepartment?.name as Department | undefined || 'N/A',
@@ -123,7 +125,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowDefinitionId' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus'>
 ): Promise<{ id?: string; error?: string }> {
   try {
     const activeWorkflowVersion = await prisma.workflowVersion.findFirst({
@@ -165,6 +167,7 @@ export async function addLoanRequest(
 
     const systemUserId = 'system-prisma'; // Ensure this user exists in your User table
     const initialHistoryNote = `Loan application submitted. Workflow: ${activeWorkflowVersion.workflowDefinition.name} (V${activeWorkflowVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment in ${firstStage.responsibleDepartment.name}. Branch: ${loanData.customerBranch || 'N/A'}.`;
+    const initialStatus = firstStage.availableStatuses && firstStage.availableStatuses.length > 0 ? firstStage.availableStatuses[0] : 'Initiated';
 
     const newLoan = await prisma.loanRequest.create({
       data: {
@@ -181,6 +184,7 @@ export async function addLoanRequest(
         workflowDefinitionIdMirror: activeWorkflowVersion.workflowDefinition.id,
         workflowVersionIdMirror: activeWorkflowVersion.id,
         currentStageIdMirror: firstStage.id,
+        currentStageStatus: initialStatus,
 
         submittedDate: currentDate,
         lastUpdatedDate: currentDate,
@@ -287,8 +291,8 @@ export async function updateLoanRequest(
         lastUpdatedDate: new Date(),
       };
 
-      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' >)[] =
-        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch'];
+      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' >)[] =
+        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus'];
       simpleFields.forEach(field => {
         if (dataToUpdate[field] !== undefined) {
           updatePayload[field] = dataToUpdate[field];
@@ -384,7 +388,7 @@ export async function updateLoanRequest(
         }
 
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
-        // These fields are not in the prisma schema.
+        // These are not in prisma schema
         // updatePayload.workflowDefinitionIdMirror = wfDefId;
         // updatePayload.workflowVersionIdMirror = wfVerId;
         // updatePayload.currentStageIdMirror = newStageDef.id;
@@ -392,6 +396,8 @@ export async function updateLoanRequest(
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
         updatePayload.isReadyForManagerReview = false;
+        const initialStatus = newStageDef.availableStatuses && newStageDef.availableStatuses.length > 0 ? newStageDef.availableStatuses[0] : 'Initiated';
+        updatePayload.currentStageStatus = initialStatus;
         const isTerminal = newStageDef.name.toLowerCase().includes("closed") ||
                            newStageDef.name.toLowerCase().includes("rejected") ||
                            newStageDef.name.toLowerCase().includes("disbursed") ||
@@ -482,6 +488,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           requiredDocumentNames: s.requiredDocumentNames,
           percentageWeight: s.percentageWeight,
           order: s.order,
+          availableStatuses: s.availableStatuses,
           createdAt: s.createdAt ? formatISO(new Date(s.createdAt)) : undefined,
           updatedAt: s.updatedAt ? formatISO(new Date(s.updatedAt)) : undefined,
         })),
@@ -598,6 +605,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 requiredDocumentNames: stage.requiredDocumentNames,
                 percentageWeight: stage.percentageWeight,
                 order: stage.order,
+                availableStatuses: stage.availableStatuses,
               },
               update: {
                 name: stage.name,
@@ -606,6 +614,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 requiredDocumentNames: stage.requiredDocumentNames,
                 percentageWeight: stage.percentageWeight,
                 order: stage.order,
+                availableStatuses: stage.availableStatuses,
                 updatedAt: new Date(),
               },
             });

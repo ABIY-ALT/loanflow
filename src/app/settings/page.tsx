@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,6 +61,7 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   requiredDocumentNames: [],
   percentageWeight: weight,
   order: order,
+  availableStatuses: ['Initiated', 'In Progress', 'Completed'], // Default statuses
 });
 
 interface DepartmentObject {
@@ -76,6 +78,8 @@ interface WorkflowStageConfigItemProps {
   onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
   onRemoveRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
   onRequiredDocumentNameChange: (versionId: string, stageId: string, docName: string, newName: string) => void;
+  onAddStatus: (versionId: string, stageId: string, statusName: string) => void;
+  onRemoveStatus: (versionId: string, stageId: string, statusName: string) => void;
 }
 
 function WorkflowStageConfigItem({
@@ -87,15 +91,25 @@ function WorkflowStageConfigItem({
   onAddRequiredDocument,
   onRemoveRequiredDocument,
   onRequiredDocumentNameChange,
+  onAddStatus,
+  onRemoveStatus,
 }: WorkflowStageConfigItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 100 : 'auto', opacity: isDragging ? 0.8 : 1, position: 'relative' as 'relative' };
   const [newReqDocName, setNewReqDocName] = useState('');
+  const [newStatusName, setNewStatusName] = useState('');
 
   const handleAddDoc = () => {
     if (newReqDocName.trim()) {
       onAddRequiredDocument(workflowVersionId, stage.id, newReqDocName.trim());
       setNewReqDocName('');
+    }
+  };
+
+  const handleAddStatus = () => {
+    if (newStatusName.trim() && !stage.availableStatuses.includes(newStatusName.trim())) {
+      onAddStatus(workflowVersionId, stage.id, newStatusName.trim());
+      setNewStatusName('');
     }
   };
 
@@ -151,6 +165,26 @@ function WorkflowStageConfigItem({
             <Button onClick={handleAddDoc} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Document</Button>
           </div>
         </div>
+        <Separator />
+        <div>
+          <h5 className="text-md font-medium mb-2">Available Statuses for this Stage</h5>
+          {(stage.availableStatuses || []).length === 0 && (<p className="text-sm text-muted-foreground">No statuses defined. Add one below.</p>)}
+          <ul className="space-y-2">
+            {(stage.availableStatuses || []).map((statusName, index) => (
+              <li key={`${stage.id}-status-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
+                <span className="flex-grow text-sm">{statusName}</span>
+                <Button variant="ghost" size="icon" onClick={() => onRemoveStatus(workflowVersionId, stage.id, statusName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-end gap-2 mt-4">
+            <div className="flex-grow">
+              <Label htmlFor={`new-status-name-${stage.id}`}>New Status Name</Label>
+              <Input id={`new-status-name-${stage.id}`} value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} placeholder="e.g., On Hold" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
+            </div>
+            <Button onClick={handleAddStatus} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Status</Button>
+          </div>
+        </div>
         <Button variant="outline" size="sm" onClick={() => onRemoveStage(workflowVersionId, stage.id)} className="mt-4 text-destructive border-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" /> Remove Stage From Version</Button>
       </AccordionContent>
     </AccordionItem>
@@ -180,15 +214,19 @@ function EditWorkflowVersionDialog({
 
   useEffect(() => {
     if (versionToEdit) {
-      setEditedVersion(JSON.parse(JSON.stringify(versionToEdit)));
+      // Ensure availableStatuses is an array for each stage
+      const versionWithStatuses = {
+        ...versionToEdit,
+        stages: versionToEdit.stages.map(s => ({ ...s, availableStatuses: s.availableStatuses || [] })),
+      };
+      setEditedVersion(JSON.parse(JSON.stringify(versionWithStatuses)));
     } else {
       setEditedVersion(null);
     }
-    // Set default department only when dialog opens or departments list changes
     if (isOpen && departments.length > 0 && !newStageDept) {
         setNewStageDept(departments[0].name);
     }
-  }, [versionToEdit, isOpen, departments]);
+  }, [versionToEdit, isOpen, departments, newStageDept]);
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
     return stages.map((stage, index) => ({ ...stage, order: index }));
@@ -265,6 +303,31 @@ function EditWorkflowVersionDialog({
     });
   };
 
+  const handleInternalAddStatus = (versionId: string, stageId: string, statusName: string) => {
+    setEditedVersion(prev => {
+        if (!prev) return null;
+        return {
+            ...prev,
+            stages: prev.stages.map(s =>
+                s.id === stageId ? { ...s, availableStatuses: [...(s.availableStatuses || []), statusName] } : s
+            ),
+        };
+    });
+  };
+
+  const handleInternalRemoveStatus = (versionId: string, stageId: string, statusName: string) => {
+    setEditedVersion(prev => {
+        if (!prev) return null;
+        return {
+            ...prev,
+            stages: prev.stages.map(s =>
+                s.id === stageId ? { ...s, availableStatuses: (s.availableStatuses || []).filter(name => name !== statusName) } : s
+            ),
+        };
+    });
+  };
+
+
   const handleSave = () => {
     if (workflowDefinition && editedVersion) {
       const totalWeight = editedVersion.stages.reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
@@ -308,6 +371,8 @@ function EditWorkflowVersionDialog({
                         onAddRequiredDocument={handleInternalAddReqDoc}
                         onRemoveRequiredDocument={handleInternalRemoveReqDoc}
                         onRequiredDocumentNameChange={handleInternalReqDocNameChange}
+                        onAddStatus={handleInternalAddStatus}
+                        onRemoveStatus={handleInternalRemoveStatus}
                     />
                     ))}
                 </Accordion>

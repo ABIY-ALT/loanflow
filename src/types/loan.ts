@@ -1,4 +1,5 @@
 
+
 import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
@@ -31,6 +32,7 @@ export interface WorkflowStageDefinition {
   requiredDocumentNames: string[];
   percentageWeight: number;
   order: number;
+  availableStatuses: string[]; // New field for configurable statuses
   createdAt?: string;
   updatedAt?: string;
 }
@@ -103,6 +105,7 @@ export interface LoanRequest {
   workflowDefinitionId: string;
   workflowVersionId: string;
   currentStageId: string;
+  currentStageStatus?: string; // New field for current status within the stage
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
