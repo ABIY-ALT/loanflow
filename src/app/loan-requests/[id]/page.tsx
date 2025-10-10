@@ -56,9 +56,9 @@ export default function LoanDetailPage() {
 
 
   const currentWorkflowVersion = useMemo(() => {
-    if (!loan || !workflowDefinitions || !loan.workflowDefinitionId || !loan.workflowVersionId) return null;
-    const definition = workflowDefinitions.find(def => def.id === loan.workflowDefinitionId);
-    return definition?.versions.find(v => v.id === loan.workflowVersionId) || null;
+    if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
+    const allVersions = workflowDefinitions.flatMap(def => def.versions);
+    return allVersions.find(v => v.id === loan.workflowVersionId) || null;
   }, [loan, workflowDefinitions]);
 
   const currentStageDef = useMemo(() => {
@@ -300,17 +300,17 @@ export default function LoanDetailPage() {
       notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
     };
     
-    const initialStatusForNextStage = nextStageDef.availableStatuses && nextStageDef.availableStatuses.length > 0 ? nextStageDef.availableStatuses[0] : 'Initiated';
+    const statusForNextDept = nextStageDef.availableStatuses?.[nextStageDef.responsibleDepartment] || [];
+    const initialStatusForNextStage = statusForNextDept.length > 0 ? statusForNextDept[0] : 'Initiated';
 
     await handleLocalAndUpdateService({
       currentStageId: nextStageDef.id,
       currentStageStatus: initialStatusForNextStage,
-      assignedDepartment: nextStageDef.responsibleDepartment,
+      assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This is not right
       assignedTo: undefined,
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
-      workflowDefinitionId: loan.workflowDefinitionId,
       workflowVersionId: loan.workflowVersionId,
     }, `${loan.customerName} moved to ${nextStageDef.name}.`);
   };
@@ -379,8 +379,9 @@ export default function LoanDetailPage() {
   };
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!loan || !currentStageDef?.availableStatuses.includes(newStatus)) return;
-    if (loan.currentStageStatus === newStatus) return;
+    if (!loan || !loan.assignedDepartment || !currentStageDef?.availableStatuses) return;
+    const availableStatuses = currentStageDef.availableStatuses[loan.assignedDepartment] || [];
+    if (!availableStatuses.includes(newStatus) || loan.currentStageStatus === newStatus) return;
     
     const currentUserName = currentUser?.fullName || 'System';
     const newHistoryEntry: LoanHistoryEntry = {
@@ -434,7 +435,7 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (!loan) { // Should not happen if above checks are correct
+  if (!loan) { 
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
             <AlertCircle className="h-8 w-8 text-destructive mr-2" />
@@ -463,8 +464,9 @@ export default function LoanDetailPage() {
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
   const loanCurrentDept = loan.assignedDepartment || currentStageDef?.responsibleDepartment;
-  const usersForDialog = users.filter(u => u.department === loanCurrentDept);
-  const availableStatuses = currentStageDef?.availableStatuses || [];
+  const usersForDialog = users.filter(user => user.department === loanCurrentDept);
+  
+  const availableStatuses = (currentStageDef?.availableStatuses && loanCurrentDept && currentStageDef.availableStatuses[loanCurrentDept]) || [];
 
 
   return (

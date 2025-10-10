@@ -32,7 +32,7 @@ export interface WorkflowStageDefinition {
   requiredDocumentNames: string[];
   percentageWeight: number;
   order: number;
-  availableStatuses: string[]; // New field for configurable statuses
+  availableStatuses?: Record<Department, string[]>; // Department-specific statuses
   createdAt?: string;
   updatedAt?: string;
 }
@@ -48,11 +48,12 @@ export interface WorkflowVersion {
   updatedAt?: string;
 }
 
-// Represents a workflow template for a specific loan type
+// Represents a workflow template for a specific Department
 export interface WorkflowDefinition {
   id: string;
   name: string;
-  loanType: string;
+  departmentId: string;
+  departmentName: string;
   description?: string;
   versions: WorkflowVersion[];
   createdAt?: string;
@@ -102,15 +103,16 @@ export interface LoanRequest {
   loanType: string;
   loanPurpose: string;
 
-  workflowDefinitionId: string;
-  workflowVersionId: string;
-  currentStageId: string;
-  currentStageStatus?: string; // New field for current status within the stage
+  workflowVersionId?: string; // This will link to the active version for the initial department
+  currentStageId?: string;
+  currentStageStatus?: string; 
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
 
+  assignedDepartmentId?: string;
   assignedDepartment?: string;
+  
   assignedTo?: string; // User ID (Prisma User ID)
 
   documents: LoanDocument[];
