@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -17,6 +17,17 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   DndContext,
   closestCenter,
@@ -37,6 +48,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
+import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService } from '@/services/loan-type-service';
+import type { LoanType } from '@/types/loan';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -51,6 +64,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 
 const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
@@ -68,6 +82,11 @@ interface DepartmentObject {
   id: string;
   name: Department;
 }
+interface LoanTypeObject {
+  id: string;
+  name: string;
+}
+
 
 interface WorkflowStageConfigItemProps {
   stage: WorkflowStageDefinition;
@@ -445,8 +464,11 @@ export default function SettingsPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSavingData, setIsSavingData] = useState(false);
+  
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [departments, setDepartments] = useState<DepartmentObject[]>([]);
+  const [loanTypes, setLoanTypes] = useState<LoanTypeObject[]>([]);
+  
   const [error, setError] = useState<string | null>(null);
 
   const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
@@ -454,8 +476,10 @@ export default function SettingsPage() {
   const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
 
   const [newWorkflowName, setNewWorkflowName] = useState('');
-  const [newWorkflowDeptId, setNewWorkflowDeptId] = useState('');
+  const [newWorkflowLoanTypeId, setNewWorkflowLoanTypeId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
+
+  const [newLoanTypeName, setNewLoanTypeName] = useState('');
 
   const [enableNotifications, setEnableNotifications] = useState(true);
   const [overdueThreshold, setOverdueThreshold] = useState(2);
@@ -467,20 +491,24 @@ export default function SettingsPage() {
       setIsLoadingData(true);
       setError(null);
       try {
-        const [wfResult, deptResult] = await Promise.all([
+        const [wfResult, deptResult, loanTypeResult] = await Promise.all([
           getWorkflowDefinitions(),
-          getDepartments()
+          getDepartments(),
+          getLoanTypes(),
         ]);
 
         if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
         setWorkflowDefinitions(wfResult.workflows || []);
 
-
         if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
-        const fetchedDepts = deptResult.departments || [];
-        setDepartments(fetchedDepts);
-        if(fetchedDepts.length > 0) {
-            setNewWorkflowDeptId(fetchedDepts[0].id);
+        setDepartments(deptResult.departments || []);
+        
+        if (loanTypeResult.error) throw new Error(`Loan Types: ${loanTypeResult.error}`);
+        const fetchedLoanTypes = loanTypeResult.loanTypes || [];
+        setLoanTypes(fetchedLoanTypes);
+
+        if(fetchedLoanTypes.length > 0) {
+            setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
         }
 
       } catch (err: any) {
@@ -488,6 +516,7 @@ export default function SettingsPage() {
         setError(errorMessage);
         setWorkflowDefinitions([]);
         setDepartments([]);
+        setLoanTypes([]);
         toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive", duration: 9000});
       } finally {
         setIsLoadingData(false);
@@ -514,15 +543,23 @@ export default function SettingsPage() {
         const targetDef = prevDefs.find(d => d.id === definitionIdToActivate);
         if (!targetDef) return prevDefs;
 
+        // Find all definitions for the same loan type
+        const definitionsForSameLoanType = prevDefs.filter(d => d.loanTypeId === targetDef.loanTypeId);
+
         return prevDefs.map(def => {
-            // Only definitions for the same department are affected
-            if (def.departmentId === targetDef.departmentId) {
+            // If this definition is for the same loan type...
+            if (def.loanTypeId === targetDef.loanTypeId) {
+                // ...activate the selected version in the target definition, and deactivate all others in this definition
+                if (def.id === definitionIdToActivate) {
+                    return {
+                        ...def,
+                        versions: def.versions.map(v => ({ ...v, isActive: v.id === versionIdToActivate }))
+                    };
+                }
+                // ...deactivate all versions in other definitions of the same loan type
                 return {
                     ...def,
-                    versions: def.versions.map(v => ({
-                        ...v,
-                        isActive: v.id === versionIdToActivate
-                    }))
+                    versions: def.versions.map(v => ({ ...v, isActive: false }))
                 };
             }
             return def;
@@ -531,7 +568,7 @@ export default function SettingsPage() {
 
     const targetDef = workflowDefinitions.find(d => d.id === definitionIdToActivate);
     const activatedVersion = targetDef?.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDef?.name}' is now marked as active. Click "Save All Settings" to persist.` });
+    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDef?.name}' is now marked as active for its loan type. Click "Save All Settings" to persist.` });
   };
 
 
@@ -556,16 +593,17 @@ export default function SettingsPage() {
           isActive: false, // New versions are not active by default
         };
         
-        const isAnyVersionActive = def.versions.some(v => v.isActive);
-        if (!isAnyVersionActive) {
-            newVersion.isActive = true;
-        }
+        // This logic is now part of handleActivateWorkflowVersion
+        // const isAnyVersionActive = def.versions.some(v => v.isActive);
+        // if (!isAnyVersionActive) {
+        //     newVersion.isActive = true;
+        // }
         
         return { ...def, versions: [...def.versions, newVersion].sort((a,b) => b.versionNumber - a.versionNumber) };
       }
       return def;
     }));
-    toast({title: "New Version Added (Local)", description: "Empty new version added. Edit to add stages. Active status updated if needed. Remember to Save All Settings."});
+    toast({title: "New Version Added (Local)", description: "Empty new version added. Edit to add stages. Remember to Save All Settings."});
   };
 
   const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
@@ -582,26 +620,26 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDeptId) {
-        toast({ title: "Validation Error", description: "Workflow name and department are required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowLoanTypeId) {
+        toast({ title: "Validation Error", description: "Workflow name and loan type are required.", variant: "destructive", duration: 9000 });
         return;
     }
     
     setIsSavingData(true);
     const definitionData = {
         name: newWorkflowName,
-        departmentId: newWorkflowDeptId,
+        loanTypeId: newWorkflowLoanTypeId,
         description: newWorkflowDescription,
     };
 
     try {
       const result = await addWorkflowDefinition(definitionData);
       if (result.error || !result.id) {
-          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition to Prisma DB.", variant: "destructive", duration: 9000 });
+          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition.", variant: "destructive", duration: 9000 });
       } else {
           setNewWorkflowName('');
           setNewWorkflowDescription('');
-          if (departments.length > 0) setNewWorkflowDeptId(departments[0].id); // Reset to first dept
+          if (loanTypes.length > 0) setNewWorkflowLoanTypeId(loanTypes[0].id); // Reset
           
           toast({ title: "Workflow Definition Added", description: `Workflow '${definitionData.name}' created. Now fetching updated list.` });
           await fetchInitialData(); // Re-fetch all data
@@ -613,6 +651,48 @@ export default function SettingsPage() {
     }
   };
 
+   const handleAddLoanType = async () => {
+    if (!canManageWorkflows) return; // Assuming same permission for now
+    if (!newLoanTypeName.trim()) {
+      toast({ title: "Validation Error", description: "Loan type name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSavingData(true);
+    try {
+      const result = await addLoanType(newLoanTypeName.trim());
+      if (result.error || !result.id) {
+        toast({ title: "Error Adding Loan Type", description: result.error || "Failed to add loan type.", variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: `Loan type "${newLoanTypeName.trim()}" added.` });
+        setNewLoanTypeName('');
+        await fetchInitialData(); // Refetch everything
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
+  const handleDeleteLoanType = async (loanTypeId: string, loanTypeName: string) => {
+    if (!canManageWorkflows) return;
+    setIsSavingData(true);
+    try {
+      const result = await deleteLoanTypeService(loanTypeId);
+      if (result.error) {
+        toast({ title: "Error Deleting Loan Type", description: result.error, variant: "destructive", duration: 7000 });
+      } else {
+        toast({ title: "Success", description: `Loan type "${loanTypeName}" deleted.` });
+        await fetchInitialData(); // Refetch everything
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
+
   const handleSaveChanges = async () => {
     if (!canManageWorkflows && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES)) {
          toast({ title: "Permission Denied", description: "You do not have permission to save settings.", variant: "destructive" });
@@ -621,17 +701,14 @@ export default function SettingsPage() {
     setIsSavingAll(true);
     setError(null);
     try {
-        // Only save workflow definitions if user has MANAGE_SETTINGS_WORKFLOWS permission
         if (canManageWorkflows) {
             const result = await saveWorkflowDefinitions(workflowDefinitions);
             if (result.error) {
                 throw new Error(result.error);
             }
         }
-        // TODO: Add saving for other settings like departments, roles if they are modified on this page
-        // For now, this button mainly saves workflow definitions.
         toast({ title: "Settings Saved to Database", description: "Configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
-        await fetchInitialData(); // Re-fetch to confirm saved state
+        await fetchInitialData();
     } catch (err: any) {
         toast({ title: "Saving Failed", description: `Error: ${err.message || "Unknown error"}`, variant: "destructive", duration: 9000 });
     } finally {
@@ -648,7 +725,6 @@ export default function SettingsPage() {
     );
   }
 
-  // Broader check for any settings access
   const canAccessAnySettings = currentUser?.permissions.some(p => 
     p === PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS ||
     p === PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS ||
@@ -663,13 +739,13 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
             <p className="text-muted-foreground mb-6">You do not have permission to view the settings page.</p>
             <Link href="/" passHref>
-                <Button variant="outline">Go to Dashboard</Button>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
             </Link>
         </div>
     );
   }
   
-  if (error && workflowDefinitions.length === 0 && departments.length === 0) {
+  if (error) {
      return (
         <div className="space-y-6 p-4 text-center">
             <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
@@ -705,10 +781,61 @@ export default function SettingsPage() {
       </div>
 
     {canManageWorkflows && (
+      <>
+      <Card>
+          <CardHeader>
+              <CardTitle>Manage Loan Types</CardTitle>
+              <CardDescription>Define the types of loans your organization processes, e.g., "Personal Loan", "Mortgage".</CardDescription>
+          </CardHeader>
+          <CardContent>
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <Input
+                      placeholder="e.g., Small Business Loan"
+                      value={newLoanTypeName}
+                      onChange={(e) => setNewLoanTypeName(e.target.value)}
+                      disabled={isSavingData || isSavingAll}
+                  />
+                  <Button onClick={handleAddLoanType} disabled={!newLoanTypeName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
+                      {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
+                      Add Loan Type
+                  </Button>
+              </div>
+              <Table>
+                <TableHeader><TableRow><TableHead>Loan Type Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {loanTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No loan types defined yet.</TableCell></TableRow>}
+                  {loanTypes.map(lt => (
+                    <TableRow key={lt.id}>
+                      <TableCell className="font-medium">{lt.name}</TableCell>
+                      <TableCell className="text-right">
+                          <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}>
+                                      <Trash2 className="mr-1 h-4 w-4" /> Delete
+                                  </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                      <AlertDialogDescription>This action cannot be undone. This will delete the loan type "{lt.name}" and may affect workflow definitions that use it.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteLoanType(lt.id, lt.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction>
+                                  </AlertDialogFooter>
+                              </AlertDialogContent>
+                          </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+          </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows for different departments. New loans will use the active version for their specific department. </CardDescription>
+          <CardDescription>Manage workflows for different loan types. New loans will use the active version for their specific loan type. </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {workflowDefinitions.length === 0 && !isLoadingData && (
@@ -722,8 +849,8 @@ export default function SettingsPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-xl">{def.name} (Department: {def.departmentName})</CardTitle>
-                    <CardDescription>{def.description || "No description."}</CardDescription>
+                    <CardTitle className="text-xl">{def.name}</CardTitle>
+                    <CardDescription>{def.description || "No description."} <Badge variant="outline" className="ml-2">Loan Type: {def.loanTypeName || 'N/A'}</Badge></CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -762,26 +889,28 @@ export default function SettingsPage() {
            <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
                 <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
                 <div className="grid md:grid-cols-2 gap-4">
-                    <div><Label htmlFor="new-wf-name">Workflow Definition Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e=>setNewWorkflowName(e.target.value)} placeholder="e.g., Small Business Loan Process" disabled={isSavingAll || isSavingData}/></div>
+                    <div><Label htmlFor="new-wf-name">Workflow Definition Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e=>setNewWorkflowName(e.target.value)} placeholder="e.g., Standard Personal Loan Process" disabled={isSavingAll || isSavingData}/></div>
                      <div>
-                        <Label htmlFor="new-wf-dept">For Department</Label>
-                        <Select value={newWorkflowDeptId} onValueChange={(value) => setNewWorkflowDeptId(value)}>
-                            <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                        <Label htmlFor="new-wf-loantype">For Loan Type</Label>
+                        <Select value={newWorkflowLoanTypeId} onValueChange={(value) => setNewWorkflowLoanTypeId(value)}>
+                            <SelectTrigger id="new-wf-loantype" className="mt-1"><SelectValue placeholder="Select Loan Type" /></SelectTrigger>
                             <SelectContent>
-                                {departments.length === 0 && <SelectItem value="no-depts-new" disabled>No departments found</SelectItem>}
-                                {departments.map(dept => <SelectItem key={`new-wf-dept-option-${dept.id}`} value={dept.id}>{dept.name}</SelectItem>)}
+                                {loanTypes.length === 0 && <SelectItem value="no-types-new" disabled>No loan types found</SelectItem>}
+                                {loanTypes.map(lt => <SelectItem key={`new-wf-lt-option-${lt.id}`} value={lt.id}>{lt.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                      </div>
                 </div>
                 <div><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e=>setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData}/></div>
-                <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}>
+                <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData || loanTypes.length === 0}>
                     {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Add Workflow Definition to Database
+                    Add Workflow Definition
                 </Button>
+                {loanTypes.length === 0 && <p className="text-xs text-destructive mt-1">Cannot add workflow: No loan types are configured. Please add a loan type first.</p>}
             </div>
         </CardContent>
       </Card>
+      </>
     )}
 
       <EditWorkflowVersionDialog
@@ -819,5 +948,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
 

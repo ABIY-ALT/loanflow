@@ -5,6 +5,14 @@ import type { AppPermission } from '@/lib/permissions';
 // Represents a predefined department in the system (name string)
 export type Department = string;
 
+// Represents a loan type, e.g., "Personal Loan", "Mortgage"
+export interface LoanType {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // Application-level User type, populated from Prisma after token validation
 export interface User {
   id: string; // This is the Prisma User ID, which should align with JWT 'sub' after registration
@@ -48,12 +56,12 @@ export interface WorkflowVersion {
   updatedAt?: string;
 }
 
-// Represents a workflow template for a specific Department
+// Represents a workflow template for a specific LoanType
 export interface WorkflowDefinition {
   id: string;
   name: string;
-  departmentId: string;
-  departmentName: string;
+  loanTypeId: string;
+  loanTypeName: string;
   description?: string;
   versions: WorkflowVersion[];
   createdAt?: string;

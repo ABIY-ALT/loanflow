@@ -1,5 +1,6 @@
 
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -12,6 +13,7 @@ import type {
   LoanDocument as PrismaLoanDocument,
   LoanHistoryEntry as PrismaLoanHistoryEntry,
   Role as PrismaRole,
+  LoanType as PrismaLoanType,
 } from '@prisma/client';
 
 import { LoanDocumentStatus as PrismaLoanDocumentStatus } from '@prisma/client';
@@ -21,16 +23,6 @@ import { LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
 import type { AppPermission } from '@/lib/permissions';
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
-
-// Hardcoded mapping from Loan Type to initial Department Name
-// In a real application, this might come from a configuration table in the database
-const loanTypeToInitialDepartment: Record<string, Department> = {
-  "Personal Loan": "Origination",
-  "Auto Loan": "Origination",
-  "Mortgage": "Origination",
-  "Small Business Loan": "Origination",
-  "House Loan": "Origination"
-};
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   let detailedMessage = `Prisma Loan Service Error (Context: ${context || 'Unknown'}): ${message}.`;
@@ -67,7 +59,7 @@ const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null;
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment }) | null;
-        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { department: PrismaDepartment } }) | null;
+        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType } }) | null;
         assignedDepartment?: PrismaDepartment | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
         documents?: PrismaLoanDocument[];
@@ -138,32 +130,24 @@ export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus'>
 ): Promise<{ id?: string; error?: string }> {
   try {
-    const initialDepartmentName = loanTypeToInitialDepartment[loanData.loanType];
-    if (!initialDepartmentName) {
-      return createErrorResult(`No initial department is configured for loan type "${loanData.loanType}".`, "addLoanRequest");
-    }
-
-    const initialDepartment = await prisma.department.findUnique({
-      where: { name: initialDepartmentName },
-      include: {
-        workflowDefinition: {
-          include: {
+    const activeWorkflow = await prisma.workflowDefinition.findFirst({
+        where: { loanType: { name: loanData.loanType }, versions: { some: { isActive: true } } },
+        include: {
+            loanType: true,
             versions: {
-              where: { isActive: true },
-              include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
-              take: 1
-            }
-          }
-        }
-      }
+                where: { isActive: true },
+                include: { stages: { orderBy: { order: 'asc' }, include: { responsibleDepartment: true } } },
+            },
+        },
     });
 
-    const activeWorkflowVersion = initialDepartment?.workflowDefinition?.versions[0];
-    const firstStage = activeWorkflowVersion?.stages[0];
-
-    if (!initialDepartment || !activeWorkflowVersion || !firstStage) {
-      return createErrorResult(`No active workflow could be found for the "${initialDepartmentName}" department, which is the starting point for a "${loanData.loanType}" loan. Please configure a workflow for this department in settings.`, "addLoanRequest");
+    if (!activeWorkflow || activeWorkflow.versions.length === 0 || activeWorkflow.versions[0].stages.length === 0) {
+        return createErrorResult(`No active workflow could be found for the loan type "${loanData.loanType}". Please configure a workflow for this loan type in settings.`, "addLoanRequest");
     }
+
+    const activeVersion = activeWorkflow.versions[0];
+    const firstStage = activeVersion.stages[0];
+    const initialDepartment = firstStage.responsibleDepartment;
 
     if (typeof firstStage.defaultTimelineDays !== 'number' || isNaN(firstStage.defaultTimelineDays) || firstStage.defaultTimelineDays < 0) {
       return createErrorResult(`Invalid defaultTimelineDays (${firstStage.defaultTimelineDays}) for stage "${firstStage.name}".`, "addLoanRequest");
@@ -172,7 +156,7 @@ export async function addLoanRequest(
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
     const systemUserId = 'system-prisma';
-    const initialHistoryNote = `Loan application submitted. Initial Department: ${initialDepartment.name}. Workflow: ${initialDepartment.workflowDefinition?.name} (V${activeWorkflowVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment. Branch: ${loanData.customerBranch || 'N/A'}.`;
+    const initialHistoryNote = `Loan application submitted. Initial Department: ${initialDepartment.name}. Workflow: ${activeWorkflow.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment. Branch: ${loanData.customerBranch || 'N/A'}.`;
     
     const availableStatusesForDept = firstStage.availableStatuses && typeof firstStage.availableStatuses === 'object' && !Array.isArray(firstStage.availableStatuses) ? (firstStage.availableStatuses as Record<string, string[]>)[initialDepartment.name] : [];
     const initialStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -187,7 +171,7 @@ export async function addLoanRequest(
         lastUpdatedDate: currentDate,
         stageEntryDate: currentDate,
         stageDeadline: stageDeadlineDate,
-        workflowVersion: { connect: { id: activeWorkflowVersion.id } },
+        workflowVersion: { connect: { id: activeVersion.id } },
         currentWorkflowStage: { connect: { id: firstStage.id } },
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
@@ -217,7 +201,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
       include: {
         assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true } },
-        workflowVersion: { include: { workflowDefinition: { include: { department: true } } } },
+        workflowVersion: { include: { workflowDefinition: { include: { loanType: true } } } },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { orderBy: { createdAt: 'asc' } },
@@ -244,7 +228,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
         currentWorkflowStage: { include: { responsibleDepartment: true } },
         workflowVersion: {
           include: {
-            workflowDefinition: { include: { department: true } },
+            workflowDefinition: { include: { loanType: true } },
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true} },
           },
         },
@@ -364,7 +348,7 @@ export async function updateLoanRequest(
         include: {
           assignedToUser: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true } },
-          workflowVersion: { include: { workflowDefinition: { include: { department: true } } } },
+          workflowVersion: { include: { workflowDefinition: { include: { loanType: true } } } },
           assignedDepartment: true,
           history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { orderBy: { createdAt: 'asc' } },
@@ -383,9 +367,9 @@ export async function updateLoanRequest(
 export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDefinition[]; error?: string }> {
   try {
     const prismaWorkflowDefs = await prisma.workflowDefinition.findMany({
-      orderBy: { department: { name: 'asc' } },
+      orderBy: { loanType: { name: 'asc' } },
       include: {
-        department: true,
+        loanType: true,
         versions: {
           orderBy: { versionNumber: 'desc' },
           include: {
@@ -401,8 +385,8 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
     const appWorkflowDefs: WorkflowDefinition[] = prismaWorkflowDefs.map(def => ({
       id: def.id,
       name: def.name,
-      departmentId: def.departmentId,
-      departmentName: def.department.name,
+      loanTypeId: def.loanTypeId,
+      loanTypeName: def.loanType.name,
       description: def.description || undefined,
       createdAt: formatISO(new Date(def.createdAt)),
       updatedAt: formatISO(new Date(def.updatedAt)),
@@ -435,20 +419,20 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 }
 
 export async function addWorkflowDefinition(
-  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'departmentName' | 'loanType'>
+  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'loanTypeName'>
 ): Promise<{ id?: string; error?: string }> {
   try {
     const existing = await prisma.workflowDefinition.findUnique({
-      where: { departmentId: definitionData.departmentId },
+      where: { loanTypeId: definitionData.loanTypeId },
     });
     if (existing) {
-      return createErrorResult(`A workflow definition for department ID "${definitionData.departmentId}" already exists.`, "addWorkflowDefinition");
+      return createErrorResult(`A workflow definition for this loan type already exists.`, "addWorkflowDefinition");
     }
 
     const newDef = await prisma.workflowDefinition.create({
       data: {
         name: definitionData.name,
-        department: { connect: { id: definitionData.departmentId } },
+        loanType: { connect: { id: definitionData.loanTypeId } },
         description: definitionData.description,
       },
     });
@@ -470,12 +454,12 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             id: definition.id || undefined,
             name: defData.name,
             description: defData.description,
-            department: { connect: { id: defData.departmentId } }
+            loanType: { connect: { id: defData.loanTypeId } }
           },
           update: {
             name: defData.name,
             description: defData.description,
-            department: { connect: { id: defData.departmentId } },
+            loanType: { connect: { id: defData.loanTypeId } },
             updatedAt: new Date(),
           },
         });
@@ -574,10 +558,6 @@ export async function addDepartment(departmentName: string): Promise<{ id?: stri
 
 export async function deleteDepartment(departmentId: string): Promise<{ success?: boolean; error?: string }> {
   try {
-    const relatedWorkflows = await prisma.workflowDefinition.count({ where: { departmentId: departmentId } });
-    if (relatedWorkflows > 0) {
-      return createErrorResult(`Cannot delete department. It is linked to ${relatedWorkflows} workflow definition(s). Please delete or reassign workflows first.`, "deleteDepartment_inUseWorkflows");
-    }
     const stagesUsingDept = await prisma.workflowStageDefinition.count({ where: { responsibleDepartmentId: departmentId } });
     if (stagesUsingDept > 0) {
         return createErrorResult(`Cannot delete department. It is assigned to ${stagesUsingDept} workflow stage(s).`, "deleteDepartment_inUseStages");
@@ -599,10 +579,12 @@ export async function deleteDepartment(departmentId: string): Promise<{ success?
 
 export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: string[]; error?: string }> {
   try {
-    const loanTypes = Object.keys(loanTypeToInitialDepartment);
-    return { loanTypes: loanTypes.sort() };
+    const loanTypes = await prisma.loanType.findMany({
+      orderBy: { name: 'asc' },
+      select: { name: true },
+    });
+    return { loanTypes: loanTypes.map(lt => lt.name) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
-
