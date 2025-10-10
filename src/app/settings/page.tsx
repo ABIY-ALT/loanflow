@@ -151,18 +151,7 @@ function WorkflowStageConfigItem({
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
         <div className="grid md:grid-cols-3 gap-4">
           <div><Label htmlFor={`s-name-${stage.id}`}>Stage Name</Label><Input id={`s-name-${stage.id}`} value={stage.name} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'name', e.target.value)} className="mt-1"/></div>
-          <div>
-            <Label htmlFor={`s-dept-${stage.id}`}>Responsible Department</Label>
-            <Select value={stage.responsibleDepartment} onValueChange={(value) => onStageChange(workflowVersionId, stage.id, 'responsibleDepartment', value)} >
-                <SelectTrigger id={`s-dept-${stage.id}`} className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                    <SelectValue placeholder="Select Department" />
-                </SelectTrigger>
-                <SelectContent>
-                    {departments.length === 0 && <SelectItem value="no-depts" disabled>No departments found</SelectItem>}
-                    {departments.map(dept => <SelectItem key={`s-dept-item-${stage.id}-${dept.id}`} value={dept.name}>{dept.name}</SelectItem>)}
-                </SelectContent>
-            </Select>
-          </div>
+          <div><Label htmlFor={`s-dept-${stage.id}`}>Responsible Department</Label><Input id={`s-dept-${stage.id}`} value={stage.responsibleDepartment} className="mt-1" disabled /></div>
           <div><Label htmlFor={`s-time-${stage.id}`}>Timeline (days)</Label><Input id={`s-time-${stage.id}`} type="number" value={stage.defaultTimelineDays} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
           <div><Label htmlFor={`s-weight-${stage.id}`}>Weight (%)</Label><Input id={`s-weight-${stage.id}`} type="number" value={stage.percentageWeight} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/></div>
         </div>
@@ -486,8 +475,8 @@ export default function SettingsPage() {
         const fetchedLoanTypes = loanTypeResult.loanTypes || [];
         setLoanTypes(fetchedLoanTypes);
 
-        if(fetchedDepts.length > 0) setNewWorkflowDepartmentId(fetchedDepts[0].id);
-        if(fetchedLoanTypes.length > 0) setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
+        if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
+        if(fetchedLoanTypes.length > 0 && newWorkflowLoanTypeId === '') setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
 
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -499,7 +488,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast]);
+    }, [toast, newWorkflowDepartmentId, newWorkflowLoanTypeId]);
 
 
   useEffect(() => {
@@ -921,3 +910,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
