@@ -481,8 +481,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         }
 
         for (const version of versions) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { stages, workflowDefinitionId, ...versionData } = version;
+          const { stages, ...versionData } = version;
           const upsertedVersion = await tx.workflowVersion.upsert({
             where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
             create: {
@@ -596,3 +595,6 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
+
+
+    
