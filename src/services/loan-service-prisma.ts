@@ -5,6 +5,7 @@
 
 
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -138,7 +139,7 @@ export async function addLoanRequest(
         where: {
             loanType: { name: loanData.loanType },
             versions: { some: { isActive: true } },
-            NOT: { departmentId: null } // Correct way to check for non-null departmentId
+            NOT: { departmentId: null }
         },
         include: {
             loanType: true,
