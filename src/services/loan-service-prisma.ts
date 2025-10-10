@@ -384,10 +384,10 @@ export async function updateLoanRequest(
         }
 
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
-        updatePayload.workflowVersion = { connect: {id: wfVerId } };
-        updatePayload.workflowDefinitionIdMirror = wfDefId;
-        updatePayload.workflowVersionIdMirror = wfVerId;
-        updatePayload.currentStageIdMirror = newStageDef.id;
+        // These fields are not in the prisma schema.
+        // updatePayload.workflowDefinitionIdMirror = wfDefId;
+        // updatePayload.workflowVersionIdMirror = wfVerId;
+        // updatePayload.currentStageIdMirror = newStageDef.id;
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
