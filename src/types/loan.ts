@@ -1,6 +1,5 @@
 
 
-
 import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
