@@ -481,7 +481,8 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         }
 
         for (const version of versions) {
-          const { stages, ...versionData } = version;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { stages, workflowDefinitionId, ...versionData } = version;
           const upsertedVersion = await tx.workflowVersion.upsert({
             where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
             create: {
