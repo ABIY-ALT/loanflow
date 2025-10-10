@@ -174,20 +174,21 @@ function EditWorkflowVersionDialog({
   const { toast } = useToast();
 
   const [newStageName, setNewStageName] = useState('');
-  const [newStageDept, setNewStageDept] = useState<string>(departments.length > 0 ? departments[0].name : '');
+  const [newStageDept, setNewStageDept] = useState<string>('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [newStageWeight, setNewStageWeight] = useState(10);
 
   useEffect(() => {
     if (versionToEdit) {
       setEditedVersion(JSON.parse(JSON.stringify(versionToEdit)));
-      if (departments.length > 0 && !newStageDept) {
-        setNewStageDept(departments[0].name);
-      }
     } else {
       setEditedVersion(null);
     }
-  }, [versionToEdit, isOpen, departments, newStageDept]);
+    // Set default department only when dialog opens or departments list changes
+    if (isOpen && departments.length > 0 && !newStageDept) {
+        setNewStageDept(departments[0].name);
+    }
+  }, [versionToEdit, isOpen, departments]);
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
     return stages.map((stage, index) => ({ ...stage, order: index }));
