@@ -1,5 +1,6 @@
 
 
+
 import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
@@ -56,10 +57,12 @@ export interface WorkflowVersion {
   updatedAt?: string;
 }
 
-// Represents a workflow template for a specific LoanType
+// Represents a workflow template for a specific LoanType and Department
 export interface WorkflowDefinition {
   id: string;
   name: string;
+  departmentId: string;
+  departmentName: string;
   loanTypeId: string;
   loanTypeName: string;
   description?: string;
