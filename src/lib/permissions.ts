@@ -13,7 +13,8 @@ export const PERMISSIONS = {
   // Loan Creation & Officer Actions
   CREATE_LOAN_REQUEST: "CREATE_LOAN_REQUEST",
   VIEW_OWN_ASSIGNED_CASES: "VIEW_OWN_ASSIGNED_CASES", // Specific to logged-in user
-  EDIT_LOAN_DETAILS: "EDIT_LOAN_DETAILS", // Includes assigning staff
+  EDIT_LOAN_DETAILS: "EDIT_LOAN_DETAILS", // Can edit core loan data
+  ASSIGN_LOAN_TO_STAFF: "ASSIGN_LOAN_TO_STAFF", // Can assign/reassign staff
   ADD_LOAN_NOTES: "ADD_LOAN_NOTES",
   LOG_INFO_REQUEST: "LOG_INFO_REQUEST",
   FULFILL_INFO_REQUEST: "FULFILL_INFO_REQUEST",
@@ -51,7 +52,8 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_LOAN_STATUS_LOOKUP: "Can use the AI loan status lookup tool.",
   CREATE_LOAN_REQUEST: "Can submit new loan requests into the system.",
   VIEW_OWN_ASSIGNED_CASES: "Can view the 'My Assigned Cases' page (cases assigned to them).",
-  EDIT_LOAN_DETAILS: "Can edit loan details, customer information, and assign/reassign staff to a loan.",
+  EDIT_LOAN_DETAILS: "Can edit loan details and customer information.",
+  ASSIGN_LOAN_TO_STAFF: "Can assign or re-assign a loan to a specific staff member.",
   ADD_LOAN_NOTES: "Can add notes to a loan's history.",
   LOG_INFO_REQUEST: "Can log a request for additional information on a loan.",
   FULFILL_INFO_REQUEST: "Can mark an information request as fulfilled.",
@@ -87,6 +89,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "CREATE_LOAN_REQUEST",
       "VIEW_OWN_ASSIGNED_CASES",
       "EDIT_LOAN_DETAILS",
+      "ASSIGN_LOAN_TO_STAFF",
       "ADD_LOAN_NOTES",
       "LOG_INFO_REQUEST",
       "FULFILL_INFO_REQUEST",

@@ -1,7 +1,7 @@
 
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
@@ -39,14 +39,20 @@ export function LoanDetailHeader({
 
   if (!loan || !currentUser) return null;
   
+  const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
+  const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+
   return (
     <div className="flex items-center justify-between mb-8 flex-wrap">
       <Button variant="outline" onClick={onBack} disabled={isSaving}>
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
-        {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && 
-            <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}><Edit className="mr-2 h-4 w-4" /> Edit Details / Assign</Button>
+        {(canEditDetails || canAssignStaff) && 
+            <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
+                {canEditDetails && canAssignStaff ? <Edit className="mr-2 h-4 w-4" /> : (canAssignStaff ? <UserPlus className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />)}
+                {canEditDetails ? 'Edit / Assign' : 'Assign Staff'}
+            </Button>
         }
         {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && 
             <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>

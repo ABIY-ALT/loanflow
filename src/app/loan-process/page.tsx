@@ -58,7 +58,7 @@ function LoanCard({ loan, stageName, assignedUserName, onCardActionClick, curren
   if (currentUser && isStageActionable) {
     const canPromote = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
     const canMarkComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
-    const canAssignStaff = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS); 
+    const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF); 
 
     const isCurrentUserAssigned = loan.assignedTo === currentUser.id;
 

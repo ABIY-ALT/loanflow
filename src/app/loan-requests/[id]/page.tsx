@@ -148,11 +148,17 @@ export default function LoanDetailPage() {
 
 
   const onEditLoanSubmit = async (data: any) => {
-    if (!loan || !userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS)) return;
+    if (!loan) return;
+    
+    const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
+    const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+
+    if (!canEditDetails && !canAssignStaff) return;
+
     const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
 
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
-    if (finalAssignedTo !== loan.assignedTo) {
+    if (canAssignStaff && finalAssignedTo !== loan.assignedTo) {
         const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.fullName : 'Unassigned';
         const currentUserName = currentUser?.fullName || 'System Process';
         historyUpdate.push({
@@ -165,16 +171,23 @@ export default function LoanDetailPage() {
         });
     }
 
-    const success = await handleLocalAndUpdateService({
-      customerName: data.customerName,
-      customerEmail: data.customerEmail,
-      customerPhone: data.customerPhone,
-      loanAmount: Number(data.loanAmount),
-      loanType: data.loanType,
-      loanPurpose: data.loanPurpose,
-      assignedTo: finalAssignedTo,
-      history: historyUpdate,
-    }, "Loan details updated.");
+    const payload: Partial<Omit<LoanRequest, 'id'>> = { history: historyUpdate };
+    if (canEditDetails) {
+        Object.assign(payload, {
+            customerName: data.customerName,
+            customerEmail: data.customerEmail,
+            customerPhone: data.customerPhone,
+            loanAmount: Number(data.loanAmount),
+            loanType: data.loanType,
+            loanPurpose: data.loanPurpose,
+        });
+    }
+    if (canAssignStaff) {
+        payload.assignedTo = finalAssignedTo;
+    }
+
+
+    const success = await handleLocalAndUpdateService(payload, "Loan details updated.");
     if (success) setIsEditLoanDialogOpen(false);
   };
 
@@ -555,7 +568,7 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {(userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
