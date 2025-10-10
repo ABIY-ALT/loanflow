@@ -462,7 +462,7 @@ export default function LoanDetailPage() {
         onManagerPromoteLoan={handleManagerPromoteLoan}
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         isSaving={isSaving}
-        isActionableStage={isActionable && !!currentStageDef}
+        isActionableStage={isActionable}
         userPermissions={userPermissions}
       />
 
@@ -519,7 +519,7 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => !loan.assignedDepartment || u.department === loan.assignedDepartment || u.customRoleName?.toLowerCase() === 'administrator' || !u.departmentId)} currentDepartment={loan.assignedDepartment || (currentStageDef?.responsibleDepartment)} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
