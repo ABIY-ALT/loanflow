@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -231,7 +232,6 @@ function EditWorkflowVersionDialog({
   const { toast } = useToast();
 
   const [newStageName, setNewStageName] = useState('');
-  const [newStageDept, setNewStageDept] = useState<string>('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [newStageWeight, setNewStageWeight] = useState(10);
 
@@ -249,12 +249,6 @@ function EditWorkflowVersionDialog({
       setEditedVersion(null);
     }
   }, [versionToEdit]);
-
-  useEffect(() => {
-    if (isOpen && departments.length > 0 && !newStageDept) {
-        setNewStageDept(departments[0].name);
-    }
-  }, [isOpen, departments, newStageDept]);
 
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
@@ -278,18 +272,16 @@ function EditWorkflowVersionDialog({
     });
   };
   const handleInternalAddStageToVersion = () => {
-    if (!editedVersion) return;
+    if (!editedVersion || !workflowDefinition) return;
     if(!newStageName.trim()){
         toast({ title: "Error", description: "New stage name is required.", variant: "destructive"});
         return;
     }
-    if(!newStageDept.trim()){
-        toast({ title: "Error", description: "A department must be selected for the new stage.", variant: "destructive"});
-        return;
-    }
+    
+    const departmentForNewStage = workflowDefinition.departmentName;
 
     const newOrder = editedVersion.stages.length;
-    const newStage = createNewStage(newStageName, newStageDept, newStageTimeline, newStageWeight, newOrder);
+    const newStage = createNewStage(newStageName, departmentForNewStage, newStageTimeline, newStageWeight, newOrder);
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
@@ -427,22 +419,11 @@ function EditWorkflowVersionDialog({
             <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
                 <h5 className="font-medium">Add New Stage to this Version</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                    <div><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
-                    <div>
-                        <Label htmlFor="new-s-dept">Responsible Dept.</Label>
-                        <Select value={newStageDept} onValueChange={(value) => setNewStageDept(value)}>
-                            <SelectTrigger id="new-s-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
-                            <SelectContent>
-                                {departments.length === 0 && <SelectItem value="no-depts-new" disabled>No departments found</SelectItem>}
-                                {departments.map(dept => <SelectItem key={`new-stage-dept-option-${dept.id}`} value={dept.name}>{dept.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <div className="sm:col-span-2"><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
                     <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
                     <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
-                    <Button onClick={handleInternalAddStageToVersion} size="sm" className="sm:col-span-2" disabled={departments.length === 0 && !newStageDept.trim()}><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
+                    <Button onClick={handleInternalAddStageToVersion} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
                 </div>
-                 {departments.length === 0 && <p className="text-xs text-destructive mt-1">Cannot add stage: No departments are configured. Please add departments via Settings &gt; Manage Departments.</p>}
             </div>
         </div>
         <DialogFooter className="mt-auto pt-4 border-t">
