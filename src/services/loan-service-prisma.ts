@@ -3,6 +3,7 @@
 
 
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -133,7 +134,11 @@ export async function addLoanRequest(
 ): Promise<{ id?: string; error?: string }> {
   try {
     const activeWorkflow = await prisma.workflowDefinition.findFirst({
-        where: { loanType: { name: loanData.loanType }, versions: { some: { isActive: true } } },
+        where: {
+            loanType: { name: loanData.loanType },
+            versions: { some: { isActive: true } },
+            departmentId: { not: null } // Ensure it's linked to a department
+        },
         include: {
             loanType: true,
             department: true,
@@ -481,7 +486,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         }
 
         for (const version of versions) {
-          const { stages, workflowDefinitionId, ...versionData } = version;
+          const { stages, ...versionData } = version;
           const upsertedVersion = await tx.workflowVersion.upsert({
             where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
             create: {
@@ -489,7 +494,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               id: version.id || undefined,
               workflowDefinition: { connect: { id: definitionId } },
             },
-            update: { ...versionData, id: undefined, updatedAt: new Date() },
+            update: { ...versionData, id: undefined, workflowDefinitionId: undefined, updatedAt: new Date() },
           });
           const versionId = upsertedVersion.id;
 
