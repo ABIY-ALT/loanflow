@@ -214,7 +214,6 @@ function EditWorkflowVersionDialog({
 
   useEffect(() => {
     if (versionToEdit) {
-      // Ensure availableStatuses is an array for each stage
       const versionWithStatuses = {
         ...versionToEdit,
         stages: versionToEdit.stages.map(s => ({ ...s, availableStatuses: s.availableStatuses || [] })),
@@ -223,10 +222,14 @@ function EditWorkflowVersionDialog({
     } else {
       setEditedVersion(null);
     }
+  }, [versionToEdit]);
+
+  useEffect(() => {
     if (isOpen && departments.length > 0 && !newStageDept) {
         setNewStageDept(departments[0].name);
     }
-  }, [versionToEdit, isOpen, departments, newStageDept]);
+  }, [isOpen, departments]);
+
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
     return stages.map((stage, index) => ({ ...stage, order: index }));
@@ -828,3 +831,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
