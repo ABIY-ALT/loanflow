@@ -132,6 +132,7 @@ export async function addLoanRequest(
         where: {
             loanType: { name: loanData.loanType },
             versions: { some: { isActive: true } },
+            departmentId: { not: null }
         },
         include: {
             loanType: true,
@@ -315,6 +316,21 @@ export async function updateLoanRequest(
         if (!dataToUpdate.hasOwnProperty('assignedDepartmentId')) updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
       }
 
+      if (dataToUpdate.history) {
+        const newHistoryEntries = dataToUpdate.history.filter(h => !h.id.startsWith("hist-"));
+        for (const entry of newHistoryEntries) {
+          await tx.loanHistoryEntry.create({
+            data: {
+              loan: { connect: { id } },
+              user: { connect: { id: entry.userId } },
+              stageName: entry.stageName,
+              timestamp: parseISO(entry.timestamp),
+              notes: entry.notes,
+              requiredFulfilment: entry.requiredFulfilment
+            }
+          });
+        }
+      }
 
       if (dataToUpdate.documents) {
         // This is a simplified version. A real app might need more complex logic for doc updates.
@@ -325,20 +341,6 @@ export async function updateLoanRequest(
                 update: { ...doc, id: undefined, createdAt: undefined, updatedAt: new Date(), uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date() }
             });
          }
-      }
-      
-      if (dataToUpdate.history) {
-          // Simplified history update
-          await tx.loanHistoryEntry.createMany({
-              data: dataToUpdate.history.filter(h => !h.id.startsWith("hist-")).map(h => ({
-                  ...h,
-                  id: undefined,
-                  loanId: id,
-                  timestamp: parseISO(h.timestamp),
-                  createdAt: undefined,
-                  updatedAt: undefined
-              }))
-          })
       }
 
 
@@ -486,7 +488,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               id: version.id || undefined,
               workflowDefinition: { connect: { id: definitionId } },
           };
-          delete createPayload.workflowDefinitionId; // Ensure this is not in the payload
+          delete createPayload.workflowDefinitionId; 
 
           const updatePayload: any = {
               ...versionData,
@@ -494,7 +496,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               workflowDefinitionId: undefined,
               updatedAt: new Date(),
           };
-          delete updatePayload.workflowDefinitionId; // Ensure this is not in the payload
+          delete updatePayload.workflowDefinitionId;
 
 
           const upsertedVersion = await tx.workflowVersion.upsert({
@@ -606,3 +608,5 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
+
+    
