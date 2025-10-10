@@ -18,6 +18,7 @@ import {
   Download,
 } from 'lucide-react'; 
 import type { LoanRequest, LoanDocument, WorkflowStageDefinition } from '@/types/loan';
+import { LoanDocumentStatus } from '@/types/loan';
 
 const getDocumentStatusIcon = (status: LoanDocument['status'] | 'Missing') => {
     switch (status) {
@@ -45,7 +46,7 @@ interface LoanDocumentsManagerProps {
   loan: LoanRequest;
   currentStageDef: WorkflowStageDefinition | null;
   onOpenUploadDialog?: (docName: string) => void;
-  onVerifyDocument?: (docName: string) => Promise<void>;
+  onVerifyDocument?: (docId: string) => Promise<void>;
   isSavingGlobal: boolean;
 }
 
@@ -60,10 +61,10 @@ export function LoanDocumentsManager({
   const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);
 
 
-  const handleVerify = async (docName: string) => {
+  const handleVerify = async (docId: string) => {
     if (!onVerifyDocument) return;
-    setIsVerifyingDoc(docName);
-    await onVerifyDocument(docName);
+    setIsVerifyingDoc(docId);
+    await onVerifyDocument(docId);
     setIsVerifyingDoc(null);
   };
 
@@ -76,7 +77,7 @@ export function LoanDocumentsManager({
           {requiredDocumentsForCurrentStage.map(reqDocName => {
             const uploadedDoc = loan.documents.find(d => d.name === reqDocName);
             const status = uploadedDoc ? uploadedDoc.status : 'Missing';
-            const isCurrentlyVerifyingThis = isSavingGlobal && isVerifyingDoc === reqDocName;
+            const isCurrentlyVerifyingThis = isSavingGlobal && isVerifyingDoc === uploadedDoc?.id;
             return (
               <li key={reqDocName} className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/50 transition-colors">
                 <div className="flex items-center">
@@ -98,8 +99,8 @@ export function LoanDocumentsManager({
                     </Button>
                   )}
                   
-                  {onVerifyDocument && status === 'Submitted' && (
-                     <Button variant="outline" size="sm" onClick={() => handleVerify(reqDocName)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
+                  {onVerifyDocument && uploadedDoc && uploadedDoc.status === LoanDocumentStatus.SUBMITTED && (
+                     <Button variant="outline" size="sm" onClick={() => handleVerify(uploadedDoc.id)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>
                   )}

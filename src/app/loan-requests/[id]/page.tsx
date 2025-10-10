@@ -364,6 +364,19 @@ export default function LoanDetailPage() {
     if (success) setIsUploadDocDialogOpen(false);
   };
 
+  const handleVerifyDocument = async (docId: string) => {
+    if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
+
+    const updatedDocuments = loan.documents.map(doc =>
+      doc.id === docId ? { ...doc, status: LoanDocumentStatus.VERIFIED } : doc
+    );
+    
+    const docName = loan.documents.find(d => d.id === docId)?.name || 'Unknown';
+
+    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document "${docName}" marked as Verified.`);
+  };
+
+
   if (isLoading && !loan) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
@@ -428,11 +441,8 @@ export default function LoanDetailPage() {
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
   const loanCurrentDept = loan.assignedDepartment || currentStageDef?.responsibleDepartment;
-  const usersForDialog = users.filter(u => 
-    !u.departmentId || // Users with no department
-    u.customRoleName?.toLowerCase() === 'administrator' || // Administrators
-    u.department === loanCurrentDept // Users in the same department as the loan
-  );
+  const usersForDialog = users.filter(u => u.department === loanCurrentDept);
+
 
   return (
     <div className="space-y-6">
@@ -486,7 +496,7 @@ export default function LoanDetailPage() {
               loan={loan}
               currentStageDef={currentStageDef}
               onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
-              onVerifyDocument={undefined}
+              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ? handleVerifyDocument : undefined}
               isSavingGlobal={isSaving}
             />
             <LoanHistoryTimeline
