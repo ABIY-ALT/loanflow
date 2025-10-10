@@ -132,7 +132,7 @@ export async function addLoanRequest(
         where: {
             loanType: { name: loanData.loanType },
             versions: { some: { isActive: true } },
-            NOT: { departmentId: null }
+            departmentId: { not: null },
         },
         include: {
             loanType: true,
