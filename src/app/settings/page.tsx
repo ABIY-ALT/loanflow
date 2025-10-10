@@ -1,6 +1,4 @@
 
-
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -879,7 +877,7 @@ export default function SettingsPage() {
                         <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
                             <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
                             <SelectContent>
-                                {departments.length === 0 && <SelectItem value="" disabled>No departments found</SelectItem>}
+                                {departments.length === 0 && <SelectItem value="no-depts-found" disabled>No departments found</SelectItem>}
                                 {departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
@@ -889,7 +887,7 @@ export default function SettingsPage() {
                         <Select value={newWorkflowLoanTypeId} onValueChange={(value) => setNewWorkflowLoanTypeId(value)}>
                             <SelectTrigger id="new-wf-loantype" className="mt-1"><SelectValue placeholder="Select Loan Type" /></SelectTrigger>
                             <SelectContent>
-                                {loanTypes.length === 0 && <SelectItem value="" disabled>No loan types found</SelectItem>}
+                                {loanTypes.length === 0 && <SelectItem value="no-loan-types-found" disabled>No loan types found</SelectItem>}
                                 {loanTypes.map(lt => <SelectItem key={`new-wf-lt-option-${lt.id}`} value={lt.id}>{lt.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
@@ -942,7 +940,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-
-
-
