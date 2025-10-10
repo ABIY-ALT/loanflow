@@ -348,7 +348,7 @@ export default function LoanDetailPage() {
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
-      assignedTo: reworkAssigneeId === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : reworkAssigneeId,
+      assignedTo: reworkAssigneeId,
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
     if (success) setIsReturnForReworkDialogOpen(false);
@@ -579,3 +579,4 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+

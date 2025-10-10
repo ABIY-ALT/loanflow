@@ -39,7 +39,7 @@ export function ReturnLoanForReworkDialog({
   isSaving,
 }: ReturnLoanForReworkDialogProps) {
   const [reworkNote, setReworkNote] = useState('');
-  const [reworkAssigneeId, setReworkAssigneeId] = useState<string>('');
+  const [reworkAssigneeId, setReworkAssigneeId] = useState<string | undefined>('');
 
   useEffect(() => {
     if (isOpen && loan) {
@@ -121,4 +121,5 @@ export function ReturnLoanForReworkDialog({
     </Dialog>
   );
 }
+
 
