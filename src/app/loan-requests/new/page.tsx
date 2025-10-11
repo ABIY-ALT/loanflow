@@ -61,7 +61,7 @@ export default function NewLoanRequestPage() {
         } else if (result.loanTypes) {
           setAvailableLoanTypes(result.loanTypes);
         } else {
-          setLoanTypesError("No loan types with associated workflows found.");
+          setLoanTypesError("No loan types with active workflows found. Please contact an administrator to configure workflows.");
           setAvailableLoanTypes([]);
         }
       } catch (err: any) {
@@ -259,14 +259,14 @@ export default function NewLoanRequestPage() {
                               <SelectItem key={type} value={type}>{type}</SelectItem>
                             ))}
                             {availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
-                              <SelectItem value="no-types-found-disabled" disabled>No loan types with workflows found</SelectItem>
+                              <SelectItem value="no-types-found-disabled" disabled>No loan types with active workflows found</SelectItem>
                             )}
                           </SelectContent>
                         </Select>
                       </div>
-                      {loanTypesError && <FormMessage>{loanTypesError}</FormMessage>}
+                      {loanTypesError && <p className="text-sm text-destructive mt-2">{loanTypesError}</p>}
                       {!loanTypesError && availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
-                        <p className="text-sm text-muted-foreground">No loan types with active workflows are configured. Please contact an admin.</p>
+                        <p className="text-sm text-muted-foreground mt-2">No loan types with active workflows are configured. Please contact an admin.</p>
                       )}
                       <FormMessage />
                     </FormItem>

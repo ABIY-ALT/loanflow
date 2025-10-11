@@ -145,7 +145,7 @@ export async function addLoanRequest(
     });
 
     if (!activeWorkflow || !activeWorkflow.department || activeWorkflow.versions.length === 0 || activeWorkflow.versions[0].stages.length === 0) {
-        return createErrorResult(`No active workflow could be found for the loan type "${loanData.loanType}". An initial department must be linked to a workflow for this loan type.`, "addLoanRequest");
+        return createErrorResult(`No active workflow with an initial department could be found for the loan type "${loanData.loanType}". Please check settings.`, "addLoanRequest");
     }
 
     const activeVersion = activeWorkflow.versions[0];
@@ -602,12 +602,29 @@ export async function deleteDepartment(departmentId: string): Promise<{ success?
 
 export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: string[]; error?: string }> {
   try {
-    const loanTypes = await prisma.loanType.findMany({
-      orderBy: { name: 'asc' },
-      select: { name: true },
+    // Find workflow definitions that have at least one active version
+    const definitionsWithActiveVersions = await prisma.workflowDefinition.findMany({
+      where: {
+        versions: {
+          some: {
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        loanType: true,
+      },
     });
-    return { loanTypes: loanTypes.map(lt => lt.name) };
+
+    // Extract unique loan type names from these definitions
+    const loanTypeNames = new Set(
+      definitionsWithActiveVersions.map(def => def.loanType.name)
+    );
+
+    const sortedLoanTypes = Array.from(loanTypeNames).sort();
+
+    return { loanTypes: sortedLoanTypes };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
+    return createErrorResult("Failed to fetch available loan types with active workflows.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
