@@ -264,7 +264,7 @@ export async function updateLoanRequest(
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
-      const existingLoan = await tx.loanRequest.findUnique({ where: { id } });
+      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true } });
 
       if (!existingLoan) {
         throw new Error(`Loan with ID "${id}" not found for update.`);
@@ -317,7 +317,10 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
-        const newHistoryEntries = dataToUpdate.history.filter(h => !h.id.startsWith("hist-"));
+        // Correctly identify new entries to be created.
+        const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
+        const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
+        
         for (const entry of newHistoryEntries) {
           await tx.loanHistoryEntry.create({
             data: {
@@ -608,5 +611,3 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
     return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
-
-    
