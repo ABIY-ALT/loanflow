@@ -30,6 +30,7 @@ import { LogInfoRequestForLoanDialog } from '@/components/loan/dialogs/LogInfoRe
 import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanForReworkDialog';
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
 import { PromoteToNewWorkflowDialog } from '@/components/loan/dialogs/PromoteToNewWorkflowDialog';
+import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
 
 
 export default function LoanDetailPage() {
@@ -53,6 +54,7 @@ export default function LoanDetailPage() {
   const [currentConceptualDocumentToUpload, setCurrentConceptualDocumentToUpload] = useState<string | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
   const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
+  const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
@@ -353,6 +355,39 @@ export default function LoanDetailPage() {
     if (success) setIsReturnForReworkDialogOpen(false);
   };
 
+  const onTerminateLoanSubmit = async (terminationReason: string) => {
+    if (!userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) || !currentUser || !loan) {
+      toast({ title: "Permission Denied", description: "You do not have permission to terminate this loan.", variant: "destructive" });
+      return;
+    }
+    if (!terminationReason.trim()) {
+      toast({ title: "Reason Required", description: "A reason for termination is mandatory.", variant: "destructive" });
+      return;
+    }
+
+    const currentUserName = currentUser.fullName || 'System Process';
+    const newHistoryEntry: LoanHistoryEntry = {
+      id: `hist-terminate-${Date.now()}`,
+      stageName: currentStageDef?.name || loan.currentStageName || 'N/A',
+      timestamp: formatISO(new Date()),
+      userId: currentUser.id,
+      userName: currentUserName,
+      notes: `Loan process terminated by higher authority. Reason: ${terminationReason}`,
+    };
+
+    const success = await handleLocalAndUpdateService({
+      isTerminalStage: true,
+      isReadyForManagerReview: false,
+      currentStageStatus: "Terminated",
+      history: [...loan.history, newHistoryEntry],
+    }, "Loan process has been terminated.");
+
+    if (success) {
+      setIsTerminateLoanDialogOpen(false);
+    }
+  };
+
+
   const handleDocumentUploaded = async (conceptualDocName: string, uploadedFilePath: string, originalUploadedFileName: string) => {
     if (!loan || !userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) return;
     const existingDocIndex = loan.documents.findIndex(d => d.name === conceptualDocName);
@@ -496,11 +531,7 @@ export default function LoanDetailPage() {
   }
 
   const assignedUser = users.find(u => u.id === loan.assignedTo);
-  const isActionable = currentStageDef ?
-    !currentStageDef.name.toLowerCase().includes("closed") &&
-    !currentStageDef.name.toLowerCase().includes("rejected") &&
-    !currentStageDef.name.toLowerCase().includes("disbursed")
-    : false;
+  const isActionable = currentStageDef ? !loan.isTerminalStage : false;
 
 
   let progressPercentage = 0;
@@ -536,6 +567,7 @@ export default function LoanDetailPage() {
         onMarkStageComplete={handleMarkStageComplete}
         onManagerPromoteLoan={handleManagerPromoteLoan}
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
+        onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable}
       />
@@ -554,7 +586,7 @@ export default function LoanDetailPage() {
                 {availableStatuses.length > 0 ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Status:</span>
-                    <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving}>
+                    <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving || !isActionable}>
                       <SelectTrigger className="h-8 text-sm" disabled={!isActionable}>
                         <SelectValue placeholder="Set Status" />
                       </SelectTrigger>
@@ -573,6 +605,9 @@ export default function LoanDetailPage() {
                     <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                         Awaiting Manager Review
                     </Badge>
+                )}
+                {loan.isTerminalStage && (
+                     <Badge variant="destructive" className="text-lg py-1">Process Inactive / Terminated</Badge>
                 )}
             </div>
           </div>
@@ -603,13 +638,13 @@ export default function LoanDetailPage() {
             <LoanDocumentsManager
               loan={loan}
               currentStageDef={currentStageDef}
-              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
-              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) ? handleVerifyDocument : undefined}
+              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && isActionable ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
+              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) && isActionable ? handleVerifyDocument : undefined}
               isSavingGlobal={isSaving}
             />
             <LoanHistoryTimeline
               loan={loan}
-              onFulfillInfoRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) ? handleFulfillInfoRequest : undefined}
+              onFulfillInfoRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) && isActionable ? handleFulfillInfoRequest : undefined}
               isSavingGlobal={isSaving}
             />
           </div>
@@ -626,6 +661,7 @@ export default function LoanDetailPage() {
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && <TerminateLoanDialog isOpen={isTerminateLoanDialogOpen} onOpenChange={setIsTerminateLoanDialogOpen} loan={loan} onSubmit={onTerminateLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && (
         <PromoteToNewWorkflowDialog
           isOpen={isPromoteToNewWorkflowDialogOpen}

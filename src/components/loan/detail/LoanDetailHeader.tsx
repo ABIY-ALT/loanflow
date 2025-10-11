@@ -1,7 +1,7 @@
 
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus } from 'lucide-react';
+import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
@@ -17,6 +17,7 @@ interface LoanDetailHeaderProps {
   onMarkStageComplete: () => Promise<void>; 
   onManagerPromoteLoan: () => Promise<void>; 
   onOpenReturnForReworkDialog: () => void;
+  onOpenTerminateLoanDialog: () => void;
   isSaving: boolean;
   isActionableStage: boolean;
 }
@@ -31,6 +32,7 @@ export function LoanDetailHeader({
   onMarkStageComplete,
   onManagerPromoteLoan,
   onOpenReturnForReworkDialog,
+  onOpenTerminateLoanDialog,
   isSaving,
   isActionableStage,
 }: LoanDetailHeaderProps) {
@@ -77,6 +79,11 @@ export function LoanDetailHeader({
         {isActionableStage && userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && loan.isReadyForManagerReview && (
              <Button variant="outline" onClick={onOpenReturnForReworkDialog} disabled={isSaving} className="border-amber-500 text-amber-700 hover:bg-amber-50">
                 <Undo2 className="mr-2 h-4 w-4" /> Return for Rework
+            </Button>
+        )}
+        {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
+            <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
+                <ShieldX className="mr-2 h-4 w-4" /> Terminate Process
             </Button>
         )}
       </div>

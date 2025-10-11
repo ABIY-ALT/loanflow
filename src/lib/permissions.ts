@@ -27,6 +27,7 @@ export const PERMISSIONS = {
   VIEW_UNASSIGNED_CASES_QUEUE: "VIEW_UNASSIGNED_CASES_QUEUE", // Department queue
   PROMOTE_LOAN_STAGE: "PROMOTE_LOAN_STAGE", // Manager approval
   RETURN_LOAN_FOR_REWORK: "RETURN_LOAN_FOR_REWORK", // Manager action
+  TERMINATE_LOAN_PROCESS: "TERMINATE_LOAN_PROCESS", // New permission
   VIEW_OVERDUE_TASKS_REPORT: "VIEW_OVERDUE_TASKS_REPORT", // Overdue tasks page
 
   // Settings & Administration
@@ -64,6 +65,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_UNASSIGNED_CASES_QUEUE: "Can view the queue of unassigned cases within departments (department queue).",
   PROMOTE_LOAN_STAGE: "Can approve a loan stage and promote it to the next stage in the workflow (manager action).",
   RETURN_LOAN_FOR_REWORK: "Can return a loan to a previous assignee or state for rework (manager action).",
+  TERMINATE_LOAN_PROCESS: "Can terminate a loan process at any stage, ending all activities.",
   VIEW_OVERDUE_TASKS_REPORT: "Can view the page listing all overdue loan tasks.",
   MANAGE_SETTINGS_WORKFLOWS: "Can access settings to define and manage loan workflow definitions and versions.",
   MANAGE_SETTINGS_DEPARTMENTS: "Can access settings to create, edit, and delete departments.",
@@ -105,6 +107,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "VIEW_UNASSIGNED_CASES_QUEUE",
       "PROMOTE_LOAN_STAGE",
       "RETURN_LOAN_FOR_REWORK",
+      "TERMINATE_LOAN_PROCESS",
       "VIEW_OVERDUE_TASKS_REPORT",
     ],
   },
