@@ -67,6 +67,8 @@ export function LoanDocumentsManager({
     await onVerifyDocument(docId);
     setIsVerifyingDoc(null);
   };
+  
+  const isActionable = currentStageDef ? !loan.isTerminalStage : false;
 
   return (
     <div>
@@ -93,13 +95,13 @@ export function LoanDocumentsManager({
                     {status}
                   </Badge>
                   
-                  {onOpenUploadDialog && (
+                  {onOpenUploadDialog && isActionable && (
                     <Button variant="outline" size="sm" onClick={() => onOpenUploadDialog(reqDocName)} disabled={isSavingGlobal}>
                       <UploadCloud className="mr-1 h-4 w-4" /> Upload
                     </Button>
                   )}
                   
-                  {onVerifyDocument && uploadedDoc && uploadedDoc.status === LoanDocumentStatus.SUBMITTED && (
+                  {onVerifyDocument && uploadedDoc && uploadedDoc.status === LoanDocumentStatus.SUBMITTED && isActionable && (
                      <Button variant="outline" size="sm" onClick={() => handleVerify(uploadedDoc.id)} disabled={isSavingGlobal || isCurrentlyVerifyingThis}>
                       {isCurrentlyVerifyingThis ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <BadgeCheck className="mr-1 h-4 w-4" />} Verify
                     </Button>
@@ -147,3 +149,5 @@ export function LoanDocumentsManager({
     </div>
   );
 }
+
+    

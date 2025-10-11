@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { LoanRequest, LoanHistoryEntry } from '@/types/loan';
@@ -17,6 +18,8 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
   const activeInfoRequestEntry = [...loan.history]
     .reverse()
     .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+    
+  const isActionable = !loan.isTerminalStage;
 
   return (
     <div>
@@ -27,7 +30,7 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
             <HistoryEntryItem
               key={entry.id}
               entry={entry}
-              isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
+              isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id && isActionable}
               onFulfillInfoRequest={onFulfillInfoRequest} // Pass it down; button inside HistoryEntryItem will handle its presence
               isSaving={isSavingGlobal}
             />
@@ -39,3 +42,5 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
     </div>
   );
 }
+
+    
