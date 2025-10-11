@@ -29,6 +29,7 @@ import { AddNoteToLoanDialog } from '@/components/loan/dialogs/AddNoteToLoanDial
 import { LogInfoRequestForLoanDialog } from '@/components/loan/dialogs/LogInfoRequestForLoanDialog';
 import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanForReworkDialog';
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
+import { PromoteToNewWorkflowDialog } from '@/components/loan/dialogs/PromoteToNewWorkflowDialog';
 
 
 export default function LoanDetailPage() {
@@ -51,6 +52,7 @@ export default function LoanDetailPage() {
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = useState(false);
   const [currentConceptualDocumentToUpload, setCurrentConceptualDocumentToUpload] = useState<string | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
+  const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
@@ -288,21 +290,18 @@ export default function LoanDetailPage() {
     if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
 
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
-    if (currentStageIndex === -1 || currentStageIndex === currentWorkflowVersion.stages.length - 1) {
-      toast({ title: "Workflow End", description: "This is the last stage in the workflow. Consider closing or finalizing the loan.", variant: "info" });
-      if (currentStageIndex === currentWorkflowVersion.stages.length -1) {
-          const currentUserName = currentUser.fullName || 'System Process';
-          const terminalNote = `Loan has reached the final configured stage: '${currentStageDef.name}'. Further action may be manual or via specific stage logic.`;
-          const finalHistory: LoanHistoryEntry = {
-            id: `hist-final-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: currentUser.id,
-            userName: currentUserName,
-            notes: terminalNote,
-          };
-           await handleLocalAndUpdateService({ history: [...loan.history, finalHistory], isReadyForManagerReview: false }, "Loan reached final workflow stage.");
-      }
+    if (currentStageIndex === -1) {
+      toast({ title: "Error", description: "Could not determine current stage index.", variant: "destructive" });
       return;
     }
+
+    // Check if it's the last stage
+    if (currentStageIndex === currentWorkflowVersion.stages.length - 1) {
+        // Open the dialog to select a new workflow
+        setIsPromoteToNewWorkflowDialogOpen(true);
+        return;
+    }
+
 
     const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
     const currentUserName = currentUser.fullName || 'System Process';
@@ -412,6 +411,43 @@ export default function LoanDetailPage() {
       currentStageStatus: newStatus,
       history: [...loan.history, newHistoryEntry] 
     }, `Status updated to "${newStatus}".`);
+  };
+
+  const onPromoteToNewWorkflowSubmit = async (newWorkflowVersionId: string) => {
+    if (!currentUser || !loan || !currentStageDef) return;
+
+    const allVersions = workflowDefinitions.flatMap(def => def.versions);
+    const newVersion = allVersions.find(v => v.id === newWorkflowVersionId);
+
+    if (!newVersion || newVersion.stages.length === 0) {
+      toast({ title: "Error", description: "Selected workflow version is invalid or has no stages.", variant: "destructive" });
+      return;
+    }
+    const firstStageOfNewWorkflow = newVersion.stages[0];
+
+    const currentUserName = currentUser.fullName || 'System Process';
+    const newHistoryEntry: LoanHistoryEntry = {
+      id: `hist-workflow-change-${Date.now()}`,
+      stageName: firstStageOfNewWorkflow.name,
+      timestamp: formatISO(new Date()),
+      userId: currentUser.id,
+      userName: currentUserName,
+      notes: `Workflow complete. Promoted from '${currentStageDef.name}' to new workflow: '${newVersion.workflowDefinitionId}' (Version ${newVersion.versionNumber}), Stage: '${firstStageOfNewWorkflow.name}'.`,
+    };
+
+    const success = await handleLocalAndUpdateService({
+      workflowVersionId: newVersion.id,
+      currentStageId: firstStageOfNewWorkflow.id,
+      assignedDepartmentId: users.find(u => u.department === firstStageOfNewWorkflow.responsibleDepartment)?.departmentId,
+      assignedTo: undefined, // Un-assign staff on workflow change
+      isReadyForManagerReview: false,
+      history: [...loan.history, newHistoryEntry],
+      stageDeadline: formatISO(addDays(new Date(), firstStageOfNewWorkflow.defaultTimelineDays)),
+    }, `Loan promoted to new workflow: ${firstStageOfNewWorkflow.name}.`);
+
+    if (success) {
+      setIsPromoteToNewWorkflowDialogOpen(false);
+    }
   };
 
 
@@ -590,7 +626,16 @@ export default function LoanDetailPage() {
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
-
+      {userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && (
+        <PromoteToNewWorkflowDialog
+          isOpen={isPromoteToNewWorkflowDialogOpen}
+          onOpenChange={setIsPromoteToNewWorkflowDialogOpen}
+          currentLoan={loan}
+          workflowDefinitions={workflowDefinitions}
+          onSubmit={onPromoteToNewWorkflowSubmit}
+          isSaving={isSaving}
+        />
+      )}
     </div>
   );
 }
