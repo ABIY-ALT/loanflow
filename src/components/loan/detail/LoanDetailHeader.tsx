@@ -1,4 +1,5 @@
 
+
 'use client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX } from 'lucide-react';
@@ -50,13 +51,13 @@ export function LoanDetailHeader({
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
-        {(canEditDetails || canAssignStaff) && 
+        {(canEditDetails || canAssignStaff) && isActionableStage &&
             <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
                 {canEditDetails && canAssignStaff ? <Edit className="mr-2 h-4 w-4" /> : (canAssignStaff ? <UserPlus className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />)}
                 {canEditDetails ? 'Edit / Assign' : 'Assign Staff'}
             </Button>
         }
-        {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && 
+        {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && isActionableStage && 
             <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
         }
         {isActionableStage && userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) &&
