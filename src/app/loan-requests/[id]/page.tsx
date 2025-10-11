@@ -14,7 +14,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -483,6 +483,10 @@ export default function LoanDetailPage() {
   
   const availableStatuses = (currentStageDef?.availableStatuses && loanCurrentDept && currentStageDef.availableStatuses[loanCurrentDept]) || [];
 
+  const latestReworkNote = [...loan.history]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .find(h => h.notes?.startsWith("Manager returned case for rework."));
+
 
   return (
     <div className="space-y-6">
@@ -545,6 +549,17 @@ export default function LoanDetailPage() {
                 <AlertDescriptionShadCN>{error.replace("Workflows:", "").trim()}</AlertDescriptionShadCN>
             </Alert>
           )}
+
+          {latestReworkNote && (
+            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-400 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-600 [&>svg]:text-amber-600">
+              <MessageSquareWarning className="h-5 w-5" />
+              <AlertTitleShadCN>Returned for Rework by {latestReworkNote.userName} on {format(parseISO(latestReworkNote.timestamp), 'MMM dd, yyyy')}</AlertTitleShadCN>
+              <AlertDescriptionShadCN className="font-medium whitespace-pre-wrap">
+                {latestReworkNote.notes?.replace("Manager returned case for rework. Reason: ", "")}
+              </AlertDescriptionShadCN>
+            </Alert>
+          )}
+
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
           <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loanCurrentDept} />
           <Separator className="my-8" />
@@ -579,4 +594,3 @@ export default function LoanDetailPage() {
     </div>
   );
 }
-
