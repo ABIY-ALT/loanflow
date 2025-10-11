@@ -68,7 +68,7 @@ export function LoanDocumentsManager({
     setIsVerifyingDoc(null);
   };
   
-  const isActionable = currentStageDef ? !loan.isTerminalStage : false;
+  const isActionable = !loan.isTerminalStage;
 
   return (
     <div>

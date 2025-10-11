@@ -531,7 +531,7 @@ export default function LoanDetailPage() {
   }
 
   const assignedUser = users.find(u => u.id === loan.assignedTo);
-  const isActionable = currentStageDef ? !loan.isTerminalStage : false;
+  const isActionable = !loan.isTerminalStage;
 
 
   let progressPercentage = 0;
