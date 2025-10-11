@@ -22,8 +22,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { addLoanRequest, getAvailableLoanTypesForWorkflow } from '@/services/loan-service-prisma';
-import type { LoanRequest } from '@/types/loan';
+import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
+import type { LoanRequest, ActiveWorkflow } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
@@ -32,46 +32,43 @@ const loanRequestFormSchema = z.object({
   customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
   customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
-  loanType: z.string().min(1, { message: 'Loan type is required.' }),
+  workflowVersionId: z.string().min(1, { message: 'A workflow must be selected.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
-  customerBranch: z.string().min(1, { message: 'Customer branch is required.' }),
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
-
-const MOCK_BRANCHES = ['Main Office', 'North Branch', 'South Branch', 'Online Origination'];
 
 export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [availableLoanTypes, setAvailableLoanTypes] = useState<string[]>([]);
-  const [isLoadingLoanTypes, setIsLoadingLoanTypes] = useState(true);
-  const [loanTypesError, setLoanTypesError] = useState<string | null>(null);
+  const [availableWorkflows, setAvailableWorkflows] = useState<ActiveWorkflow[]>([]);
+  const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(true);
+  const [workflowsError, setWorkflowsError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchLoanTypes() {
-      setIsLoadingLoanTypes(true);
-      setLoanTypesError(null);
+    async function fetchWorkflows() {
+      setIsLoadingWorkflows(true);
+      setWorkflowsError(null);
       try {
-        const result = await getAvailableLoanTypesForWorkflow();
+        const result = await getActiveWorkflowsForCreate();
         if (result.error) {
-          setLoanTypesError(result.error);
-          setAvailableLoanTypes([]);
-        } else if (result.loanTypes) {
-          setAvailableLoanTypes(result.loanTypes);
+          setWorkflowsError(result.error);
+          setAvailableWorkflows([]);
+        } else if (result.activeWorkflows) {
+          setAvailableWorkflows(result.activeWorkflows);
         } else {
-          setLoanTypesError("No loan types with active workflows found. Please contact an administrator to configure workflows.");
-          setAvailableLoanTypes([]);
+          setWorkflowsError("No active workflows found. Please contact an administrator to configure workflows.");
+          setAvailableWorkflows([]);
         }
       } catch (err: any) {
-        setLoanTypesError(err.message || "Failed to fetch available loan types.");
-        setAvailableLoanTypes([]);
+        setWorkflowsError(err.message || "Failed to fetch available workflows.");
+        setAvailableWorkflows([]);
       } finally {
-        setIsLoadingLoanTypes(false);
+        setIsLoadingWorkflows(false);
       }
     }
-    fetchLoanTypes();
+    fetchWorkflows();
   }, []);
 
   const form = useForm<LoanRequestFormValues>({
@@ -81,16 +78,21 @@ export default function NewLoanRequestPage() {
       customerEmail: '',
       customerPhone: '',
       loanAmount: 0,
-      loanType: '',
+      workflowVersionId: '',
       loanPurpose: '',
-      customerBranch: '',
     },
   });
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      const result = await addLoanRequest(data);
+      // The loanType will be derived on the backend from the workflow
+      const payload = {
+          ...data,
+          loanType: '', // This is a placeholder, backend will set it from the workflow
+      };
+      
+      const result = await addLoanRequest(payload);
 
       if (result.error) {
         toast({
@@ -135,13 +137,13 @@ export default function NewLoanRequestPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">New Loan Request</h1>
         <p className="text-muted-foreground">
-          Fill in the details below to submit a new loan application. The loan type will determine its starting department and workflow.
+          Fill in the details below to submit a new loan application. The selected workflow will determine its starting department.
         </p>
       </div>
       <Card>
         <CardHeader>
           <CardTitle>Applicant & Loan Information</CardTitle>
-          <CardDescription>All fields are required. Select a loan type to begin the process.</CardDescription>
+          <CardDescription>All fields are required. Select a workflow to begin the process.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -195,31 +197,7 @@ export default function NewLoanRequestPage() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="customerBranch"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Customer Branch</FormLabel>
-                      <div className="relative">
-                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                          <FormControl>
-                            <SelectTrigger className="pl-10">
-                              <SelectValue placeholder="Select customer branch" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {MOCK_BRANCHES.map(branch => (
-                              <SelectItem key={branch} value={branch}>{branch}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                
                 <FormField
                   control={form.control}
                   name="loanAmount"
@@ -236,42 +214,47 @@ export default function NewLoanRequestPage() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="loanType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Loan Type</FormLabel>
-                      <div className="relative">
-                        <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          disabled={isLoadingLoanTypes || isSubmitting || availableLoanTypes.length === 0}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="pl-10">
-                              <SelectValue placeholder={isLoadingLoanTypes ? "Loading loan types..." : "Select loan type"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {availableLoanTypes.map(type => (
-                              <SelectItem key={type} value={type}>{type}</SelectItem>
-                            ))}
-                            {availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
-                              <SelectItem value="no-types-found-disabled" disabled>No loan types with active workflows found</SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {loanTypesError && <p className="text-sm text-destructive mt-2">{loanTypesError}</p>}
-                      {!loanTypesError && availableLoanTypes.length === 0 && !isLoadingLoanTypes && (
-                        <p className="text-sm text-muted-foreground mt-2">No loan types with active workflows are configured. Please contact an admin.</p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+
+                <div className="md:col-span-2">
+                  <FormField
+                    control={form.control}
+                    name="workflowVersionId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Workflow</FormLabel>
+                        <div className="relative">
+                          <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                            disabled={isLoadingWorkflows || isSubmitting || availableWorkflows.length === 0}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="pl-10">
+                                <SelectValue placeholder={isLoadingWorkflows ? "Loading workflows..." : "Select a workflow"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availableWorkflows.map(wf => (
+                                <SelectItem key={wf.id} value={wf.id}>
+                                  {wf.name} ({wf.loanTypeName} / Dept: {wf.departmentName})
+                                </SelectItem>
+                              ))}
+                              {availableWorkflows.length === 0 && !isLoadingWorkflows && (
+                                <SelectItem value="no-workflows-found-disabled" disabled>No active workflows found</SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {workflowsError && <p className="text-sm text-destructive mt-2">{workflowsError}</p>}
+                        {!workflowsError && availableWorkflows.length === 0 && !isLoadingWorkflows && (
+                          <p className="text-sm text-muted-foreground mt-2">No active workflows are configured. Please contact an admin.</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
               <FormField
@@ -291,7 +274,7 @@ export default function NewLoanRequestPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingLoanTypes || availableLoanTypes.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingWorkflows || availableWorkflows.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isSubmitting ? 'Submitting...' : 'Submit Loan Request'}
               </Button>

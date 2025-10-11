@@ -138,3 +138,10 @@ export interface LoanRequest {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface ActiveWorkflow {
+  id: string; // The ID of the workflow *version*
+  name: string; // A combined name, e.g., "Standard Personal Loan (v2)"
+  loanTypeName: string;
+  departmentName: string;
+}
