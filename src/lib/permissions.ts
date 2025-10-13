@@ -1,4 +1,3 @@
-
 // src/lib/permissions.ts
 
 // Using 'as const' makes the values of PERMISSIONS literal types,
