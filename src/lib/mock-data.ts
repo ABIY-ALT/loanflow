@@ -1,5 +1,7 @@
 
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
+import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
+import { DocumentRequirementType } from '@/types/loan';
+
 // UserRole enum is removed from types/loan.ts, so it should not be imported or used here.
 // We will assign custom role names directly in the mock user data if needed.
 
@@ -56,34 +58,41 @@ export const mockDepartments: Department[] = [
   "Servicing"
 ];
 
+const createDocReq = (id: string, name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
+  id,
+  name,
+  isMandatory,
+  type,
+});
+
 // --- Workflow Mock Data (remains the same) ---
 const personalLoan_v1_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v1_s1', name: 'Application Intake (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 2, requiredDocumentNames: ['Identification Card', 'Application Form'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v1_s2', name: 'Initial Document Review (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Proof of Income', 'Bank Statement'], percentageWeight: 20, order: 1 },
-  { id: 'pl_v1_s3', name: 'Credit Check (PL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Credit Report Consent'], percentageWeight: 20, order: 2 },
-  { id: 'pl_v1_s4', name: 'Basic Underwriting (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 3, requiredDocumentNames: [], percentageWeight: 30, order: 3 },
-  { id: 'pl_v1_s5', name: 'Final Approval Review (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Signed Offer Letter'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v1_s6', name: 'Funds Disbursement Prep (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 2, requiredDocumentNames: ['Payment Instructions'], percentageWeight: 0, order: 5 },
-  { id: 'pl_v1_s7', name: 'Loan Closed - Disbursed (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 6 },
+  { id: 'pl_v1_s1', name: 'Application Intake (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 2, documentRequirements: [createDocReq('pl_v1_s1_dr1', 'Identification Card', true, DocumentRequirementType.UPLOAD), createDocReq('pl_v1_s1_dr2', 'Application Form', true, DocumentRequirementType.UPLOAD)], percentageWeight: 10, order: 0 },
+  { id: 'pl_v1_s2', name: 'Initial Document Review (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, documentRequirements: [createDocReq('pl_v1_s2_dr1', 'Proof of Income', true, DocumentRequirementType.UPLOAD), createDocReq('pl_v1_s2_dr2', 'Bank Statement', false, DocumentRequirementType.UPLOAD)], percentageWeight: 20, order: 1 },
+  { id: 'pl_v1_s3', name: 'Credit Check (PL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, documentRequirements: [createDocReq('pl_v1_s3_dr1', 'Credit Report Consent', true, DocumentRequirementType.CHECKBOX)], percentageWeight: 20, order: 2 },
+  { id: 'pl_v1_s4', name: 'Basic Underwriting (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 3, documentRequirements: [], percentageWeight: 30, order: 3 },
+  { id: 'pl_v1_s5', name: 'Final Approval Review (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, documentRequirements: [createDocReq('pl_v1_s5_dr1', 'Signed Offer Letter', true, DocumentRequirementType.UPLOAD)], percentageWeight: 15, order: 4 },
+  { id: 'pl_v1_s6', name: 'Funds Disbursement Prep (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 2, documentRequirements: [createDocReq('pl_v1_s6_dr1', 'Payment Instructions', true, DocumentRequirementType.UPLOAD)], percentageWeight: 0, order: 5 },
+  { id: 'pl_v1_s7', name: 'Loan Closed - Disbursed (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, documentRequirements: [], percentageWeight: 5, order: 6 },
 ];
 const personalLoan_v2_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v2_s1', name: 'Online Application Intake (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Online Application Summary'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v2_s2', name: 'Automated Document Verification (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Digital ID Upload', 'Income API Consent'], percentageWeight: 15, order: 1 },
-  { id: 'pl_v2_s3', name: 'AI-Assisted Credit Scoring (PL V2)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 25, order: 2 },
-  { id: 'pl_v2_s4', name: 'Underwriter Review (PL V2)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Risk Assessment Report'], percentageWeight: 30, order: 3 },
-  { id: 'pl_v2_s5', name: 'E-Signature & Closing Prep (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Final Agreement E-sign'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v2_s6', name: 'Loan Closed - Disbursed (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 5 },
+  { id: 'pl_v2_s1', name: 'Online Application Intake (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, documentRequirements: [createDocReq('pl_v2_s1_dr1', 'Online Application Summary', true, DocumentRequirementType.CHECKBOX)], percentageWeight: 10, order: 0 },
+  { id: 'pl_v2_s2', name: 'Automated Document Verification (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, documentRequirements: [createDocReq('pl_v2_s2_dr1', 'Digital ID Upload', true, DocumentRequirementType.UPLOAD), createDocReq('pl_v2_s2_dr2', 'Income API Consent', true, DocumentRequirementType.CHECKBOX)], percentageWeight: 15, order: 1 },
+  { id: 'pl_v2_s3', name: 'AI-Assisted Credit Scoring (PL V2)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 1, documentRequirements: [], percentageWeight: 25, order: 2 },
+  { id: 'pl_v2_s4', name: 'Underwriter Review (PL V2)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, documentRequirements: [createDocReq('pl_v2_s4_dr1', 'Risk Assessment Report', true, DocumentRequirementType.UPLOAD)], percentageWeight: 30, order: 3 },
+  { id: 'pl_v2_s5', name: 'E-Signature & Closing Prep (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, documentRequirements: [createDocReq('pl_v2_s5_dr1', 'Final Agreement E-sign', true, DocumentRequirementType.UPLOAD)], percentageWeight: 15, order: 4 },
+  { id: 'pl_v2_s6', name: 'Loan Closed - Disbursed (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, documentRequirements: [], percentageWeight: 5, order: 5 },
 ];
 
 const mortgageLoan_v1_stages: WorkflowStageDefinition[] = [
-    { id: 'ml_v1_s1', name: 'Pre-qualification Application (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Pre-qual Form', 'ID'], percentageWeight: 5, order: 0 },
-    { id: 'ml_v1_s2', name: 'Full Application & Doc Collection (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 7, requiredDocumentNames: ['Full Application', 'Income Proof', 'Asset Statements'], percentageWeight: 15, order: 1 },
-    { id: 'ml_v1_s3', name: 'Property Appraisal Ordered (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Appraisal Request'], percentageWeight: 5, order: 2 },
-    { id: 'ml_v1_s4', name: 'Appraisal Review & Credit Analysis (ML V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 5, requiredDocumentNames: ['Appraisal Report', 'Credit Report'], percentageWeight: 25, order: 3 },
-    { id: 'ml_v1_s5', name: 'Underwriting Decision (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, requiredDocumentNames: ['Underwriting Worksheet'], percentageWeight: 30, order: 4 },
-    { id: 'ml_v1_s6', name: 'Conditional Approval Issued (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Conditional Approval Letter'], percentageWeight: 5, order: 5 },
-    { id: 'ml_v1_s7', name: 'Closing Disclosure & Final Docs (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 3, requiredDocumentNames: ['Closing Disclosure', 'Insurance Binder'], percentageWeight: 10, order: 6 },
-    { id: 'ml_v1_s8', name: 'Loan Closed - Funded (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 7 },
+    { id: 'ml_v1_s1', name: 'Pre-qualification Application (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, documentRequirements: [createDocReq('ml_v1_s1_dr1','Pre-qual Form', true, DocumentRequirementType.UPLOAD), createDocReq('ml_v1_s1_dr2','ID', true, DocumentRequirementType.UPLOAD)], percentageWeight: 5, order: 0 },
+    { id: 'ml_v1_s2', name: 'Full Application & Doc Collection (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 7, documentRequirements: [createDocReq('ml_v1_s2_dr1','Full Application', true, DocumentRequirementType.UPLOAD), createDocReq('ml_v1_s2_dr2','Income Proof', true, DocumentRequirementType.UPLOAD), createDocReq('ml_v1_s2_dr3','Asset Statements', false, DocumentRequirementType.UPLOAD)], percentageWeight: 15, order: 1 },
+    { id: 'ml_v1_s3', name: 'Property Appraisal Ordered (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, documentRequirements: [createDocReq('ml_v1_s3_dr1','Appraisal Request', true, DocumentRequirementType.CHECKBOX)], percentageWeight: 5, order: 2 },
+    { id: 'ml_v1_s4', name: 'Appraisal Review & Credit Analysis (ML V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 5, documentRequirements: [createDocReq('ml_v1_s4_dr1','Appraisal Report', true, DocumentRequirementType.UPLOAD), createDocReq('ml_v1_s4_dr2','Credit Report', true, DocumentRequirementType.UPLOAD)], percentageWeight: 25, order: 3 },
+    { id: 'ml_v1_s5', name: 'Underwriting Decision (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, documentRequirements: [createDocReq('ml_v1_s5_dr1','Underwriting Worksheet', true, DocumentRequirementType.UPLOAD)], percentageWeight: 30, order: 4 },
+    { id: 'ml_v1_s6', name: 'Conditional Approval Issued (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, documentRequirements: [createDocReq('ml_v1_s6_dr1','Conditional Approval Letter', true, DocumentRequirementType.CHECKBOX)], percentageWeight: 5, order: 5 },
+    { id: 'ml_v1_s7', name: 'Closing Disclosure & Final Docs (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 3, documentRequirements: [createDocReq('ml_v1_s7_dr1','Closing Disclosure', true, DocumentRequirementType.UPLOAD), createDocReq('ml_v1_s7_dr2','Insurance Binder', true, DocumentRequirementType.UPLOAD)], percentageWeight: 10, order: 6 },
+    { id: 'ml_v1_s8', name: 'Loan Closed - Funded (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, documentRequirements: [], percentageWeight: 5, order: 7 },
 ];
 
 
@@ -123,9 +132,9 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
       versionNumber: 1,
       createdAt: new Date(MOCK_REFERENCE_DATE - 45 * 24 * 60 * 60 * 1000).toISOString(),
       stages: [
-        { id: 'al_v1_s1', name: 'Application & Vehicle Info (AL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Application Form', 'Vehicle Purchase Agreement'], percentageWeight: 20, order: 0 },
-        { id: 'al_v1_s2', name: 'Credit & Affordability Check (AL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Income Proof'], percentageWeight: 40, order: 1 },
-        { id: 'al_v1_s3', name: 'Final Review & Funding (AL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Insurance Proof', 'Signed Loan Agreement'], percentageWeight: 40, order: 2 },
+        { id: 'al_v1_s1', name: 'Application & Vehicle Info (AL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, documentRequirements: [createDocReq('al_v1_s1_dr1', 'Application Form', true, DocumentRequirementType.UPLOAD), createDocReq('al_v1_s1_dr2', 'Vehicle Purchase Agreement', true, DocumentRequirementType.UPLOAD)], percentageWeight: 20, order: 0 },
+        { id: 'al_v1_s2', name: 'Credit & Affordability Check (AL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, documentRequirements: [createDocReq('al_v1_s2_dr1', 'Income Proof', true, DocumentRequirementType.UPLOAD)], percentageWeight: 40, order: 1 },
+        { id: 'al_v1_s3', name: 'Final Review & Funding (AL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, documentRequirements: [createDocReq('al_v1_s3_dr1', 'Insurance Proof', true, DocumentRequirementType.UPLOAD), createDocReq('al_v1_s3_dr2', 'Signed Loan Agreement', true, DocumentRequirementType.UPLOAD)], percentageWeight: 40, order: 2 },
       ],
       isActive: true,
     }],
@@ -216,7 +225,7 @@ export let mockLoanRequests: LoanRequest[] = [
     assignedTo: undefined,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/po.pdf' } ],
+    documents: [ { id: 'doc-po', requirementId: 'al_v1_s1_dr2', name: 'Vehicle Purchase Agreement', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/po.pdf' } ],
     history: [
       { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
     ],
@@ -241,7 +250,7 @@ export let mockLoanRequests: LoanRequest[] = [
     assignedTo: 'user-underwriter-bob', // Prisma User ID for Bob
     submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/risk.pdf' } ],
+    documents: [ { id: 'doc-risk', requirementId: 'pl_v2_s4_dr1', name: 'Risk Assessment Report', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/risk.pdf' } ],
     history: [
       { id: 'hist-3prev', stageName: personalLoanActiveWfInfo?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'Credit Scoring complete. Promoted to Underwriting for final review.'},
       { id: 'hist-3', stageName: personalLoanActiveWfInfo?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
@@ -267,7 +276,7 @@ export let mockLoanRequests: LoanRequest[] = [
     assignedTo: 'user-jane-doe', // Prisma User ID for Jane
     submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/id_diana.pdf' } ],
+    documents: [ { id: 'doc-id-card-diana', requirementId: 'pl_v1_s1_dr1', name: 'Identification Card', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/id_diana.pdf' } ],
     history: [
       { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
     ],
@@ -292,7 +301,7 @@ export let mockLoanRequests: LoanRequest[] = [
     assignedTo: undefined,
     submittedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/digi_id_edward.png'}],
+    documents: [ {id: 'doc-digi-id', requirementId: 'pl_v2_s2_dr1', name: 'Digital ID Upload', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/digi_id_edward.png'}],
     history: [
       { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
     ],
@@ -316,5 +325,3 @@ mockUsers.forEach(user => {
     user.password = 'password'; 
   }
 });
-
-    

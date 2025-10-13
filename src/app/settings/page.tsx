@@ -45,7 +45,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
+import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
+import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService } from '@/services/loan-type-service';
@@ -65,6 +66,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
@@ -72,11 +74,19 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   name,
   responsibleDepartment: departmentName,
   defaultTimelineDays: timeline,
-  requiredDocumentNames: [],
+  documentRequirements: [],
   percentageWeight: weight,
   order: order,
   availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed'] }, // Default statuses
 });
+
+const createNewDocumentRequirement = (name: string): DocumentRequirement => ({
+  id: `doc-req-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  name,
+  isMandatory: true,
+  type: DocumentRequirementType.UPLOAD,
+});
+
 
 interface DepartmentObject {
   id: string;
@@ -95,8 +105,8 @@ interface WorkflowStageConfigItemProps {
   onStageChange: (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => void;
   onRemoveStage: (versionId: string, stageId: string) => void;
   onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
-  onRemoveRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
-  onRequiredDocumentNameChange: (versionId: string, stageId: string, docName: string, newName: string) => void;
+  onUpdateRequiredDocument: (versionId: string, stageId: string, docReq: DocumentRequirement) => void;
+  onRemoveRequiredDocument: (versionId: string, stageId: string, docReqId: string) => void;
   onAddStatus: (versionId: string, stageId: string, department: string, statusName: string) => void;
   onRemoveStatus: (versionId: string, stageId: string, department: string, statusName: string) => void;
 }
@@ -104,12 +114,11 @@ interface WorkflowStageConfigItemProps {
 function WorkflowStageConfigItem({
   stage,
   workflowVersionId,
-  departments,
   onStageChange,
   onRemoveStage,
   onAddRequiredDocument,
+  onUpdateRequiredDocument,
   onRemoveRequiredDocument,
-  onRequiredDocumentNameChange,
   onAddStatus,
   onRemoveStatus,
 }: WorkflowStageConfigItemProps) {
@@ -118,7 +127,6 @@ function WorkflowStageConfigItem({
   const [newReqDocName, setNewReqDocName] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
   
-  // Use the stage's responsible department for the status input
   const departmentForStatus = stage.responsibleDepartment;
 
   const handleAddDoc = () => {
@@ -144,7 +152,7 @@ function WorkflowStageConfigItem({
             <span>{stage.order + 1}. {stage.name}</span>
           </div>
           <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <Users className="h-4 w-4"/>{stage.responsibleDepartment || 'N/A'} | <Clock className="h-4 w-4"/>{stage.defaultTimelineDays}d | <Percent className="h-4 w-4" />{stage.percentageWeight || 0}% | <FileText className="h-4 w-4"/>{stage.requiredDocumentNames.length} doc(s)
+            <Users className="h-4 w-4"/>{stage.responsibleDepartment || 'N/A'} | <Clock className="h-4 w-4"/>{stage.defaultTimelineDays}d | <Percent className="h-4 w-4" />{stage.percentageWeight || 0}% | <FileText className="h-4 w-4"/>{stage.documentRequirements.length} doc(s)
           </div>
         </div>
       </AccordionTrigger>
@@ -157,25 +165,32 @@ function WorkflowStageConfigItem({
         </div>
         <Separator />
         <div>
-          <h5 className="text-md font-medium mb-2">Required Documents for this Stage</h5>
-          {stage.requiredDocumentNames.length === 0 && (<p className="text-sm text-muted-foreground">No documents required.</p>)}
-          <ul className="space-y-2">
-            {stage.requiredDocumentNames.map((docName, index) => (
-              <li key={`${stage.id}-doc-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <Input value={docName} onChange={(e) => onRequiredDocumentNameChange(workflowVersionId, stage.id, docName, e.target.value)} className="flex-grow text-sm" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
-                <Button variant="ghost" size="icon" onClick={() => onRemoveRequiredDocument(workflowVersionId, stage.id, docName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </li>
-            ))}
-          </ul>
-          <div className="flex items-end gap-2 mt-4">
-            <div className="flex-grow">
-              <Label htmlFor={`new-req-doc-${stage.id}`}>New Document Name</Label>
-              <Input id={`new-req-doc-${stage.id}`} value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., Passport" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
+            <h5 className="text-md font-medium mb-2">Required Documents for this Stage</h5>
+            {stage.documentRequirements.length === 0 && (<p className="text-sm text-muted-foreground">No documents required.</p>)}
+            <div className="space-y-3">
+              {stage.documentRequirements.map((req) => (
+                <div key={req.id} className="p-3 border rounded-md grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                  <Input value={req.name} onChange={(e) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, name: e.target.value })} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} placeholder="Requirement Name"/>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2"><Checkbox id={`req-mandatory-${req.id}`} checked={req.isMandatory} onCheckedChange={(checked) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, isMandatory: !!checked })} /><Label htmlFor={`req-mandatory-${req.id}`}>Mandatory</Label></div>
+                     <Select value={req.type} onValueChange={(value) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, type: value as DocumentRequirementType })}>
+                        <SelectTrigger><SelectValue/></SelectTrigger>
+                        <SelectContent><SelectItem value={DocumentRequirementType.UPLOAD}>Upload</SelectItem><SelectItem value={DocumentRequirementType.CHECKBOX}>Checkbox</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex justify-end"><Button variant="ghost" size="icon" onClick={() => onRemoveRequiredDocument(workflowVersionId, stage.id, req.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
+                </div>
+              ))}
             </div>
-            <Button onClick={handleAddDoc} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Document</Button>
-          </div>
+            <div className="flex items-end gap-2 mt-4">
+                <div className="flex-grow">
+                <Label htmlFor={`new-req-doc-${stage.id}`}>New Document Name</Label>
+                <Input id={`new-req-doc-${stage.id}`} value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., Passport" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
+                </div>
+                <Button onClick={handleAddDoc} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Document Requirement</Button>
+            </div>
         </div>
+
         <Separator />
         <div>
           <h5 className="text-md font-medium mb-2">Available Statuses for <span className="font-bold text-primary">{departmentForStatus}</span> Department</h5>
@@ -226,14 +241,15 @@ function EditWorkflowVersionDialog({
 
   useEffect(() => {
     if (versionToEdit) {
-      const versionWithStatuses = {
+      const versionWithStatusesAndReqs = {
         ...versionToEdit,
         stages: versionToEdit.stages.map(s => ({
           ...s,
           availableStatuses: s.availableStatuses || {},
+          documentRequirements: s.documentRequirements || [],
         })),
       };
-      setEditedVersion(JSON.parse(JSON.stringify(versionWithStatuses)));
+      setEditedVersion(JSON.parse(JSON.stringify(versionWithStatusesAndReqs)));
     } else {
       setEditedVersion(null);
     }
@@ -294,21 +310,22 @@ function EditWorkflowVersionDialog({
   };
 
   const handleInternalAddReqDoc = (versionId: string, stageId: string, docName: string) => {
+    const newDocReq = createNewDocumentRequirement(docName);
     setEditedVersion(prev => {
         if(!prev) return null;
-        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: [...s.requiredDocumentNames, docName]} : s)};
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: [...s.documentRequirements, newDocReq]} : s)};
     });
   };
-  const handleInternalRemoveReqDoc = (versionId: string, stageId: string, docName: string) => {
+   const handleInternalUpdateReqDoc = (versionId: string, stageId: string, updatedReq: DocumentRequirement) => {
+    setEditedVersion(prev => {
+        if(!prev) return null;
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: s.documentRequirements.map(req => req.id === updatedReq.id ? updatedReq : req)} : s)};
+    });
+  };
+  const handleInternalRemoveReqDoc = (versionId: string, stageId: string, docReqId: string) => {
      setEditedVersion(prev => {
         if(!prev) return null;
-        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: s.requiredDocumentNames.filter(name => name !== docName)} : s)};
-    });
-  };
-  const handleInternalReqDocNameChange = (versionId: string, stageId: string, oldDocName: string, newDocName: string) => {
-    setEditedVersion(prev => {
-        if(!prev) return null;
-        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, requiredDocumentNames: s.requiredDocumentNames.map(name => name === oldDocName ? newDocName : name)} : s)};
+        return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: s.documentRequirements.filter(req => req.id !== docReqId)} : s)};
     });
   };
 
@@ -395,8 +412,8 @@ function EditWorkflowVersionDialog({
                         onStageChange={handleInternalStageChange}
                         onRemoveStage={handleInternalRemoveStage}
                         onAddRequiredDocument={handleInternalAddReqDoc}
+                        onUpdateRequiredDocument={handleInternalUpdateReqDoc}
                         onRemoveRequiredDocument={handleInternalRemoveReqDoc}
-                        onRequiredDocumentNameChange={handleInternalReqDocNameChange}
                         onAddStatus={handleInternalAddStatus}
                         onRemoveStatus={handleInternalRemoveStatus}
                     />

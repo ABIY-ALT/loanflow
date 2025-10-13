@@ -1,4 +1,5 @@
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -14,10 +15,10 @@ import type {
   LoanType as PrismaLoanType,
 } from '@prisma/client';
 
-import { LoanDocumentStatus as PrismaLoanDocumentStatus } from '@prisma/client';
+import { LoanDocumentStatus as PrismaLoanDocumentStatus, DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
 
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow } from '@/types/loan';
-import { LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
+import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement } from '@/types/loan';
+import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
 import type { AppPermission } from '@/lib/permissions';
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
@@ -111,6 +112,7 @@ const mapPrismaLoanToAppLoan = (
     documents: prismaLoan.documents?.map((d) => ({
       id: d.id,
       name: d.name,
+      requirementId: d.requirementId || `fallback-req-id-${d.id}`,
       status: d.status as AppLoanDocumentStatus,
       filePath: d.filePath || undefined,
       notes: d.notes || undefined,
@@ -419,7 +421,12 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           name: s.name,
           responsibleDepartment: s.responsibleDepartment.name as Department,
           defaultTimelineDays: s.defaultTimelineDays,
-          requiredDocumentNames: s.requiredDocumentNames,
+          documentRequirements: (s.documentRequirements as any[])?.map(dr => ({
+             id: dr.id,
+             name: dr.name,
+             isMandatory: dr.isMandatory,
+             type: dr.type as AppDocumentRequirementType,
+          })) || [],
           percentageWeight: s.percentageWeight,
           order: s.order,
           availableStatuses: (s.availableStatuses || {}) as Record<Department, string[]>,
@@ -532,6 +539,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               where: { id: stage.id || `_non_existent_stage_id_${Date.now()}` },
               create: {
                 ...stage,
+                documentRequirements: stage.documentRequirements.map(dr => ({ ...dr, id: dr.id || undefined })) as any,
                 availableStatuses: stage.availableStatuses || {},
                 id: stage.id || undefined,
                 workflowVersion: { connect: { id: versionId } },
@@ -539,6 +547,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               },
               update: {
                 ...stage,
+                documentRequirements: stage.documentRequirements.map(dr => ({ ...dr, id: dr.id || undefined })) as any,
                 availableStatuses: stage.availableStatuses || {},
                 id: undefined,
                 updatedAt: new Date(),
@@ -673,5 +682,3 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
   }
 }
-
-    
