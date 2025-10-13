@@ -225,7 +225,6 @@ export default function ReportsPage() {
                   <TableHead>Assigned Staff</TableHead>
                   <TableHead>Time in Stage</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -271,11 +270,6 @@ export default function ReportsPage() {
                            {statusComponent}
                          </div>
                        </TableCell>
-                      <TableCell className="text-center">
-                        <Link href={`/loan-requests/${loan.id}`} passHref>
-                          <Button variant="ghost" size="sm">View Details<ExternalLink className="ml-2 h-3 w-3" /></Button>
-                        </Link>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
