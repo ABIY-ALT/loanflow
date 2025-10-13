@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building } from 'lucide-react';
+import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,9 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition, User, Department } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
+import { cn } from '@/lib/utils';
 
 export default function ManagerReviewQueuePage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -97,6 +99,16 @@ export default function ManagerReviewQueuePage() {
     const user = users.find(u => u.id === userId); // Use users state from service
     return user ? user.name : "Unknown User";
   };
+  
+  const sortedLoans = useMemo(() => {
+    return [...reviewLoans].sort((a, b) => {
+      if (a.isUrgent && !b.isUrgent) return -1;
+      if (!a.isUrgent && b.isUrgent) return 1;
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
+    });
+  }, [reviewLoans]);
 
   if (isLoading || authIsLoading) { 
      return (
@@ -128,7 +140,7 @@ export default function ManagerReviewQueuePage() {
             Manager Review Queue
           </h1>
           <p className="text-muted-foreground">
-            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department are awaiting your review.
+            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department are awaiting your review. Urgent cases are prioritized.
           </p>
         </div>
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
@@ -150,7 +162,7 @@ export default function ManagerReviewQueuePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {reviewLoans.length === 0 && !isLoading ? (
+          {sortedLoans.length === 0 && !isLoading ? (
              <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-check-circle-2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Awaiting Review</p>
@@ -160,6 +172,7 @@ export default function ManagerReviewQueuePage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Urgent</TableHead>
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Loan Number</TableHead>
                   <TableHead>Current Stage</TableHead>
@@ -170,8 +183,11 @@ export default function ManagerReviewQueuePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reviewLoans.map((loan: LoanRequest) => (
-                  <TableRow key={loan.id} className="hover:bg-muted/50">
+                {sortedLoans.map((loan: LoanRequest) => (
+                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isUrgent && "bg-red-50 dark:bg-red-900/20")}>
+                    <TableCell className="text-center">
+                      {loan.isUrgent && <Flame className="h-5 w-5 text-red-500" />}
+                    </TableCell>
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell><Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge></TableCell>

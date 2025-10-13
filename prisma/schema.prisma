@@ -1,4 +1,3 @@
-
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
@@ -87,20 +86,20 @@ model WorkflowVersion {
 }
 
 model WorkflowStageDefinition {
-  id                        String                @id @default(cuid())
-  name                      String
-  workflowVersion           WorkflowVersion       @relation(fields: [workflowVersionId], references: [id])
-  workflowVersionId         String
-  responsibleDepartment     Department            @relation("responsibleDepartment", fields: [responsibleDepartmentId], references: [id])
-  responsibleDepartmentId   String
-  defaultTimelineDays       Int
-  documentRequirements      DocumentRequirement[] // Changed from requiredDocumentNames
-  percentageWeight          Int
-  order                     Int
-  availableStatuses         Json?
-  loanRequestsAtStageMirror LoanRequest[]         @relation("loanRequestsAtStage")
-  createdAt                 DateTime?             @default(now())
-  updatedAt                 DateTime?             @updatedAt
+  id                      String                 @id @default(cuid())
+  name                    String
+  workflowVersion         WorkflowVersion        @relation(fields: [workflowVersionId], references: [id])
+  workflowVersionId       String
+  responsibleDepartment   Department             @relation("responsibleDepartment", fields: [responsibleDepartmentId], references: [id])
+  responsibleDepartmentId String
+  defaultTimelineDays     Int
+  documentRequirements    DocumentRequirement[]
+  percentageWeight        Int
+  order                   Int
+  availableStatuses       Json?
+  loanRequestsAtStageMirror LoanRequest[]        @relation("loanRequestsAtStage")
+  createdAt               DateTime?              @default(now())
+  updatedAt               DateTime?              @updatedAt
 
   @@unique([workflowVersionId, order])
 }
@@ -111,13 +110,13 @@ enum DocumentRequirementType {
 }
 
 model DocumentRequirement {
-  id                String                  @id @default(cuid())
-  name              String
-  isMandatory       Boolean                 @default(true)
-  type              DocumentRequirementType @default(UPLOAD)
-  workflowStage     WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
-  workflowStageId   String
-  submittedDocuments LoanDocument[]
+  id              String                  @id @default(cuid())
+  name            String
+  isMandatory     Boolean                 @default(true)
+  type            DocumentRequirementType @default(UPLOAD)
+  workflowStage   WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id])
+  workflowStageId String
+  documents       LoanDocument[]
 }
 
 model LoanRequest {
@@ -136,6 +135,7 @@ model LoanRequest {
   stageEntryDate          DateTime?
   stageDeadline           DateTime?
   isReadyForManagerReview Boolean   @default(false)
+  isUrgent                Boolean   @default(false)
   isOverdue               Boolean?  @default(false)
   isTerminalStage         Boolean?  @default(false)
   currentStageStatus      String?
@@ -159,18 +159,18 @@ model LoanRequest {
 }
 
 model LoanDocument {
-  id            String              @id @default(cuid())
-  loan          LoanRequest         @relation(fields: [loanId], references: [id])
-  loanId        String
-  requirement   DocumentRequirement @relation(fields: [requirementId], references: [id])
-  requirementId String
-  name          String // Name of the requirement at the time of upload, for historical context
-  status        LoanDocumentStatus
-  filePath      String?
-  notes         String?
-  uploadedAt    DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id              String               @id @default(cuid())
+  loan            LoanRequest          @relation(fields: [loanId], references: [id])
+  loanId          String
+  name            String
+  status          LoanDocumentStatus
+  filePath        String?
+  notes           String?
+  uploadedAt      DateTime?
+  requirement     DocumentRequirement? @relation(fields: [requirementId], references: [id])
+  requirementId   String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 }
 
 enum LoanDocumentStatus {

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle, MessageSquareWarning } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning, Flame } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -31,6 +32,8 @@ import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDo
 import { PromoteToNewWorkflowDialog } from '@/components/loan/dialogs/PromoteToNewWorkflowDialog';
 import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 
 export default function LoanDetailPage() {
@@ -543,7 +546,6 @@ export default function LoanDetailPage() {
         updatedDocuments.push(newDoc);
       }
     } else {
-      // If unchecking, remove the document that corresponds to this requirement
       if (existingDocIndex > -1) {
         updatedDocuments.splice(existingDocIndex, 1);
       }
@@ -611,6 +613,15 @@ export default function LoanDetailPage() {
     if (success) {
       setIsPromoteToNewWorkflowDialogOpen(false);
     }
+  };
+
+  const handleUrgencyChange = async (isUrgent: boolean) => {
+    if (!loan || !userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE)) return;
+
+    const success = await handleLocalAndUpdateService(
+      { isUrgent },
+      `Loan marked as ${isUrgent ? 'urgent' : 'not urgent'}.`
+    );
   };
 
 
@@ -730,6 +741,11 @@ export default function LoanDetailPage() {
                   loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge>
                 )}
                  <Badge variant="outline" className="text-sm">Dept: {loanCurrentDept || 'N/A'}</Badge>
+                {loan.isUrgent && (
+                    <Badge variant="destructive" className="bg-red-500 text-white">
+                        <Flame className="mr-1 h-3 w-3"/> Urgent
+                    </Badge>
+                )}
                 {loan.isReadyForManagerReview && isActionable && (
                     <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
                         Awaiting Manager Review
@@ -740,6 +756,19 @@ export default function LoanDetailPage() {
                 )}
             </div>
           </div>
+           {userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE) && isActionable && (
+              <div className="flex items-center space-x-2 pt-4">
+                <Switch
+                  id="urgent-switch"
+                  checked={loan.isUrgent}
+                  onCheckedChange={handleUrgencyChange}
+                  disabled={isSaving}
+                />
+                <Label htmlFor="urgent-switch" className="text-red-600 font-semibold">
+                  Mark as Urgent
+                </Label>
+              </div>
+            )}
         </CardHeader>
         <CardContent className="p-6">
           {error && error.toLowerCase().includes("workflows") && !isLoading && (

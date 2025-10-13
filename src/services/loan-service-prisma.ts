@@ -97,6 +97,7 @@ const mapPrismaLoanToAppLoan = (
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
     stageDeadline: prismaLoan.stageDeadline ? formatISO(new Date(prismaLoan.stageDeadline)) : undefined,
     isReadyForManagerReview: prismaLoan.isReadyForManagerReview,
+    isUrgent: prismaLoan.isUrgent,
     isOverdue: isOverdueCalc,
     isTerminalStage: !!isTerminal,
     history: prismaLoan.history?.map((h) => ({
@@ -128,7 +129,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent'>
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -209,7 +210,7 @@ export async function addLoanRequest(
 export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; users?: User[] }> {
   try {
     const prismaLoans = await prisma.loanRequest.findMany({
-      orderBy: { lastUpdatedDate: 'desc' },
+      orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
         assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
@@ -281,8 +282,8 @@ export async function updateLoanRequest(
 
       const updatePayload: any = { lastUpdatedDate: new Date() };
 
-      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' | 'isTerminalStage' >)[] =
-        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus', 'isTerminalStage'];
+      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' | 'isTerminalStage' | 'isUrgent' >)[] =
+        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus', 'isTerminalStage', 'isUrgent'];
       
       simpleFields.forEach(field => {
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
@@ -729,5 +730,3 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
   }
 }
-
-    

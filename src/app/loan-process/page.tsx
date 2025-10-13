@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus, Eye } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus, Eye, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
+import { cn } from '@/lib/utils';
 
 interface LoanCardProps {
   loan: LoanRequest;
@@ -87,7 +88,7 @@ function LoanCard({ loan, stageName, assignedUserName, onCardActionClick, curren
 
 
   return (
-    <Card className="mb-3 shadow-md hover:shadow-lg transition-shadow">
+    <Card className={cn("mb-3 shadow-md hover:shadow-lg transition-shadow", loan.isUrgent && "border-red-500 border-2")}>
       <CardHeader className="p-4">
         <div className="flex justify-between items-start">
           <CardTitle className="text-base font-semibold truncate">
@@ -99,9 +100,14 @@ function LoanCard({ loan, stageName, assignedUserName, onCardActionClick, curren
                 <span>{loan.customerName}</span>
             )}
           </CardTitle>
-          {loan.isOverdue && (
-            <TooltipProvider delayDuration={100}><Tooltip><TooltipTrigger><AlertTriangle className="h-5 w-5 text-destructive" /></TooltipTrigger><TooltipContent><p>Overdue!</p></TooltipContent></Tooltip></TooltipProvider>
-          )}
+          <div className="flex items-center gap-2">
+            {loan.isUrgent && (
+              <TooltipProvider delayDuration={100}><Tooltip><TooltipTrigger><Flame className="h-5 w-5 text-red-500" /></TooltipTrigger><TooltipContent><p>Urgent</p></TooltipContent></Tooltip></TooltipProvider>
+            )}
+            {loan.isOverdue && (
+              <TooltipProvider delayDuration={100}><Tooltip><TooltipTrigger><AlertTriangle className="h-5 w-5 text-destructive" /></TooltipTrigger><TooltipContent><p>Overdue!</p></TooltipContent></Tooltip></TooltipProvider>
+            )}
+          </div>
         </div>
         <CardDescription className="text-xs truncate">{loan.loanNumber} / Dept: {loan.assignedDepartment || "N/A"}</CardDescription>
       </CardHeader>
@@ -140,6 +146,14 @@ function KanbanColumn({ stageDef, loans, users, onCardActionClick, currentUser, 
     return users.find(u => u.id === userId)?.fullName;
   };
 
+  const sortedLoans = useMemo(() => {
+    return [...loans].sort((a, b) => {
+      if (a.isUrgent && !b.isUrgent) return -1;
+      if (!a.isUrgent && b.isUrgent) return 1;
+      return 0;
+    });
+  }, [loans]);
+
   return (
     <div className="flex-shrink-0 w-80 bg-muted/50 rounded-lg p-1 md:p-2 min-h-[300px]">
       <div className="flex justify-between items-center p-2 mb-2 gap-2">
@@ -153,12 +167,12 @@ function KanbanColumn({ stageDef, loans, users, onCardActionClick, currentUser, 
         </Badge>
       </div>
       <ScrollArea className="h-[calc(100vh-24rem)] pr-2">
-        {loans.length === 0 && (
+        {sortedLoans.length === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-sm text-muted-foreground p-4 text-center">
             <p>No loan requests in this stage.</p>
           </div>
         )}
-        {loans.map((loan) => (
+        {sortedLoans.map((loan) => (
           <LoanCard
             key={loan.id}
             loan={loan}
@@ -300,7 +314,7 @@ export default function LoanProcessPage() {
         toast({ title: "Action Pending", description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
         return false;
     }
-    const pendingDocs = stageDef.requiredDocumentNames.filter(name => !loan.documents.find(d => d.name === name && d.status === 'Verified'));
+    const pendingDocs = stageDef.documentRequirements.filter(name => !loan.documents.find(d => d.name === name.name && d.status === 'Verified'));
     if (pendingDocs.length > 0) {
         toast({ title: "Documents Pending", description: `Docs for stage '${stageDef.name}' must be verified: ${pendingDocs.join(', ')}.`, variant: "destructive", duration: 7000 });
         return false;

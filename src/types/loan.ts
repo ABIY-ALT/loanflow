@@ -92,7 +92,7 @@ export enum LoanDocumentStatus {
 export interface LoanDocument {
   id: string;
   name: string; // Name of the requirement
-  requirementId: string; // Foreign key to the DocumentRequirement
+  requirementId: string | null; // Foreign key to the DocumentRequirement
   status: LoanDocumentStatus;
   filePath?: string;
   notes?: string;
@@ -141,6 +141,7 @@ export interface LoanRequest {
   history: LoanHistoryEntry[];
 
   stageDeadline?: string; // ISO date string
+  isUrgent: boolean;
   isOverdue?: boolean;
   isReadyForManagerReview?: boolean;
 

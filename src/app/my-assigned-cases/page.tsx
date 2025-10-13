@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,9 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import type { LoanRequest, User, WorkflowDefinition } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context'; // Import useAuth
+import { cn } from '@/lib/utils';
 
 export default function MyAssignedCasesPage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -95,6 +97,16 @@ export default function MyAssignedCasesPage() {
     fetchPageData();
   }, [currentUser, authIsLoading]);
 
+  const sortedLoans = useMemo(() => {
+    return [...assignedLoans].sort((a, b) => {
+      if (a.isUrgent && !b.isUrgent) return -1;
+      if (!a.isUrgent && b.isUrgent) return 1;
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
+    });
+  }, [assignedLoans]);
+
 
   if (authIsLoading || (isLoading && !currentUser)) {
     return (
@@ -156,7 +168,7 @@ export default function MyAssignedCasesPage() {
           <AlertCircle className="h-4 w-4 !text-blue-600 dark:!text-blue-400" />
           <AlertTitleShadCN>Viewing as: {currentUser?.fullName || currentUser?.name || 'Current User'}</AlertTitleShadCN>
           <AlertDescriptionShadCN>
-            This page displays cases assigned to you.
+            This page displays cases assigned to you. Urgent cases are prioritized at the top.
           </AlertDescriptionShadCN>
       </Alert>
 
@@ -176,7 +188,7 @@ export default function MyAssignedCasesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {assignedLoans.length === 0 && !isLoading && !authIsLoading ? (
+          {sortedLoans.length === 0 && !isLoading && !authIsLoading ? (
             <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-folder-check"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Currently Assigned to You</p>
@@ -186,6 +198,7 @@ export default function MyAssignedCasesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Urgent</TableHead>
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Loan Number</TableHead>
                   <TableHead>Current Stage</TableHead>
@@ -195,8 +208,11 @@ export default function MyAssignedCasesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignedLoans.map((loan: LoanRequest) => (
-                  <TableRow key={loan.id} className="hover:bg-muted/50">
+                {sortedLoans.map((loan: LoanRequest) => (
+                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isUrgent && "bg-red-50 dark:bg-red-900/20")}>
+                     <TableCell className="text-center">
+                      {loan.isUrgent && <Flame className="h-5 w-5 text-red-500" />}
+                    </TableCell>
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell>
@@ -227,5 +243,3 @@ export default function MyAssignedCasesPage() {
     </div>
   );
 }
-
-    

@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   UPLOAD_LOAN_DOCUMENTS: "UPLOAD_LOAN_DOCUMENTS",
   VERIFY_LOAN_DOCUMENTS: "VERIFY_LOAN_DOCUMENTS",
   MARK_STAGE_COMPLETE: "MARK_STAGE_COMPLETE", // Staff action to submit for review
+  FLAG_URGENT_CASE: "FLAG_URGENT_CASE", // Can mark/unmark a loan as urgent
 
   // Managerial Actions
   VIEW_MANAGER_REVIEW_QUEUE: "VIEW_MANAGER_REVIEW_QUEUE",
@@ -64,6 +65,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   UPLOAD_LOAN_DOCUMENTS: "Can upload documents related to a loan.",
   VERIFY_LOAN_DOCUMENTS: "Can mark uploaded loan documents as 'Verified'.",
   MARK_STAGE_COMPLETE: "Can mark a loan stage as complete (typically by assigned staff, submitting for manager review).",
+  FLAG_URGENT_CASE: "Can mark or unmark a loan case as 'Urgent'.",
   VIEW_MANAGER_REVIEW_QUEUE: "Can view the queue of loans awaiting manager review.",
   VIEW_UNASSIGNED_CASES_QUEUE: "Can view the queue of unassigned cases within departments (department queue).",
   PROMOTE_LOAN_STAGE: "Can approve a loan stage and promote it to the next sequential stage in the workflow.",
@@ -102,6 +104,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "UPLOAD_LOAN_DOCUMENTS",
       "VERIFY_LOAN_DOCUMENTS",
       "MARK_STAGE_COMPLETE",
+      "FLAG_URGENT_CASE",
     ],
   },
   {
