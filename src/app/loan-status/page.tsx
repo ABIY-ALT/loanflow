@@ -17,70 +17,80 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useState } from 'react';
-import { Loader2, Search, BotMessageSquare, ListChecks, AlertCircle } from 'lucide-react';
-import { loanStatusLookup, LoanStatusLookupInput, LoanStatusLookupOutput } from '@/ai/flows/loan-status-lookup'; // Corrected import
+import { Loader2, Search, ListChecks, AlertCircle, ExternalLink } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
+import { format, parseISO } from 'date-fns';
+import { searchLoanRequests } from '@/services/loan-service-prisma';
+import type { LoanRequest } from '@/types/loan';
+import { PERMISSIONS } from '@/lib/permissions';
+import { useAuth } from '@/contexts/auth-context';
 
 export const loanStatusSchema = z.object({
-  identifier: z.string().min(1, { message: "Please enter a Loan or Customer Number." }),
-  type: z.enum(['loanNumber', 'customerNumber']),
+  searchTerm: z.string().min(1, { message: "Please enter a search term." }),
+  searchType: z.enum(['loanNumber', 'customerName', 'customerNumber']),
 });
 
 type LoanStatusFormValues = z.infer<typeof loanStatusSchema>;
 
 export default function LoanStatusPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [lookupResult, setLookupResult] = useState<LoanStatusLookupOutput | null>(null);
+  const [lookupResult, setLookupResult] = useState<LoanRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const canViewLookup = user?.permissions.includes(PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP);
+  const canViewDetails = user?.permissions.includes(PERMISSIONS.VIEW_LOAN_DETAILS);
 
   const form = useForm<LoanStatusFormValues>({
     resolver: zodResolver(loanStatusSchema),
     defaultValues: {
-      identifier: '',
-      type: 'loanNumber', // Default to loan number
+      searchTerm: '',
+      searchType: 'loanNumber',
     },
   });
-
 
   async function onSubmit(data: LoanStatusFormValues) {
     setIsLoading(true);
     setLookupResult(null);
     setError(null);
 
-    const input: LoanStatusLookupInput = data.type === 'loanNumber'
-      ? { loanNumber: data.identifier }
-      : { customerNumber: data.identifier };
-
-
     try {
-      const result = await loanStatusLookup(input); // This is a Server Action call
+      const result = await searchLoanRequests(data.searchTerm, data.searchType);
 
-      // Assuming loanStatusLookup returns LoanStatusLookupOutput or throws an error
-      // Server actions typically don't return { error: string } like our custom service might
-      // They either succeed and return data, or the promise rejects with an error.
-      
-      setLookupResult(result);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      setLookupResult(result.loans || []);
       toast({
-        title: "Loan Status Retrieved",
-        description: `Status for ${data.identifier} found.`,
+        title: "Search Complete",
+        description: `Found ${result.loans?.length || 0} matching loan(s).`,
       });
     } catch (err: any) {
       console.error("Loan status lookup error:", err);
-      let errorMessage = "An unexpected error occurred during lookup.";
-      if (err && typeof err.message === 'string') {
-        errorMessage = err.message;
-       }
-      setError(errorMessage); // Set local error state for Alert display
+      const errorMessage = err.message || "An unexpected error occurred during search.";
+      setError(errorMessage);
       toast({
-        title: "Lookup Failed",
+        title: "Search Failed",
         description: `Error: ${errorMessage}`,
         variant: "destructive",
-        duration: 9000,
       });
     } finally {
       setIsLoading(false);
     }
+  }
+
+  if (!canViewLookup) {
+     return (
+       <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to use the loan status lookup.</p>
+        </div>
+    );
   }
 
 
@@ -89,127 +99,148 @@ export default function LoanStatusPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Loan Status Lookup</h1>
         <p className="text-muted-foreground">
-          Use AI to quickly find the status of a loan using its Loan Number or Customer Number.
+          Search for loans using Loan Number, Customer Name, or Customer Code.
         </p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Enter Loan Identifier</CardTitle>
-          <CardDescription>Provide either the Loan Number or Customer Number.</CardDescription>
+          <CardTitle>Enter Search Criteria</CardTitle>
+          <CardDescription>Provide a search term and select the identifier type.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
-
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <FormField
-                control={form.control}
-                name="identifier"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Loan or Customer Number</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="e.g., LN00001 or CUST001" {...field} className="pl-10" />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Identifier Type</FormLabel>
-                    <FormControl>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant={field.value === 'loanNumber' ? 'default' : 'outline'}
-                          onClick={() => field.onChange('loanNumber')}
-                          className="flex-1"
-                        >
-                          Loan Number
-                        </Button>
-                        <Button
-                          type="button"
-                           variant={field.value === 'customerNumber' ? 'default' : 'outline'}
-                          onClick={() => field.onChange('customerNumber')}
-                          className="flex-1"
-                        >
-                          Customer Number
-                        </Button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid sm:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="searchTerm"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Search Term</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input placeholder="e.g., LN00001, John Doe, CUST001" {...field} className="pl-10" />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="searchType"
+                  render={({ field }) => (
+                    <FormItem className="space-y-3">
+                      <FormLabel>Identifier Type</FormLabel>
+                      <FormControl>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Button
+                            type="button"
+                            variant={field.value === 'loanNumber' ? 'default' : 'outline'}
+                            onClick={() => field.onChange('loanNumber')}
+                            className="flex-1"
+                          >
+                            Loan Number
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={field.value === 'customerName' ? 'default' : 'outline'}
+                            onClick={() => field.onChange('customerName')}
+                            className="flex-1"
+                          >
+                            Customer Name
+                          </Button>
+                           <Button
+                            type="button"
+                            variant={field.value === 'customerNumber' ? 'default' : 'outline'}
+                            onClick={() => field.onChange('customerNumber')}
+                            className="flex-1"
+                          >
+                            Customer Code
+                          </Button>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
-                {isLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <BotMessageSquare className="mr-2 h-4 w-4" />
-                )}
-                Lookup Status with AI
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                Search Loans
               </Button>
             </form>
           </Form>
         </CardContent>
       </Card>
 
-
       {isLoading && (
-        <Alert>
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <AlertTitle className="ml-2">AI is Thinking...</AlertTitle>
-          <AlertDescription className="ml-2">
-            Please wait while we retrieve the loan status. This may take a moment.
-          </AlertDescription>
-        </Alert>
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-3 text-lg">Searching...</p>
+        </div>
       )}
 
-      {error && !isLoading && ( // Show local error Alert if not loading
+      {error && !isLoading && (
         <Alert variant="destructive">
           <AlertCircle className="h-5 w-5" />
-          <AlertTitle>Lookup Error</AlertTitle>
+          <AlertTitle>Search Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-
       {lookupResult && !isLoading && (
         <Card className="shadow-lg">
-          <CardHeader className="bg-muted/30">
+          <CardHeader>
             <CardTitle className="flex items-center text-xl">
               <ListChecks className="mr-2 h-6 w-6 text-primary" />
-              Loan Status Result
+              Search Results ({lookupResult.length})
             </CardTitle>
             <CardDescription>
-              AI-powered status for identifier: {form.getValues('identifier')}
+              Displaying loans matching: "{form.getValues('searchTerm')}"
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold uppercase text-muted-foreground">Status</h3>
-              <p className="text-lg font-medium text-primary">{lookupResult.status}</p>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold uppercase text-muted-foreground">Details</h3>
-              <p className="text-base whitespace-pre-wrap">{lookupResult.details}</p>
-            </div>
+          <CardContent>
+            {lookupResult.length === 0 ? (
+              <div className="text-center text-muted-foreground py-10">
+                  <p>No loans found matching your criteria.</p>
+              </div>
+            ) : (
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                    <TableHead>Loan Number</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Current Stage</TableHead>
+                    <TableHead>Submitted On</TableHead>
+                    {canViewDetails && <TableHead className="text-right">Actions</TableHead>}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {lookupResult.map((loan) => (
+                    <TableRow key={loan.id}>
+                        <TableCell className="font-medium">{loan.loanNumber}</TableCell>
+                        <TableCell>{loan.customerName}</TableCell>
+                        <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
+                        <TableCell><Badge variant="secondary">{loan.currentStageName}</Badge></TableCell>
+                        <TableCell>{format(parseISO(loan.submittedDate), 'PP')}</TableCell>
+                        {canViewDetails && (
+                        <TableCell className="text-right">
+                            <Link href={`/loan-requests/${loan.id}`} passHref>
+                                <Button variant="ghost" size="sm">View Loan <ExternalLink className="ml-2 h-3 w-3" /></Button>
+                            </Link>
+                        </TableCell>
+                        )}
+                    </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+            )}
           </CardContent>
-           <CardFooter>
-            <p className="text-xs text-muted-foreground">
-              This information is generated by AI and was last updated based on available data.
-            </p>
-          </CardFooter>
         </Card>
       )}
     </div>
   );
 }
-
-    

@@ -849,3 +849,60 @@ export async function getCustomerById(id: string): Promise<{ customer?: Customer
     return createErrorResult(`Failed to fetch customer by ID: ${id}.`, 'getCustomerById', e);
   }
 }
+
+export async function searchLoanRequests(
+  searchTerm: string,
+  searchType: 'loanNumber' | 'customerName' | 'customerNumber'
+): Promise<{ loans?: LoanRequest[]; error?: string }> {
+  try {
+    let whereClause: any = {};
+
+    switch (searchType) {
+      case 'loanNumber':
+        whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } };
+        break;
+      case 'customerName':
+        whereClause = { customer: { name: { contains: searchTerm, mode: 'insensitive' } } };
+        break;
+      case 'customerNumber':
+        // Assuming customerNumber is a field on LoanRequest. If it's on Customer, adjust accordingly.
+        // For this schema, `customerNumber` is a field on `LoanRequest`.
+        whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } };
+        break;
+    }
+
+    const prismaLoans = await prisma.loanRequest.findMany({
+      where: whereClause,
+      orderBy: { lastUpdatedDate: 'desc' },
+      include: {
+        customer: true,
+        currentWorkflowStage: { select: { name: true } },
+        // Include other relations if needed for the result display
+      },
+      take: 50, // Limit results to prevent overwhelming the UI
+    });
+
+    // Map to a simplified AppLoan for the search result view
+    const appLoans = prismaLoans.map(pl => ({
+        id: pl.id,
+        loanNumber: pl.loanNumber,
+        customerName: pl.customer.name,
+        loanAmount: pl.loanAmount.toNumber(),
+        submittedDate: formatISO(pl.submittedDate),
+        currentStageName: pl.currentWorkflowStage?.name || 'Unknown Stage',
+        // Omitting other complex fields for search results
+        customerId: pl.customerId,
+        customerEmail: pl.customer.email,
+        loanType: pl.loanType,
+        loanPurpose: pl.loanPurpose,
+        lastUpdatedDate: formatISO(pl.lastUpdatedDate),
+        isUrgent: pl.isUrgent,
+        documents: [],
+        history: [],
+    }));
+
+    return { loans: appLoans as LoanRequest[] };
+  } catch (e: any) {
+    return createErrorResult(`Search failed for type "${searchType}".`, "searchLoanRequests", e);
+  }
+}
