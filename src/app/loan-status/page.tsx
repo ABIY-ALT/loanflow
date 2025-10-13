@@ -183,11 +183,17 @@ export default function LoanStatusPage() {
       )}
 
       {error && !isLoading && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-5 w-5" />
-          <AlertTitle>Search Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <Card className="border-destructive">
+             <CardHeader>
+                <CardTitle className="text-destructive flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    Search Error
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p>{error}</p>
+            </CardContent>
+        </Card>
       )}
 
       {lookupResult && !isLoading && (
