@@ -717,7 +717,7 @@ export default function LoanDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
             <div>
               <CardTitle className="text-2xl font-bold text-primary">{loan.customerName}</CardTitle>
-              <CardDescription>Loan: {loan.loanNumber} | Customer: {loan.customerNumber}</CardDescription>
+              <CardDescription>Loan: {loan.loanNumber}</CardDescription>
             </div>
             <div className="flex flex-col items-end gap-1">
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}>

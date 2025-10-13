@@ -14,11 +14,12 @@ import type {
   Role as PrismaRole,
   LoanType as PrismaLoanType,
   DocumentRequirement as PrismaDocumentRequirement,
+  Customer as PrismaCustomer,
 } from '@prisma/client';
 
 import { LoanDocumentStatus as PrismaLoanDocumentStatus, DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
 
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement } from '@/types/loan';
+import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement, Customer } from '@/types/loan';
 import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
 import type { AppPermission } from '@/lib/permissions';
 
@@ -57,6 +58,7 @@ const mapPrismaUserToAppUser = (
 
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
+        customer: PrismaCustomer;
         assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null;
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType, department: PrismaDepartment } }) | null;
@@ -75,11 +77,11 @@ const mapPrismaLoanToAppLoan = (
   return {
     id: prismaLoan.id,
     loanNumber: prismaLoan.loanNumber,
-    customerNumber: prismaLoan.customerNumber,
-    customerName: prismaLoan.customerName,
-    customerEmail: prismaLoan.customerEmail,
-    customerPhone: prismaLoan.customerPhone,
-    customerBranch: prismaLoan.customerBranch || undefined,
+    customerId: prismaLoan.customerId,
+    customerName: prismaLoan.customer.name,
+    customerEmail: prismaLoan.customer.email,
+    customerPhone: prismaLoan.customer.phone || undefined,
+    customerBranch: prismaLoan.customer.branch || undefined,
     loanAmount: prismaLoan.loanAmount.toNumber(),
     loanType: prismaLoan.loanType,
     loanPurpose: prismaLoan.loanPurpose,
@@ -129,7 +131,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -169,17 +171,29 @@ export async function addLoanRequest(
     const availableStatusesForDept = firstStage.availableStatuses && typeof firstStage.availableStatuses === 'object' && !Array.isArray(firstStage.availableStatuses) ? (firstStage.availableStatuses as Record<string, string[]>)[firstStage.responsibleDepartment.name] : [];
     const initialStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
+    // Find or create customer
+    const customer = await prisma.customer.upsert({
+      where: { email: loanData.customerEmail },
+      update: {
+        name: loanData.customerName,
+        phone: loanData.customerPhone || null,
+        branch: loanData.customerBranch || null,
+      },
+      create: {
+        email: loanData.customerEmail,
+        name: loanData.customerName,
+        phone: loanData.customerPhone || null,
+        branch: loanData.customerBranch || null,
+      },
+    });
+
     const newLoan = await prisma.loanRequest.create({
       data: {
         loanNumber: `LN-PSQL-${String(Date.now()).slice(-6)}`,
-        customerNumber: `CUST-PSQL-${String(Date.now()).slice(-5)}`,
-        customerName: loanData.customerName,
-        customerEmail: loanData.customerEmail,
-        customerPhone: loanData.customerPhone,
+        customer: { connect: { id: customer.id } },
         loanAmount: loanData.loanAmount,
         loanType: loanTypeName,
         loanPurpose: loanData.loanPurpose,
-        customerBranch: loanData.customerBranch,
         submittedDate: currentDate,
         lastUpdatedDate: currentDate,
         stageEntryDate: currentDate,
@@ -212,6 +226,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     const prismaLoans = await prisma.loanRequest.findMany({
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
+        customer: true,
         assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
@@ -237,6 +252,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { id },
       include: {
+        customer: true,
         assignedToUser: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
@@ -274,21 +290,36 @@ export async function updateLoanRequest(
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
-      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true } });
+      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true } });
 
       if (!existingLoan) {
         throw new Error(`Loan with ID "${id}" not found for update.`);
       }
 
       const updatePayload: any = { lastUpdatedDate: new Date() };
+      const customerUpdatePayload: any = {};
 
-      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' | 'isTerminalStage' | 'isUrgent' >)[] =
-        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus', 'isTerminalStage', 'isUrgent'];
+      const loanSimpleFields: (keyof Pick<LoanRequest, 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'currentStageStatus' | 'isTerminalStage' | 'isUrgent' >)[] =
+        ['loanType', 'loanPurpose', 'isReadyForManagerReview', 'currentStageStatus', 'isTerminalStage', 'isUrgent'];
       
-      simpleFields.forEach(field => {
+      loanSimpleFields.forEach(field => {
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
       });
+
       if (dataToUpdate.loanAmount !== undefined) updatePayload.loanAmount = dataToUpdate.loanAmount;
+      
+      // Handle customer data update
+      if (dataToUpdate.customerName !== undefined && dataToUpdate.customerName !== existingLoan.customer.name) customerUpdatePayload.name = dataToUpdate.customerName;
+      if (dataToUpdate.customerEmail !== undefined && dataToUpdate.customerEmail !== existingLoan.customer.email) customerUpdatePayload.email = dataToUpdate.customerEmail;
+      if (dataToUpdate.customerPhone !== undefined && dataToUpdate.customerPhone !== existingLoan.customer.phone) customerUpdatePayload.phone = dataToUpdate.customerPhone;
+      
+      if(Object.keys(customerUpdatePayload).length > 0) {
+        await tx.customer.update({
+          where: { id: existingLoan.customerId },
+          data: customerUpdatePayload
+        });
+      }
+
 
       if (dataToUpdate.hasOwnProperty('assignedTo')) {
         updatePayload.assignedToUser = dataToUpdate.assignedTo ? { connect: { id: dataToUpdate.assignedTo } } : { disconnect: true };
@@ -303,7 +334,7 @@ export async function updateLoanRequest(
         if (!wfVerId) throw new Error("Workflow version context missing for stage transition.");
 
         const newStageDef = await tx.workflowStageDefinition.findUnique({
-          where: { id: dataToUpdate.currentStageId, workflowVersionId: wfVerId },
+          where: { id: dataToUpdate.currentStageId },
           include: { responsibleDepartment: true }
         });
         if (!newStageDef) throw new Error(`New stage definition not found for ID "${dataToUpdate.currentStageId}".`);
@@ -388,6 +419,7 @@ export async function updateLoanRequest(
         where: { id },
         data: updatePayload,
         include: {
+          customer: true,
           assignedToUser: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
@@ -733,5 +765,44 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     return { activeWorkflows: mappedWorkflows };
   } catch (e: any) {
     return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
+  }
+}
+
+export async function getCustomers(): Promise<{ customers?: Customer[]; error?: string }> {
+  try {
+    const prismaCustomers = await prisma.customer.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        loanRequests: {
+          select: {
+            id: true,
+            loanNumber: true,
+            loanAmount: true,
+            submittedDate: true,
+            currentWorkflowStage: { select: { name: true } }
+          },
+          orderBy: { submittedDate: 'desc' }
+        }
+      }
+    });
+
+    const appCustomers: Customer[] = prismaCustomers.map(pc => ({
+      id: pc.id,
+      name: pc.name,
+      email: pc.email,
+      phone: pc.phone || undefined,
+      branch: pc.branch || undefined,
+      loanRequests: pc.loanRequests.map(lr => ({
+        id: lr.id,
+        loanNumber: lr.loanNumber,
+        loanAmount: lr.loanAmount.toNumber(),
+        submittedDate: formatISO(lr.submittedDate),
+        currentStageName: lr.currentWorkflowStage?.name || 'Unknown'
+      })),
+    }));
+
+    return { customers: appCustomers };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch customers.", "getCustomers", e);
   }
 }

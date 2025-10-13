@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,7 +28,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User as UserIconLucide, Info, Phone, DollarSign, Type, Landmark } from 'lucide-react'; // Renamed User import
+import { Loader2, User as UserIconLucide, Info, Phone, DollarSign, Type, Landmark, Mail } from 'lucide-react'; // Renamed User import
 import type { LoanRequest, User as UserType, Department } from '@/types/loan';
 import { useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
@@ -81,7 +82,7 @@ export function EditLoanDetailsDialog({
       form.reset({
         customerName: loan.customerName,
         customerEmail: loan.customerEmail,
-        customerPhone: loan.customerPhone,
+        customerPhone: loan.customerPhone || '',
         loanAmount: loan.loanAmount,
         loanType: loan.loanType,
         loanPurpose: loan.loanPurpose,
@@ -106,7 +107,7 @@ export function EditLoanDetailsDialog({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
             <div className="grid md:grid-cols-2 gap-6">
               <FormField control={form.control} name="customerName" render={({ field }) => ( <FormItem> <FormLabel>Customer Name</FormLabel> <FormControl><div className="relative"><UserIconLucide className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
-              <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <FormControl><div className="relative"><Info className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
+              <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <FormControl><div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <FormControl><div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <FormControl><div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanType" render={({ field }) => ( <FormItem> <FormLabel>Loan Type</FormLabel> <FormControl><div className="relative"><Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />

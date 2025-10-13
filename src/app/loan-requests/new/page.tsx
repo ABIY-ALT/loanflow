@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Briefcase } from 'lucide-react';
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Building } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
 import type { LoanRequest, ActiveWorkflow } from '@/types/loan';
@@ -31,6 +31,7 @@ const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
   customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
   customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
+  customerBranch: z.string().optional(),
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   workflowVersionId: z.string().min(1, { message: 'A workflow must be selected.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
@@ -77,6 +78,7 @@ export default function NewLoanRequestPage() {
       customerName: '',
       customerEmail: '',
       customerPhone: '',
+      customerBranch: '',
       loanAmount: 0,
       workflowVersionId: '',
       loanPurpose: '',
@@ -89,6 +91,8 @@ export default function NewLoanRequestPage() {
       // The loanType will be derived on the backend from the workflow
       const payload = {
           ...data,
+          customerPhone: data.customerPhone || '',
+          customerBranch: data.customerBranch || '',
           loanType: '', // This is a placeholder, backend will set it from the workflow
       };
       
@@ -137,7 +141,7 @@ export default function NewLoanRequestPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">New Loan Request</h1>
         <p className="text-muted-foreground">
-          Fill in the details below to submit a new loan application. The selected workflow will determine its starting department.
+          Fill in the details below to submit a new loan application. If the customer email is new, a profile will be created.
         </p>
       </div>
       <Card>
@@ -154,7 +158,7 @@ export default function NewLoanRequestPage() {
                   name="customerName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Name</FormLabel>
+                      <FormLabel>Customer Full Name</FormLabel>
                       <div className="relative">
                         <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
@@ -177,6 +181,7 @@ export default function NewLoanRequestPage() {
                           <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} />
                         </FormControl>
                       </div>
+                      <FormDescription>A new customer profile will be created if this email is not found.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -191,6 +196,22 @@ export default function NewLoanRequestPage() {
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
                           <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} />
+                        </FormControl>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="customerBranch"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Customer Branch (Optional)</FormLabel>
+                      <div className="relative">
+                        <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <FormControl>
+                          <Input placeholder="e.g., Main Street Branch" {...field} className="pl-10" disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -215,7 +236,7 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                <div className="md:col-span-2">
+                <div className="md:col-span-1">
                   <FormField
                     control={form.control}
                     name="workflowVersionId"

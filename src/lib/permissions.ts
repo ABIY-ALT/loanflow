@@ -8,6 +8,7 @@ export const PERMISSIONS = {
   VIEW_LOAN_PIPELINE: "VIEW_LOAN_PIPELINE",
   VIEW_LOAN_DETAILS: "VIEW_LOAN_DETAILS", // Generic view for any loan
   VIEW_LOAN_STATUS_LOOKUP: "VIEW_LOAN_STATUS_LOOKUP",
+  VIEW_CUSTOMERS: "VIEW_CUSTOMERS",
 
   // Loan Creation & Officer Actions
   CREATE_LOAN_REQUEST: "CREATE_LOAN_REQUEST",
@@ -55,6 +56,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_LOAN_PIPELINE: "Can view the loan Kanban board and loan cards.",
   VIEW_LOAN_DETAILS: "Can view the detailed information page for any loan.",
   VIEW_LOAN_STATUS_LOOKUP: "Can use the AI loan status lookup tool.",
+  VIEW_CUSTOMERS: "Can view the list of all customers.",
   CREATE_LOAN_REQUEST: "Can submit new loan requests into the system.",
   VIEW_OWN_ASSIGNED_CASES: "Can view the 'My Assigned Cases' page (cases assigned to them).",
   EDIT_LOAN_DETAILS: "Can edit loan details and customer information.",
@@ -90,6 +92,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "VIEW_LOAN_PIPELINE",
       "VIEW_LOAN_DETAILS",
       "VIEW_LOAN_STATUS_LOOKUP",
+      "VIEW_CUSTOMERS",
     ],
   },
   {

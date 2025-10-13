@@ -2,7 +2,7 @@
 'use client';
 
 import type { LoanRequest, User as UserType } from '@/types/loan';
-import { DollarSign, Type, Info, User, Phone, Landmark, Building } from 'lucide-react'; // Added Building for department
+import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail } from 'lucide-react'; // Added Mail
 import { InfoItem } from '@/components/loan/common/InfoItem';
 
 interface LoanInfoDisplayProps {
@@ -17,7 +17,7 @@ export function LoanInfoDisplay({ loan, assignedUser, assignedDepartment }: Loan
       <InfoItem icon={DollarSign} label="Loan Amount" value={`$${loan.loanAmount.toLocaleString()}`} />
       <InfoItem icon={Type} label="Loan Type" value={loan.loanType} />
       <InfoItem icon={Info} label="Loan Purpose" value={loan.loanPurpose} />
-      <InfoItem icon={User} label="Customer Email" value={loan.customerEmail} />
+      <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />
       <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
       <InfoItem icon={Building} label="Responsible Department" value={assignedDepartment || 'N/A'} />
       <InfoItem

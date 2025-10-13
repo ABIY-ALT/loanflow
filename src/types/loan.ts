@@ -30,6 +30,16 @@ export interface User {
   permissions: AppPermission[]; // All permissions granted by the custom role
 }
 
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  branch?: string;
+  loanRequests: Pick<LoanRequest, 'id' | 'loanNumber' | 'loanAmount' | 'submittedDate' | 'currentStageName'>[];
+}
+
+
 export enum DocumentRequirementType {
   UPLOAD = "UPLOAD",
   CHECKBOX = "CHECKBOX",
@@ -116,10 +126,10 @@ export interface LoanHistoryEntry {
 export interface LoanRequest {
   id: string;
   loanNumber: string;
-  customerNumber: string;
+  customerId: string;
   customerName: string;
   customerEmail: string;
-  customerPhone: string;
+  customerPhone?: string;
   customerBranch?: string;
   loanAmount: number;
   loanType: string;

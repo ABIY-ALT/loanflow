@@ -17,6 +17,7 @@ import {
   Drama,
   Users2 as UsersIcon,
   BarChartBig,
+  Users,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -53,6 +54,12 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'New Loan Request',
     icon: FilePlus2,
     requiredPermissions: [PERMISSIONS.CREATE_LOAN_REQUEST]
+  },
+  {
+    href: '/customers',
+    label: 'Customers',
+    icon: Users,
+    requiredPermissions: [PERMISSIONS.VIEW_CUSTOMERS]
   },
   {
     href: '/my-assigned-cases',
