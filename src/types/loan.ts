@@ -48,7 +48,7 @@ export interface WorkflowStageDefinition {
   name: string;
   responsibleDepartment: Department;
   defaultTimelineDays: number;
-  documentRequirements: DocumentRequirement[]; // Replaces requiredDocumentNames
+  documentRequirements: DocumentRequirement[];
   percentageWeight: number;
   order: number;
   availableStatuses?: Record<Department, string[]>; // Department-specific statuses
@@ -91,7 +91,7 @@ export enum LoanDocumentStatus {
 
 export interface LoanDocument {
   id: string;
-  name: string; // This will now correspond to the DocumentRequirement name
+  name: string; // Name of the requirement
   requirementId: string; // Foreign key to the DocumentRequirement
   status: LoanDocumentStatus;
   filePath?: string;

@@ -13,6 +13,7 @@ import type {
   LoanHistoryEntry as PrismaLoanHistoryEntry,
   Role as PrismaRole,
   LoanType as PrismaLoanType,
+  DocumentRequirement as PrismaDocumentRequirement,
 } from '@prisma/client';
 
 import { LoanDocumentStatus as PrismaLoanDocumentStatus, DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
@@ -57,7 +58,7 @@ const mapPrismaUserToAppUser = (
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null;
-        currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment }) | null;
+        currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
@@ -97,7 +98,7 @@ const mapPrismaLoanToAppLoan = (
     stageDeadline: prismaLoan.stageDeadline ? formatISO(new Date(prismaLoan.stageDeadline)) : undefined,
     isReadyForManagerReview: prismaLoan.isReadyForManagerReview,
     isOverdue: isOverdueCalc,
-    isTerminalStage: isTerminal,
+    isTerminalStage: !!isTerminal,
     history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,
@@ -112,7 +113,7 @@ const mapPrismaLoanToAppLoan = (
     documents: prismaLoan.documents?.map((d) => ({
       id: d.id,
       name: d.name,
-      requirementId: d.requirementId || `fallback-req-id-${d.id}`,
+      requirementId: d.requirementId,
       status: d.status as AppLoanDocumentStatus,
       filePath: d.filePath || undefined,
       notes: d.notes || undefined,
@@ -211,7 +212,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
       orderBy: { lastUpdatedDate: 'desc' },
       include: {
         assignedToUser: { include: { department: true, customRole: true } },
-        currentWorkflowStage: { include: { responsibleDepartment: true } },
+        currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
@@ -236,11 +237,11 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
       where: { id },
       include: {
         assignedToUser: { include: { department: true, customRole: true } },
-        currentWorkflowStage: { include: { responsibleDepartment: true } },
+        currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
           include: {
             workflowDefinition: { include: { loanType: true, department: true } },
-            stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true} },
+            stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true, documentRequirements: true} },
           },
         },
         assignedDepartment: true,
@@ -287,6 +288,7 @@ export async function updateLoanRequest(
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
       });
       if (dataToUpdate.loanAmount !== undefined) updatePayload.loanAmount = dataToUpdate.loanAmount;
+      if (dataToUpdate.isTerminalStage !== undefined) updatePayload.isTerminalStage = dataToUpdate.isTerminalStage;
 
       if (dataToUpdate.hasOwnProperty('assignedTo')) {
         updatePayload.assignedToUser = dataToUpdate.assignedTo ? { connect: { id: dataToUpdate.assignedTo } } : { disconnect: true };
@@ -347,23 +349,37 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.documents) {
-        // This is a simplified version. A real app might need more complex logic for doc updates.
-         for (const doc of dataToUpdate.documents) {
+        for (const doc of dataToUpdate.documents) {
             await tx.loanDocument.upsert({
                 where: { id: doc.id || `_non_existent_${Date.now()}`},
-                create: { ...doc, loanId: id, id: undefined, createdAt: undefined, updatedAt: undefined, uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date() },
-                update: { ...doc, id: undefined, createdAt: undefined, updatedAt: new Date(), uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date() }
+                create: {
+                    loanId: id,
+                    requirementId: doc.requirementId,
+                    name: doc.name,
+                    status: doc.status as PrismaLoanDocumentStatus,
+                    filePath: doc.filePath,
+                    notes: doc.notes,
+                    uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date()
+                },
+                update: {
+                    requirementId: doc.requirementId,
+                    name: doc.name,
+                    status: doc.status as PrismaLoanDocumentStatus,
+                    filePath: doc.filePath,
+                    notes: doc.notes,
+                    uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date(),
+                    updatedAt: new Date()
+                }
             });
          }
       }
-
 
       return tx.loanRequest.update({
         where: { id },
         data: updatePayload,
         include: {
           assignedToUser: { include: { department: true, customRole: true } },
-          currentWorkflowStage: { include: { responsibleDepartment: true } },
+          currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
           assignedDepartment: true,
           history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
@@ -392,7 +408,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           include: {
             stages: {
               orderBy: { order: 'asc' },
-              include: { responsibleDepartment: true }
+              include: { responsibleDepartment: true, documentRequirements: true }
             },
           },
         },
@@ -421,12 +437,12 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           name: s.name,
           responsibleDepartment: s.responsibleDepartment.name as Department,
           defaultTimelineDays: s.defaultTimelineDays,
-          documentRequirements: (s.documentRequirements as any[])?.map(dr => ({
+          documentRequirements: s.documentRequirements.map(dr => ({
              id: dr.id,
              name: dr.name,
              isMandatory: dr.isMandatory,
              type: dr.type as AppDocumentRequirementType,
-          })) || [],
+          })),
           percentageWeight: s.percentageWeight,
           order: s.order,
           availableStatuses: (s.availableStatuses || {}) as Record<Department, string[]>,
@@ -535,25 +551,48 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
              const department = await tx.department.findUnique({ where: {nameLowercase: stage.responsibleDepartment.toLowerCase() }});
              if (!department) throw new Error(`Department "${stage.responsibleDepartment}" not found.`);
 
-            await tx.workflowStageDefinition.upsert({
+            const { documentRequirements, ...stageData } = stage;
+
+            const upsertedStage = await tx.workflowStageDefinition.upsert({
               where: { id: stage.id || `_non_existent_stage_id_${Date.now()}` },
               create: {
-                ...stage,
-                documentRequirements: stage.documentRequirements.map(dr => ({ ...dr, id: dr.id || undefined })) as any,
-                availableStatuses: stage.availableStatuses || {},
+                ...stageData,
                 id: stage.id || undefined,
+                availableStatuses: stage.availableStatuses || {},
                 workflowVersion: { connect: { id: versionId } },
                 responsibleDepartment: { connect: { id: department.id } },
               },
               update: {
-                ...stage,
-                documentRequirements: stage.documentRequirements.map(dr => ({ ...dr, id: dr.id || undefined })) as any,
-                availableStatuses: stage.availableStatuses || {},
+                ...stageData,
                 id: undefined,
+                availableStatuses: stage.availableStatuses || {},
                 updatedAt: new Date(),
                 responsibleDepartment: { connect: { id: department.id } },
               },
             });
+
+            // Handle document requirements
+            const existingReqs = await tx.documentRequirement.findMany({ where: { workflowStageId: upsertedStage.id }});
+            const uiReqIds = new Set(documentRequirements.map(dr => dr.id));
+            const reqsToDelete = existingReqs.filter(er => !uiReqIds.has(er.id));
+            if (reqsToDelete.length > 0) {
+                await tx.documentRequirement.deleteMany({ where: { id: { in: reqsToDelete.map(r => r.id) } } });
+            }
+
+            for (const req of documentRequirements) {
+                await tx.documentRequirement.upsert({
+                    where: { id: req.id || `_non_existent_req_id_${Date.now()}` },
+                    create: {
+                        ...req,
+                        id: req.id || undefined,
+                        workflowStage: { connect: { id: upsertedStage.id } }
+                    },
+                    update: {
+                        ...req,
+                        id: undefined,
+                    }
+                });
+            }
           }
         }
       }
