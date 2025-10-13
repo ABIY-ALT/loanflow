@@ -233,6 +233,19 @@ export default function ReportsPage() {
                   const timeInStage = loan.stageEntryDate 
                     ? formatDistanceToNowStrict(parseISO(loan.stageEntryDate), { addSuffix: false })
                     : 'N/A';
+                  
+                  let statusComponent;
+                  if (loan.isTerminalStage) {
+                    statusComponent = <Badge variant="destructive">Terminated</Badge>;
+                  } else if (loan.isReadyForManagerReview) {
+                    statusComponent = <Badge variant="secondary">Review Pending</Badge>;
+                  } else if (loan.isUrgent) {
+                    statusComponent = <Tooltip><TooltipTrigger><Flame className="h-5 w-5 text-red-500" /></TooltipTrigger><TooltipContent><p>Urgent</p></TooltipContent></Tooltip>;
+                  } else if (loan.isOverdue) {
+                    statusComponent = <Tooltip><TooltipTrigger><AlertCircle className="h-5 w-5 text-destructive" /></TooltipTrigger><TooltipContent><p>Overdue</p></TooltipContent></Tooltip>;
+                  } else {
+                    statusComponent = <Badge variant="outline">Active</Badge>;
+                  }
 
                   return (
                     <TableRow key={loan.id} className={cn(loan.isTerminalStage && "opacity-50 bg-muted/30")}>
@@ -255,10 +268,7 @@ export default function ReportsPage() {
                       <TableCell><Clock className="inline h-4 w-4 mr-1 text-muted-foreground"/>{timeInStage}</TableCell>
                        <TableCell className="text-center">
                          <div className="flex items-center justify-center gap-2">
-                            {loan.isUrgent && <Tooltip><TooltipTrigger><Flame className="h-5 w-5 text-red-500" /></TooltipTrigger><TooltipContent><p>Urgent</p></TooltipContent></Tooltip>}
-                            {loan.isOverdue && <Tooltip><TooltipTrigger><AlertCircle className="h-5 w-5 text-destructive" /></TooltipTrigger><TooltipContent><p>Overdue</p></TooltipContent></Tooltip>}
-                            {loan.isTerminalStage && <Badge variant="destructive">Terminated</Badge>}
-                            {loan.isReadyForManagerReview && !loan.isTerminalStage && <Badge variant="secondary">Review Pending</Badge>}
+                           {statusComponent}
                          </div>
                        </TableCell>
                       <TableCell className="text-center">
