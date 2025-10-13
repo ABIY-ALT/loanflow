@@ -273,7 +273,7 @@ export async function updateLoanRequest(
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
-      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true } });
+      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true } });
 
       if (!existingLoan) {
         throw new Error(`Loan with ID "${id}" not found for update.`);
@@ -288,7 +288,6 @@ export async function updateLoanRequest(
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
       });
       if (dataToUpdate.loanAmount !== undefined) updatePayload.loanAmount = dataToUpdate.loanAmount;
-      if (dataToUpdate.isTerminalStage !== undefined) updatePayload.isTerminalStage = dataToUpdate.isTerminalStage;
 
       if (dataToUpdate.hasOwnProperty('assignedTo')) {
         updatePayload.assignedToUser = dataToUpdate.assignedTo ? { connect: { id: dataToUpdate.assignedTo } } : { disconnect: true };
@@ -348,30 +347,39 @@ export async function updateLoanRequest(
         }
       }
 
-      if (dataToUpdate.documents) {
-        for (const doc of dataToUpdate.documents) {
-            await tx.loanDocument.upsert({
-                where: { id: doc.id || `_non_existent_${Date.now()}`},
-                create: {
-                    loanId: id,
-                    requirementId: doc.requirementId,
-                    name: doc.name,
-                    status: doc.status as PrismaLoanDocumentStatus,
-                    filePath: doc.filePath,
-                    notes: doc.notes,
-                    uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date()
-                },
-                update: {
-                    requirementId: doc.requirementId,
-                    name: doc.name,
-                    status: doc.status as PrismaLoanDocumentStatus,
-                    filePath: doc.filePath,
-                    notes: doc.notes,
-                    uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date(),
-                    updatedAt: new Date()
-                }
-            });
-         }
+      if (dataToUpdate.documents !== undefined) {
+          const incomingDocIds = new Set(dataToUpdate.documents.map(d => d.id));
+          const docsToDelete = existingLoan.documents.filter(d => !incomingDocIds.has(d.id));
+
+          if (docsToDelete.length > 0) {
+              await tx.loanDocument.deleteMany({
+                  where: { id: { in: docsToDelete.map(d => d.id) } }
+              });
+          }
+
+          for (const doc of dataToUpdate.documents) {
+              await tx.loanDocument.upsert({
+                  where: { id: doc.id || `_non_existent_${Date.now()}` },
+                  create: {
+                      id: doc.id,
+                      loanId: id,
+                      requirementId: doc.requirementId,
+                      name: doc.name,
+                      status: doc.status as PrismaLoanDocumentStatus,
+                      filePath: doc.filePath,
+                      notes: doc.notes,
+                      uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date()
+                  },
+                  update: {
+                      name: doc.name,
+                      status: doc.status as PrismaLoanDocumentStatus,
+                      filePath: doc.filePath,
+                      notes: doc.notes,
+                      uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date(),
+                      updatedAt: new Date()
+                  }
+              });
+          }
       }
 
       return tx.loanRequest.update({
@@ -721,3 +729,5 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
   }
 }
+
+    

@@ -119,31 +119,43 @@ export default function LoanDetailPage() {
     if (!loan) return false;
     setIsSaving(true);
 
-    const newLoanState: LoanRequest = {
-      ...loan,
-      ...updatedFields,
-      history: updatedFields.history ? [...updatedFields.history] : [...loan.history],
-      documents: updatedFields.documents ? [...updatedFields.documents] : [...loan.documents],
-      lastUpdatedDate: formatISO(new Date()),
+    // Create a new state object for optimistic UI update
+    const optimisticLoanState: LoanRequest = {
+        ...loan,
+        ...updatedFields,
+        // Make sure to handle deep objects correctly for optimistic update
+        history: updatedFields.history ? [...updatedFields.history] : [...loan.history],
+        documents: updatedFields.documents !== undefined ? [...updatedFields.documents] : [...loan.documents],
+        lastUpdatedDate: formatISO(new Date()),
     };
-    if (updatedFields.documents || updatedFields.history || updatedFields.currentStageStatus) {
-        setLoan(newLoanState);
-    }
+
+    setLoan(optimisticLoanState); // Optimistically update the UI
 
     try {
-      const serviceResult = await updateLoanRequest(loan.id, newLoanState); 
+      // The payload for the backend should match what the backend expects
+      const servicePayload = { ...updatedFields, lastUpdatedDate: formatISO(new Date()) };
+      
+      const serviceResult = await updateLoanRequest(loan.id, servicePayload); 
+      
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
-        await fetchLoanData();
+        await fetchLoanData(); // Re-fetch to revert optimistic update and show true state
         return false;
       }
+      
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
-      if(serviceResult.updatedLoan) setLoan(serviceResult.updatedLoan);
-      else await fetchLoanData(); 
+      
+      // If the service returns the updated loan object, use it to ensure UI is in sync.
+      // Otherwise, re-fetch. Re-fetching is safer.
+      if(serviceResult.updatedLoan) {
+        setLoan(serviceResult.updatedLoan);
+      } else {
+        await fetchLoanData(); 
+      }
       return true;
     } catch (err: any) {
       toast({ title: "System Error", description: err.message || "A critical error occurred.", variant: "destructive" });
-      await fetchLoanData();
+      await fetchLoanData(); // Revert on critical failure
       return false;
     } finally {
       setIsSaving(false);
@@ -472,25 +484,21 @@ export default function LoanDetailPage() {
     );
   
     if (isChecked) {
-      const newDoc: LoanDocument = {
-        id: `doc-chk-${Date.now()}`,
-        requirementId: requirement.id,
-        name: requirement.name,
-        status: LoanDocumentStatus.VERIFIED,
-        notes: `Confirmed by ${
-          currentUser.fullName
-        } on ${new Date().toLocaleDateString()}.`,
-        uploadedAt: new Date().toISOString(),
-      };
-      if (existingDocIndex > -1) {
-        updatedDocuments[existingDocIndex] = {
-          ...updatedDocuments[existingDocIndex],
-          ...newDoc,
+      if (existingDocIndex === -1) {
+        const newDoc: LoanDocument = {
+          id: `doc-chk-${Date.now()}`,
+          requirementId: requirement.id,
+          name: requirement.name,
+          status: LoanDocumentStatus.VERIFIED, // Checkboxes are instantly verified
+          notes: `Confirmed by ${
+            currentUser.fullName
+          } on ${new Date().toLocaleDateString()}.`,
+          uploadedAt: new Date().toISOString(),
         };
-      } else {
         updatedDocuments.push(newDoc);
       }
     } else {
+      // If unchecking, remove the document that corresponds to this requirement
       if (existingDocIndex > -1) {
         updatedDocuments.splice(existingDocIndex, 1);
       }
@@ -751,5 +759,7 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+
+    
 
     
