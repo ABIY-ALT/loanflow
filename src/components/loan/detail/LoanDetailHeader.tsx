@@ -1,8 +1,7 @@
 
-
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX } from 'lucide-react';
+import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
@@ -19,6 +18,7 @@ interface LoanDetailHeaderProps {
   onManagerPromoteLoan: () => Promise<void>; 
   onOpenReturnForReworkDialog: () => void;
   onOpenTerminateLoanDialog: () => void;
+  onOpenManualTransitionDialog: () => void;
   isSaving: boolean;
   isActionableStage: boolean;
 }
@@ -34,6 +34,7 @@ export function LoanDetailHeader({
   onManagerPromoteLoan,
   onOpenReturnForReworkDialog,
   onOpenTerminateLoanDialog,
+  onOpenManualTransitionDialog,
   isSaving,
   isActionableStage,
 }: LoanDetailHeaderProps) {
@@ -46,11 +47,11 @@ export function LoanDetailHeader({
   const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
 
   return (
-    <div className="flex items-center justify-between mb-8 flex-wrap">
+    <div className="flex items-center justify-between mb-8 flex-wrap gap-2">
       <Button variant="outline" onClick={onBack} disabled={isSaving}>
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
-      <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
+      <div className="flex flex-wrap gap-2 mt-2 sm:mt-0 justify-end flex-grow">
         {(canEditDetails || canAssignStaff) && isActionableStage &&
             <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
                 {canEditDetails && canAssignStaff ? <Edit className="mr-2 h-4 w-4" /> : (canAssignStaff ? <UserPlus className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />)}
@@ -82,6 +83,11 @@ export function LoanDetailHeader({
                 <Undo2 className="mr-2 h-4 w-4" /> Return for Rework
             </Button>
         )}
+        {isActionableStage && userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
+             <Button variant="secondary" onClick={onOpenManualTransitionDialog} disabled={isSaving}>
+                <Shuffle className="mr-2 h-4 w-4" /> Manual Transition
+            </Button>
+        )}
         {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
             <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
                 <ShieldX className="mr-2 h-4 w-4" /> Terminate Process
@@ -91,5 +97,3 @@ export function LoanDetailHeader({
     </div>
   );
 }
-
-    

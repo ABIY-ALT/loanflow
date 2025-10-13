@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -31,6 +30,7 @@ import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanF
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
 import { PromoteToNewWorkflowDialog } from '@/components/loan/dialogs/PromoteToNewWorkflowDialog';
 import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
+import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
 
 
 export default function LoanDetailPage() {
@@ -55,6 +55,7 @@ export default function LoanDetailPage() {
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
   const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
+  const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
@@ -430,6 +431,50 @@ export default function LoanDetailPage() {
     }
   };
 
+  const onManualTransitionSubmit = async (newWorkflowVersionId: string, newStageId: string, reason: string) => {
+    if (!userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) || !currentUser || !loan) {
+        toast({ title: "Permission Denied", variant: "destructive" });
+        return;
+    }
+
+    const allVersions = workflowDefinitions.flatMap(def => def.versions);
+    const newVersion = allVersions.find(v => v.id === newWorkflowVersionId);
+    if (!newVersion) {
+        toast({ title: "Error", description: "Selected workflow version not found.", variant: "destructive" });
+        return;
+    }
+    const newStage = newVersion.stages.find(s => s.id === newStageId);
+    if (!newStage) {
+        toast({ title: "Error", description: "Selected stage not found in the chosen workflow.", variant: "destructive" });
+        return;
+    }
+
+    const currentUserName = currentUser.fullName || 'System Process';
+    const fromStageName = currentStageDef?.name || 'Unknown Stage';
+    const newHistoryEntry: LoanHistoryEntry = {
+        id: `hist-manual-transition-${Date.now()}`,
+        stageName: newStage.name,
+        timestamp: formatISO(new Date()),
+        userId: currentUser.id,
+        userName: currentUserName,
+        notes: `MANUAL TRANSITION: Moved from '${fromStageName}' to '${newStage.name}' in workflow '${newVersion.workflowDefinitionId}'. Reason: ${reason}`,
+    };
+
+    const success = await handleLocalAndUpdateService({
+        workflowVersionId: newWorkflowVersionId,
+        currentStageId: newStageId,
+        assignedDepartmentId: users.find(u => u.department === newStage.responsibleDepartment)?.departmentId,
+        assignedTo: undefined,
+        isReadyForManagerReview: false,
+        history: [...loan.history, newHistoryEntry],
+        stageDeadline: formatISO(addDays(new Date(), newStage.defaultTimelineDays)),
+    }, `Loan manually transitioned to ${newStage.name}.`);
+
+    if (success) {
+        setIsManualTransitionDialogOpen(false);
+    }
+  };
+
 
   const handleDocumentUploaded = async (requirement: DocumentRequirement, uploadedFilePath: string, originalUploadedFileName: string) => {
     if (!loan || !userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) return;
@@ -651,6 +696,7 @@ export default function LoanDetailPage() {
         onManagerPromoteLoan={handleManagerPromoteLoan}
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)}
         onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)}
+        onOpenManualTransitionDialog={() => setIsManualTransitionDialogOpen(true)}
         isSaving={isSaving}
         isActionableStage={isActionable}
       />
@@ -746,6 +792,7 @@ export default function LoanDetailPage() {
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentRequirementToUpload(null);}} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && <TerminateLoanDialog isOpen={isTerminateLoanDialogOpen} onOpenChange={setIsTerminateLoanDialogOpen} loan={loan} onSubmit={onTerminateLoanSubmit} isSaving={isSaving} />}
+      
       {userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && (
         <PromoteToNewWorkflowDialog
           isOpen={isPromoteToNewWorkflowDialogOpen}
@@ -756,10 +803,17 @@ export default function LoanDetailPage() {
           isSaving={isSaving}
         />
       )}
+
+      {userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
+        <ManualTransitionDialog
+          isOpen={isManualTransitionDialogOpen}
+          onOpenChange={setIsManualTransitionDialogOpen}
+          currentLoan={loan}
+          workflowDefinitions={workflowDefinitions}
+          onSubmit={onManualTransitionSubmit}
+          isSaving={isSaving}
+        />
+      )}
     </div>
   );
 }
-
-    
-
-    
