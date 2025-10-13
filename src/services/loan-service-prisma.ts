@@ -278,8 +278,8 @@ export async function updateLoanRequest(
 
       const updatePayload: any = { lastUpdatedDate: new Date() };
 
-      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' >)[] =
-        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus'];
+      const simpleFields: (keyof Pick<LoanRequest, 'customerName' | 'customerEmail' | 'customerPhone' | 'loanType' | 'loanPurpose' | 'isReadyForManagerReview' | 'customerBranch' | 'currentStageStatus' | 'isTerminalStage' >)[] =
+        ['customerName', 'customerEmail', 'customerPhone', 'loanType', 'loanPurpose', 'isReadyForManagerReview', 'customerBranch', 'currentStageStatus', 'isTerminalStage'];
       
       simpleFields.forEach(field => {
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
@@ -327,16 +327,20 @@ export async function updateLoanRequest(
         const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
         
         for (const entry of newHistoryEntries) {
-          await tx.loanHistoryEntry.create({
-            data: {
-              loan: { connect: { id } },
-              user: { connect: { id: entry.userId } },
-              stageName: entry.stageName,
-              timestamp: parseISO(entry.timestamp),
-              notes: entry.notes,
-              requiredFulfilment: entry.requiredFulfilment
+            if (!entry.userId) { // Safety check
+                console.warn("Skipping history entry creation due to missing userId", entry);
+                continue;
             }
-          });
+            await tx.loanHistoryEntry.create({
+                data: {
+                    loan: { connect: { id } },
+                    user: { connect: { id: entry.userId } },
+                    stageName: entry.stageName,
+                    timestamp: parseISO(entry.timestamp),
+                    notes: entry.notes,
+                    requiredFulfilment: entry.requiredFulfilment,
+                }
+            });
         }
       }
 
@@ -669,3 +673,5 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
   }
 }
+
+    
