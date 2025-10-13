@@ -135,7 +135,9 @@ export default function CustomersPage() {
                       <Badge variant="secondary">{customer.loanRequests.length}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                       <Button variant="ghost" size="sm" disabled>View Profile <ExternalLink className="ml-2 h-3 w-3" /></Button>
+                       <Link href={`/customers/${customer.id}`} passHref>
+                         <Button variant="ghost" size="sm">View Profile <ExternalLink className="ml-2 h-3 w-3" /></Button>
+                       </Link>
                     </TableCell>
                   </TableRow>
                 ))

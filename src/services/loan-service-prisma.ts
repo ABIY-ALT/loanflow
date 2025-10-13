@@ -806,3 +806,46 @@ export async function getCustomers(): Promise<{ customers?: Customer[]; error?: 
     return createErrorResult("Failed to fetch customers.", "getCustomers", e);
   }
 }
+
+export async function getCustomerById(id: string): Promise<{ customer?: Customer | null; error?: string }> {
+  try {
+    const prismaCustomer = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        loanRequests: {
+          select: {
+            id: true,
+            loanNumber: true,
+            loanAmount: true,
+            submittedDate: true,
+            currentWorkflowStage: { select: { name: true } },
+          },
+          orderBy: { submittedDate: 'desc' },
+        },
+      },
+    });
+
+    if (!prismaCustomer) {
+      return { error: 'Customer not found.' };
+    }
+
+    const appCustomer: Customer = {
+      id: prismaCustomer.id,
+      name: prismaCustomer.name,
+      email: prismaCustomer.email,
+      phone: prismaCustomer.phone || undefined,
+      branch: prismaCustomer.branch || undefined,
+      loanRequests: prismaCustomer.loanRequests.map(lr => ({
+        id: lr.id,
+        loanNumber: lr.loanNumber,
+        loanAmount: lr.loanAmount.toNumber(),
+        submittedDate: formatISO(lr.submittedDate),
+        currentStageName: lr.currentWorkflowStage?.name || 'Unknown',
+      })),
+    };
+
+    return { customer: appCustomer };
+  } catch (e: any) {
+    return createErrorResult(`Failed to fetch customer by ID: ${id}.`, 'getCustomerById', e);
+  }
+}
