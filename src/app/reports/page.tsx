@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig } from 'lucide-react';
+import { ArrowLeft, BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useToast } from '@/hooks/use-toast';
 
 
 export default function ReportsPage() {
@@ -30,6 +31,7 @@ export default function ReportsPage() {
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const canViewReport = useMemo(() => currentUser?.permissions.includes(PERMISSIONS.VIEW_REPORTS), [currentUser]);
 
@@ -105,7 +107,13 @@ export default function ReportsPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-3xl font-bold tracking-tight flex items-center"><BarChartBig className="mr-3 h-8 w-8 text-primary" /> Reports</h1>
-            <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+            <div className="flex gap-2">
+                <Button variant="outline" onClick={() => toast({title: "Feature Coming Soon", description: "CSV/PDF report downloading will be available in a future update."})}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Report
+                </Button>
+                <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+            </div>
         </div>
         <Alert variant="destructive"><AlertCircle className="h-5 w-5" /><AlertTitle>Error Loading Report</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>
       </div>
@@ -119,7 +127,13 @@ export default function ReportsPage() {
           <h1 className="text-3xl font-bold tracking-tight flex items-center"><BarChartBig className="mr-3 h-8 w-8 text-primary" /> Task Assignment Report</h1>
           <p className="text-muted-foreground">Overview of all loan requests, their current stage, assignee, and task duration.</p>
         </div>
-        <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+        <div className="flex gap-2">
+             <Button variant="outline" onClick={() => toast({title: "Feature Coming Soon", description: "CSV/PDF report downloading will be available in a future update."})}>
+                <Download className="mr-2 h-4 w-4" />
+                Download Report
+            </Button>
+            <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+        </div>
       </div>
 
       <Card>
