@@ -93,11 +93,11 @@ model WorkflowStageDefinition {
   responsibleDepartment   Department             @relation("responsibleDepartment", fields: [responsibleDepartmentId], references: [id])
   responsibleDepartmentId String
   defaultTimelineDays     Int
-  documentRequirements    DocumentRequirement[]
   percentageWeight        Int
   order                   Int
   availableStatuses       Json?
-  loanRequestsAtStageMirror LoanRequest[]        @relation("loanRequestsAtStage")
+  documentRequirements    DocumentRequirement[]
+  loanRequestsAtStageMirror LoanRequest[]          @relation("loanRequestsAtStage")
   createdAt               DateTime?              @default(now())
   updatedAt               DateTime?              @updatedAt
 
@@ -110,13 +110,13 @@ enum DocumentRequirementType {
 }
 
 model DocumentRequirement {
-  id              String                  @id @default(cuid())
-  name            String
-  isMandatory     Boolean                 @default(true)
-  type            DocumentRequirementType @default(UPLOAD)
-  workflowStage   WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id])
-  workflowStageId String
-  documents       LoanDocument[]
+  id                String                  @id @default(cuid())
+  name              String
+  isMandatory       Boolean                 @default(true)
+  type              DocumentRequirementType @default(UPLOAD)
+  workflowStage     WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id])
+  workflowStageId   String
+  fulfilledLoanDocs LoanDocument[]
 }
 
 model LoanRequest {
@@ -135,8 +135,8 @@ model LoanRequest {
   stageEntryDate          DateTime?
   stageDeadline           DateTime?
   isReadyForManagerReview Boolean   @default(false)
-  isUrgent                Boolean   @default(false)
   isOverdue               Boolean?  @default(false)
+  isUrgent                Boolean   @default(false)
   isTerminalStage         Boolean?  @default(false)
   currentStageStatus      String?
 
@@ -160,15 +160,15 @@ model LoanRequest {
 
 model LoanDocument {
   id              String               @id @default(cuid())
-  loan            LoanRequest          @relation(fields: [loanId], references: [id])
+  loan            LoanRequest          @relation(fields: [loanId], references: [id], onDelete: Cascade)
   loanId          String
+  requirement     DocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  requirementId   String?
   name            String
   status          LoanDocumentStatus
   filePath        String?
   notes           String?
   uploadedAt      DateTime?
-  requirement     DocumentRequirement? @relation(fields: [requirementId], references: [id])
-  requirementId   String?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -182,7 +182,7 @@ enum LoanDocumentStatus {
 
 model LoanHistoryEntry {
   id                 String      @id @default(cuid())
-  loan               LoanRequest @relation(fields: [loanId], references: [id])
+  loan               LoanRequest @relation(fields: [loanId], references: [id], onDelete: Cascade)
   loanId             String
   user               User        @relation(fields: [userId], references: [id])
   userId             String

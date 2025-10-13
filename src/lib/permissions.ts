@@ -29,6 +29,7 @@ export const PERMISSIONS = {
   PROMOTE_LOAN_STAGE: "PROMOTE_LOAN_STAGE", // Manager approval for sequential promotion
   RETURN_LOAN_FOR_REWORK: "RETURN_LOAN_FOR_REWORK", // Manager action
   VIEW_OVERDUE_TASKS_REPORT: "VIEW_OVERDUE_TASKS_REPORT", // Overdue tasks page
+  VIEW_REPORTS: "VIEW_REPORTS", // Can view the main reports page
   
   // High-Level / Administrative Actions
   TERMINATE_LOAN_PROCESS: "TERMINATE_LOAN_PROCESS", // Can permanently stop a loan process
@@ -71,6 +72,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   PROMOTE_LOAN_STAGE: "Can approve a loan stage and promote it to the next sequential stage in the workflow.",
   RETURN_LOAN_FOR_REWORK: "Can return a loan to a previous assignee or state for rework (manager action).",
   VIEW_OVERDUE_TASKS_REPORT: "Can view the page listing all overdue loan tasks.",
+  VIEW_REPORTS: "Can view the main reports page and its sub-reports.",
   TERMINATE_LOAN_PROCESS: "Can terminate a loan process at any stage, ending all activities.",
   MANUAL_STAGE_TRANSITION: "Can manually move a loan to any stage of any workflow, overriding the standard sequence.",
   MANAGE_SETTINGS_WORKFLOWS: "Can access settings to define and manage loan workflow definitions and versions.",
@@ -90,6 +92,13 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "VIEW_LOAN_DETAILS",
       "VIEW_LOAN_STATUS_LOOKUP",
     ],
+  },
+  {
+    name: "Reporting",
+    permissions: [
+      "VIEW_REPORTS",
+      "VIEW_OVERDUE_TASKS_REPORT",
+    ]
   },
   {
     name: "Loan Processing & Officer Actions",
@@ -114,7 +123,6 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
       "VIEW_UNASSIGNED_CASES_QUEUE",
       "PROMOTE_LOAN_STAGE",
       "RETURN_LOAN_FOR_REWORK",
-      "VIEW_OVERDUE_TASKS_REPORT",
     ],
   },
   {

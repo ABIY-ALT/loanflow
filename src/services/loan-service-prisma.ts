@@ -62,7 +62,7 @@ const mapPrismaLoanToAppLoan = (
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
-        documents?: PrismaLoanDocument[];
+        documents?: (PrismaLoanDocument & { requirement: PrismaDocumentRequirement | null })[];
     }
 ): LoanRequest => {
 
@@ -87,7 +87,7 @@ const mapPrismaLoanToAppLoan = (
     workflowVersionId: prismaLoan.workflowVersionIdMirror || undefined,
     currentStageId: prismaLoan.currentStageIdMirror || undefined,
     currentStageStatus: prismaLoan.currentStageStatus || undefined,
-
+    stageEntryDate: prismaLoan.stageEntryDate ? formatISO(new Date(prismaLoan.stageEntryDate)) : undefined,
     currentStageName: prismaLoan.currentWorkflowStage?.name || 'Unknown Stage',
     assignedDepartmentId: prismaLoan.assignedDepartmentId || undefined,
     assignedDepartment: prismaLoan.assignedDepartment?.name as Department | undefined || 'N/A',
@@ -129,7 +129,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerNumber' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -217,7 +217,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
         workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
-        documents: { orderBy: { createdAt: 'asc' } },
+        documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -247,7 +247,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
         },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
-        documents: { orderBy: { createdAt: 'asc' } },
+        documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -318,7 +318,7 @@ export async function updateLoanRequest(
         const availableStatusesForDept = newStageDef.availableStatuses && typeof newStageDef.availableStatuses === 'object' && !Array.isArray(newStageDef.availableStatuses) ? (newStageDef.availableStatuses as Record<string, string[]>)[newStageDef.responsibleDepartment.name] : [];
         updatePayload.currentStageStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
-        const isTerminal = newStageDef.name.toLowerCase().includes("closed") || newStageDef.name.toLowerCase().includes("rejected") || newStageDef.name.toLowerCase().includes("funded");
+        const isTerminal = newStageDef.name.toLowerCase().includes("closed") || newStageDef.name.toLowerCase().includes("rejected") || newStageDef.name.toLowerCase().includes("funded") || dataToUpdate.isTerminalStage === true;
         updatePayload.isTerminalStage = isTerminal;
         updatePayload.isOverdue = isBefore(newStageDeadline, new Date()) && !isTerminal;
 
@@ -376,6 +376,7 @@ export async function updateLoanRequest(
                       status: doc.status as PrismaLoanDocumentStatus,
                       filePath: doc.filePath,
                       notes: doc.notes,
+                      requirementId: doc.requirementId,
                       uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : new Date(),
                       updatedAt: new Date()
                   }
@@ -392,7 +393,7 @@ export async function updateLoanRequest(
           workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
           assignedDepartment: true,
           history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
-          documents: { orderBy: { createdAt: 'asc' } },
+          documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
         },
       });
     });
@@ -553,6 +554,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
           const uiStageIds = new Set(stages.map(s => s.id).filter(Boolean));
           const stagesToDelete = existingDbStageIds.filter(id => !uiStageIds.has(id));
           if (stagesToDelete.length > 0) {
+            await tx.documentRequirement.deleteMany({ where: { workflowStageId: { in: stagesToDelete } } });
             await tx.workflowStageDefinition.deleteMany({ where: { id: { in: stagesToDelete }}});
           }
 
@@ -592,13 +594,16 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
                 await tx.documentRequirement.upsert({
                     where: { id: req.id || `_non_existent_req_id_${Date.now()}` },
                     create: {
-                        ...req,
                         id: req.id || undefined,
+                        name: req.name,
+                        isMandatory: req.isMandatory,
+                        type: req.type as PrismaDocumentRequirementType,
                         workflowStage: { connect: { id: upsertedStage.id } }
                     },
                     update: {
-                        ...req,
-                        id: undefined,
+                        name: req.name,
+                        isMandatory: req.isMandatory,
+                        type: req.type as PrismaDocumentRequirementType,
                     }
                 });
             }

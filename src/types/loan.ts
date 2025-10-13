@@ -131,6 +131,7 @@ export interface LoanRequest {
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
+  stageEntryDate?: string; // ISO date string
 
   assignedDepartmentId?: string;
   assignedDepartment?: string;

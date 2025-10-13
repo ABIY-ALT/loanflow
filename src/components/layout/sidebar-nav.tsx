@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Drama,
   Users2 as UsersIcon,
+  BarChartBig,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -76,6 +77,12 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'Loan Status Lookup', 
     icon: SearchCheck,
     requiredPermissions: [PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP]
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: BarChartBig,
+    requiredPermissions: [PERMISSIONS.VIEW_REPORTS]
   },
   {
     href: '/overdue-tasks',
