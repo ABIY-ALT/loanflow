@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
-import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
+import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
 import { LoanDocumentStatus } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -51,7 +51,7 @@ export default function LoanDetailPage() {
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
   const [isLogInfoDialogOpen, setIsLogInfoDialogOpen] = useState(false);
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = useState(false);
-  const [currentConceptualDocumentToUpload, setCurrentConceptualDocumentToUpload] = useState<string | null>(null);
+  const [currentDocumentRequirementToUpload, setCurrentDocumentRequirementToUpload] = useState<DocumentRequirement | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
   const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
@@ -249,29 +249,60 @@ export default function LoanDetailPage() {
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
-    if (!loan || !currentStageDef || !currentWorkflowVersion) {
-        if (!currentStageDef) toast({title: "Workflow Info Missing", description: "Cannot validate requirements as current stage definition is missing.", variant: "warning", duration: 5000});
-        return false;
-    }
-
-    const activeInfoReq = [...loan.history].reverse().find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
-    if (activeInfoReq) {
-      toast({ title: "Action Pending", description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
+    if (!loan || !currentStageDef) {
+      toast({
+        title: 'Workflow Info Missing',
+        description:
+          'Cannot validate requirements as current stage definition is missing.',
+        variant: 'warning',
+        duration: 5000,
+      });
       return false;
     }
-
-    if (currentStageDef.requiredDocumentNames.length > 0) {
-      const pendingDocs = currentStageDef.requiredDocumentNames.filter(reqDocName => {
-        const uploadedDoc = loan.documents.find(d => d.name === reqDocName);
+  
+    const activeInfoReq = [...loan.history]
+      .reverse()
+      .find(
+        (entry) =>
+          entry.requiredFulfilment &&
+          (!entry.notes || !entry.notes.includes('[FULFILLED MOCK]'))
+      );
+    if (activeInfoReq) {
+      toast({
+        title: 'Action Pending',
+        description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`,
+        variant: 'destructive',
+        duration: 7000,
+      });
+      return false;
+    }
+  
+    if (currentStageDef.documentRequirements.length > 0) {
+      const pendingDocs = currentStageDef.documentRequirements.filter((req) => {
+        if (!req.isMandatory) return false;
+        const uploadedDoc = loan.documents.find(
+          (d) => d.requirementId === req.id
+        );
         return !uploadedDoc || uploadedDoc.status !== LoanDocumentStatus.VERIFIED;
       });
+  
       if (pendingDocs.length > 0) {
-        toast({ title: "Documents Pending", description: `Cannot proceed. Docs for stage '${currentStageDef.name}' must be verified: ${pendingDocs.join(', ')}.`, variant: "destructive", duration: 7000 });
+        toast({
+          title: 'Documents Pending',
+          description: `Cannot proceed. Mandatory docs for stage '${
+            currentStageDef.name
+          }' must be fulfilled and verified: ${pendingDocs
+            .map((p) => p.name)
+            .join(', ')}.`,
+          variant: 'destructive',
+          duration: 7000,
+        });
         return false;
       }
     }
+  
     return true;
-  }, [loan, currentStageDef, currentWorkflowVersion, toast]);
+  }, [loan, currentStageDef, toast]);
 
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
@@ -388,17 +419,19 @@ export default function LoanDetailPage() {
   };
 
 
-  const handleDocumentUploaded = async (conceptualDocName: string, uploadedFilePath: string, originalUploadedFileName: string) => {
+  const handleDocumentUploaded = async (requirement: DocumentRequirement, uploadedFilePath: string, originalUploadedFileName: string) => {
     if (!loan || !userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) return;
-    const existingDocIndex = loan.documents.findIndex(d => d.name === conceptualDocName);
+    
+    const existingDocIndex = loan.documents.findIndex(d => d.requirementId === requirement.id);
     let updatedDocuments: LoanDocument[];
     const timestamp = formatISO(new Date());
 
     const newDocData: LoanDocument = {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
-        name: conceptualDocName,
-        status: LoanDocumentStatus.VERIFIED, // Automatically verify
-        notes: `File uploaded: ${originalUploadedFileName}. Requirement: ${conceptualDocName}. Status automatically set to Verified.`,
+        name: requirement.name,
+        requirementId: requirement.id,
+        status: LoanDocumentStatus.SUBMITTED,
+        notes: `File uploaded: ${originalUploadedFileName}.`,
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
     };
@@ -411,7 +444,7 @@ export default function LoanDetailPage() {
         updatedDocuments = [...loan.documents, newDocData];
     }
 
-    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${conceptualDocName}' uploaded and auto-verified.`);
+    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${requirement.name}' uploaded.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
   
@@ -425,6 +458,48 @@ export default function LoanDetailPage() {
     const docName = loan.documents.find(d => d.id === docId)?.name || 'Unknown';
 
     await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document "${docName}" marked as Verified.`);
+  };
+
+  const handleCheckboxRequirementChange = async (
+    requirement: DocumentRequirement,
+    isChecked: boolean
+  ) => {
+    if (!loan || !currentUser) return;
+  
+    let updatedDocuments = [...loan.documents];
+    const existingDocIndex = updatedDocuments.findIndex(
+      (d) => d.requirementId === requirement.id
+    );
+  
+    if (isChecked) {
+      const newDoc: LoanDocument = {
+        id: `doc-chk-${Date.now()}`,
+        requirementId: requirement.id,
+        name: requirement.name,
+        status: LoanDocumentStatus.VERIFIED,
+        notes: `Confirmed by ${
+          currentUser.fullName
+        } on ${new Date().toLocaleDateString()}.`,
+        uploadedAt: new Date().toISOString(),
+      };
+      if (existingDocIndex > -1) {
+        updatedDocuments[existingDocIndex] = {
+          ...updatedDocuments[existingDocIndex],
+          ...newDoc,
+        };
+      } else {
+        updatedDocuments.push(newDoc);
+      }
+    } else {
+      if (existingDocIndex > -1) {
+        updatedDocuments.splice(existingDocIndex, 1);
+      }
+    }
+  
+    await handleLocalAndUpdateService(
+      { documents: updatedDocuments },
+      `Requirement '${requirement.name}' status updated.`
+    );
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -638,8 +713,9 @@ export default function LoanDetailPage() {
             <LoanDocumentsManager
               loan={loan}
               currentStageDef={currentStageDef}
-              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && isActionable ? (docName) => { setCurrentConceptualDocumentToUpload(docName); setIsUploadDocDialogOpen(true); } : undefined}
+              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && isActionable ? (docReq) => { setCurrentDocumentRequirementToUpload(docReq); setIsUploadDocDialogOpen(true); } : undefined}
               onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) && isActionable ? handleVerifyDocument : undefined}
+              onCheckboxChange={handleCheckboxRequirementChange}
               isSavingGlobal={isSaving}
             />
             <LoanHistoryTimeline
@@ -659,7 +735,7 @@ export default function LoanDetailPage() {
       {(userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
-      {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentConceptualDocumentToUpload(null);}} loanId={loan.id} conceptualDocumentName={currentConceptualDocumentToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentRequirementToUpload(null);}} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && <TerminateLoanDialog isOpen={isTerminateLoanDialogOpen} onOpenChange={setIsTerminateLoanDialogOpen} loan={loan} onSubmit={onTerminateLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && (

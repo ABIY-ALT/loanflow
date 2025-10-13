@@ -30,6 +30,17 @@ export interface User {
   permissions: AppPermission[]; // All permissions granted by the custom role
 }
 
+export enum DocumentRequirementType {
+  UPLOAD = "UPLOAD",
+  CHECKBOX = "CHECKBOX",
+}
+
+export interface DocumentRequirement {
+  id: string;
+  name:string;
+  isMandatory: boolean;
+  type: DocumentRequirementType;
+}
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
@@ -37,7 +48,7 @@ export interface WorkflowStageDefinition {
   name: string;
   responsibleDepartment: Department;
   defaultTimelineDays: number;
-  requiredDocumentNames: string[];
+  documentRequirements: DocumentRequirement[]; // Replaces requiredDocumentNames
   percentageWeight: number;
   order: number;
   availableStatuses?: Record<Department, string[]>; // Department-specific statuses
@@ -80,7 +91,8 @@ export enum LoanDocumentStatus {
 
 export interface LoanDocument {
   id: string;
-  name: string;
+  name: string; // This will now correspond to the DocumentRequirement name
+  requirementId: string; // Foreign key to the DocumentRequirement
   status: LoanDocumentStatus;
   filePath?: string;
   notes?: string;
