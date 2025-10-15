@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft, ArrowDown, ArrowUp, X } from 'lucide-react';
+import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft, ArrowDown, ArrowUp, X, Mail, DollarSign, Type, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,7 +24,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-type SortKey = 'customerName' | 'lastUpdatedDate';
+type SortKey = 'customerName' | 'lastUpdatedDate' | 'loanAmount' | 'submittedDate';
 type SortDirection = 'asc' | 'desc';
 
 export default function ReportsPage() {
@@ -104,15 +104,19 @@ export default function ReportsPage() {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
 
-      if (sortKey === 'lastUpdatedDate') {
+      if (sortKey === 'lastUpdatedDate' || sortKey === 'submittedDate') {
         const aDate = new Date(aVal).getTime();
         const bDate = new Date(bVal).getTime();
         return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
       }
+
+      if (sortKey === 'loanAmount') {
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
       
       // Default string comparison
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      if (String(aVal) < String(bVal)) return sortDirection === 'asc' ? -1 : 1;
+      if (String(aVal) > String(bVal)) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
 
@@ -135,18 +139,8 @@ export default function ReportsPage() {
     }
 
     const headers = [
-      "Loan Number",
-      "Customer Name",
-      "Customer Email",
-      "Loan Amount",
-      "Loan Type",
-      "Current Stage",
-      "Department",
-      "Assigned Staff",
-      "Time in Stage",
-      "Status",
-      "Submitted Date",
-      "Last Updated"
+      "Loan Number", "Customer Name", "Customer Email", "Loan Amount", "Loan Type", "Submitted Date", "Last Updated",
+      "Current Stage", "Department", "Assigned Staff", "Time in Stage", "Status"
     ];
 
     const data = filteredAndSortedLoans.map(loan => {
@@ -164,13 +158,13 @@ export default function ReportsPage() {
         loan.customerEmail,
         loan.loanAmount,
         loan.loanType,
+        format(parseISO(loan.submittedDate), 'yyyy-MM-dd HH:mm'),
+        format(parseISO(loan.lastUpdatedDate), 'yyyy-MM-dd HH:mm'),
         getStageName(loan.workflowVersionId, loan.currentStageId),
         loan.assignedDepartment || 'N/A',
         getAssignedUserNames(loan.assignedToUsers),
         timeInStage,
         statusText,
-        format(parseISO(loan.submittedDate), 'yyyy-MM-dd HH:mm'),
-        format(parseISO(loan.lastUpdatedDate), 'yyyy-MM-dd HH:mm'),
       ].map(value => {
         const strValue = String(value ?? '');
         if (strValue.includes('"') || strValue.includes(',') || strValue.includes('\n')) {
@@ -310,21 +304,30 @@ export default function ReportsPage() {
             </div>
           ) : (
             <TooltipProvider>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>
-                     <Button variant="ghost" onClick={() => handleSort('customerName')} className="px-0">
+                  <TableHead className="w-[180px]">
+                     <Button variant="ghost" onClick={() => handleSort('customerName')} className="px-1">
                       Customer
                       {renderSortIcon('customerName')}
                     </Button>
                   </TableHead>
-                  <TableHead>Loan Number</TableHead>
-                  <TableHead>Current Stage</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Assigned Staff</TableHead>
-                  <TableHead>Time in Stage</TableHead>
+                  <TableHead><DollarSign className="inline h-4 w-4 mr-1"/>Amount</TableHead>
+                  <TableHead><Type className="inline h-4 w-4 mr-1"/>Loan Type</TableHead>
+                  <TableHead>
+                    <Button variant="ghost" onClick={() => handleSort('submittedDate')} className="px-1">
+                      Submitted
+                      {renderSortIcon('submittedDate')}
+                    </Button>
+                  </TableHead>
+                  <TableHead><CalendarDays className="inline h-4 w-4 mr-1"/>Current Stage</TableHead>
+                  <TableHead><Building className="inline h-4 w-4 mr-1"/>Department</TableHead>
+                  <TableHead><User className="inline h-4 w-4 mr-1"/>Assigned Staff</TableHead>
+                  <TableHead><Clock className="inline h-4 w-4 mr-1"/>Time in Stage</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -347,17 +350,27 @@ export default function ReportsPage() {
                   }
 
                   return (
-                    <TableRow key={loan.id} className={cn(loan.isTerminalStage && "opacity-50 bg-muted/30")}>
-                      <TableCell className="font-medium">{loan.customerName}</TableCell>
-                      <TableCell>{loan.loanNumber}</TableCell>
+                    <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isTerminalStage && "opacity-50 bg-muted/30")}>
+                      <TableCell className="font-medium">
+                        <div className="font-semibold">{loan.customerName}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />{loan.customerEmail}</div>
+                      </TableCell>
+                      <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
+                      <TableCell>{loan.loanType}</TableCell>
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger>{format(parseISO(loan.submittedDate), 'MMM dd, yyyy')}</TooltipTrigger>
+                          <TooltipContent>{format(parseISO(loan.submittedDate), 'PPpp')}</TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge>
                       </TableCell>
-                      <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{loan.assignedDepartment || 'N/A'}</TableCell>
+                      <TableCell>{loan.assignedDepartment || 'N/A'}</TableCell>
                       <TableCell>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1.5"><User className="inline h-4 w-4 mr-1 text-muted-foreground"/> {getAssignedUserNames(loan.assignedToUsers)}</span>
+                                <span className="flex items-center gap-1.5">{getAssignedUserNames(loan.assignedToUsers)}</span>
                             </TooltipTrigger>
                             <TooltipContent>
                                 {loan.assignedToUsers.length > 0 ? (
@@ -368,17 +381,23 @@ export default function ReportsPage() {
                             </TooltipContent>
                         </Tooltip>
                       </TableCell>
-                      <TableCell><Clock className="inline h-4 w-4 mr-1 text-muted-foreground"/>{timeInStage}</TableCell>
+                      <TableCell>{timeInStage}</TableCell>
                        <TableCell className="text-center">
                          <div className="flex items-center justify-center gap-2">
                            {statusComponent}
                          </div>
+                       </TableCell>
+                       <TableCell>
+                          <Link href={`/loan-requests/${loan.id}`} passHref>
+                            <Button variant="ghost" size="sm">View</Button>
+                          </Link>
                        </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+            </div>
             </TooltipProvider>
           )}
         </CardContent>
