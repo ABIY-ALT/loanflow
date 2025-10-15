@@ -2,13 +2,13 @@
 'use client';
 
 import Link from 'next/link';
-import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft } from 'lucide-react';
+import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft, ArrowDown, ArrowUp, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import type { LoanRequest, WorkflowDefinition, User as AppUser } from '@/types/loan';
+import { getLoanRequests, getWorkflowDefinitions, getDepartments } from '@/services/loan-service-prisma';
+import type { LoanRequest, WorkflowDefinition, User as AppUser, Department as AppDepartment } from '@/types/loan';
 import { format, parseISO, formatDistanceToNowStrict } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -22,16 +22,26 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+type SortKey = 'customerName' | 'lastUpdatedDate';
+type SortDirection = 'asc' | 'desc';
 
 export default function ReportsPage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
   const [loans, setLoans] = useState<LoanRequest[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
+  const [departments, setDepartments] = useState<{ id: string, name: AppDepartment }[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [assignedUserFilter, setAssignedUserFilter] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('lastUpdatedDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const canViewReport = useMemo(() => currentUser?.permissions.includes(PERMISSIONS.VIEW_REPORTS), [currentUser]);
 
@@ -39,17 +49,21 @@ export default function ReportsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [loansResult, wfResult] = await Promise.all([
+      const [loansResult, wfResult, deptsResult] = await Promise.all([
         getLoanRequests(),
-        getWorkflowDefinitions()
+        getWorkflowDefinitions(),
+        getDepartments()
       ]);
 
-      if (loansResult.error) throw new Error(loansResult.error);
-      if (wfResult.error) throw new Error(wfResult.error);
-
+      if (loansResult.error) throw new Error(`Loans: ${loansResult.error}`);
       setLoans(loansResult.loans || []);
       setUsers(loansResult.users || []);
+
+      if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
       setWorkflowDefs(wfResult.workflows || []);
+
+      if (deptsResult.error) throw new Error(`Departments: ${deptsResult.error}`);
+      setDepartments(deptsResult.departments || []);
 
     } catch (err: any) {
       setError(err.message || "An unknown error occurred.");
@@ -70,17 +84,52 @@ export default function ReportsPage() {
     return version?.stages.find(s => s.id === stageId)?.name || "Unknown Stage";
   }, [workflowDefs]);
 
-  const getAssignedUserName = useCallback((userId?: string): string => {
-    if (!userId) return "Unassigned";
-    return users.find(u => u.id === userId)?.fullName || "Unknown User";
-  }, [users]);
+  const getAssignedUserNames = useCallback((assignedUsers: AppUser[]): string => {
+    if (!assignedUsers || assignedUsers.length === 0) return "Unassigned";
+    return assignedUsers.map(u => u.fullName).join(', ');
+  }, []);
   
-  const sortedLoans = useMemo(() => {
-    return [...loans].sort((a, b) => new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime());
-  }, [loans]);
+  const filteredAndSortedLoans = useMemo(() => {
+    let filtered = [...loans];
+
+    if (departmentFilter !== 'all') {
+      filtered = filtered.filter(loan => loan.assignedDepartment === departmentFilter);
+    }
+
+    if (assignedUserFilter !== 'all') {
+      filtered = filtered.filter(loan => loan.assignedToUsers.some(u => u.id === assignedUserFilter));
+    }
+
+    filtered.sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+
+      if (sortKey === 'lastUpdatedDate') {
+        const aDate = new Date(aVal).getTime();
+        const bDate = new Date(bVal).getTime();
+        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
+      }
+      
+      // Default string comparison
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [loans, departmentFilter, assignedUserFilter, sortKey, sortDirection]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
 
   const downloadAsCSV = () => {
-    if (loans.length === 0) {
+    if (filteredAndSortedLoans.length === 0) {
       toast({ title: "No Data to Export", description: "There is no report data to download.", variant: "destructive" });
       return;
     }
@@ -100,7 +149,7 @@ export default function ReportsPage() {
       "Last Updated"
     ];
 
-    const data = sortedLoans.map(loan => {
+    const data = filteredAndSortedLoans.map(loan => {
       const timeInStage = loan.stageEntryDate ? formatDistanceToNowStrict(parseISO(loan.stageEntryDate), { addSuffix: false }) : 'N/A';
       
       let statusText = 'Active';
@@ -117,14 +166,13 @@ export default function ReportsPage() {
         loan.loanType,
         getStageName(loan.workflowVersionId, loan.currentStageId),
         loan.assignedDepartment || 'N/A',
-        getAssignedUserName(loan.assignedTo),
+        getAssignedUserNames(loan.assignedToUsers),
         timeInStage,
         statusText,
         format(parseISO(loan.submittedDate), 'yyyy-MM-dd HH:mm'),
         format(parseISO(loan.lastUpdatedDate), 'yyyy-MM-dd HH:mm'),
       ].map(value => {
         const strValue = String(value ?? '');
-        // Escape quotes by doubling them and wrap in quotes if it contains comma, quote, or newline
         if (strValue.includes('"') || strValue.includes(',') || strValue.includes('\n')) {
           return `"${strValue.replace(/"/g, '""')}"`;
         }
@@ -184,6 +232,16 @@ export default function ReportsPage() {
       </div>
     );
   }
+  
+  const clearFilters = () => {
+    setDepartmentFilter('all');
+    setAssignedUserFilter('all');
+  }
+
+  const renderSortIcon = (key: SortKey) => {
+    if (sortKey !== key) return null;
+    return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
 
   return (
     <div className="space-y-6">
@@ -201,24 +259,66 @@ export default function ReportsPage() {
         </div>
       </div>
 
+       <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex-1 w-full">
+            <label htmlFor="dept-filter" className="text-sm font-medium">Department</label>
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger id="dept-filter" className="mt-1">
+                <SelectValue placeholder="Filter by Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map(dept => <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1 w-full">
+            <label htmlFor="user-filter" className="text-sm font-medium">Assigned Person</label>
+            <Select value={assignedUserFilter} onValueChange={setAssignedUserFilter}>
+              <SelectTrigger id="user-filter" className="mt-1">
+                <SelectValue placeholder="Filter by Assigned User" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Users</SelectItem>
+                {users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {(departmentFilter !== 'all' || assignedUserFilter !== 'all') && (
+            <Button variant="ghost" onClick={clearFilters} className="w-full sm:w-auto">
+              <X className="mr-2 h-4 w-4"/> Clear Filters
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle>All Loan Tasks ({loans.length})</CardTitle>
+          <CardTitle>All Loan Tasks ({filteredAndSortedLoans.length} of {loans.length})</CardTitle>
           <CardDescription>This report shows active and inactive loan tasks across all departments.</CardDescription>
         </CardHeader>
         <CardContent>
-          {loans.length === 0 ? (
+          {filteredAndSortedLoans.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground">
               <BookCheck className="mx-auto h-12 w-12 mb-4" />
               <p className="text-lg font-semibold">No Loan Requests Found</p>
-              <p>There are no loan requests in the system to report on.</p>
+              <p>There are no loan requests matching your current filter criteria.</p>
             </div>
           ) : (
             <TooltipProvider>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Customer</TableHead>
+                  <TableHead>
+                     <Button variant="ghost" onClick={() => handleSort('customerName')} className="px-0">
+                      Customer
+                      {renderSortIcon('customerName')}
+                    </Button>
+                  </TableHead>
                   <TableHead>Loan Number</TableHead>
                   <TableHead>Current Stage</TableHead>
                   <TableHead>Department</TableHead>
@@ -228,7 +328,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedLoans.map((loan) => {
+                {filteredAndSortedLoans.map((loan) => {
                   const timeInStage = loan.stageEntryDate 
                     ? formatDistanceToNowStrict(parseISO(loan.stageEntryDate), { addSuffix: false })
                     : 'N/A';
@@ -257,10 +357,14 @@ export default function ReportsPage() {
                       <TableCell>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1.5"><User className="inline h-4 w-4 mr-1 text-muted-foreground"/> {getAssignedUserName(loan.assignedTo)}</span>
+                                <span className="flex items-center gap-1.5"><User className="inline h-4 w-4 mr-1 text-muted-foreground"/> {getAssignedUserNames(loan.assignedToUsers)}</span>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p>{users.find(u => u.id === loan.assignedTo)?.email || 'Unassigned'}</p>
+                                {loan.assignedToUsers.length > 0 ? (
+                                    loan.assignedToUsers.map(u => <p key={u.id}>{u.email}</p>)
+                                ) : (
+                                    <p>Unassigned</p>
+                                )}
                             </TooltipContent>
                         </Tooltip>
                       </TableCell>
