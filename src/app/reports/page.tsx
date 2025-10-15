@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions, getDepartments } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition, User as AppUser, Department as AppDepartment } from '@/types/loan';
-import { format, parseISO, intervalToDuration } from 'date-fns';
+import { format, parseISO, intervalToDuration, isToday, isThisWeek, isThisMonth, isThisYear, isValid } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
@@ -26,6 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 type SortKey = 'customerName' | 'lastUpdatedDate' | 'loanAmount' | 'submittedDate';
 type SortDirection = 'asc' | 'desc';
+type DateRangeFilter = 'all' | 'today' | 'weekly' | 'monthly' | 'yearly';
+
 
 export default function ReportsPage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -40,6 +42,7 @@ export default function ReportsPage() {
 
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [assignedUserFilter, setAssignedUserFilter] = useState<string>('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('lastUpdatedDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -111,6 +114,21 @@ export default function ReportsPage() {
     if (assignedUserFilter !== 'all') {
       filtered = filtered.filter(loan => loan.assignedToUsers.some(u => u.id === assignedUserFilter));
     }
+    
+    if (dateRangeFilter !== 'all') {
+      filtered = filtered.filter(loan => {
+        const submittedDate = parseISO(loan.submittedDate);
+        if (!isValid(submittedDate)) return false;
+
+        switch(dateRangeFilter) {
+          case 'today': return isToday(submittedDate);
+          case 'weekly': return isThisWeek(submittedDate, { weekStartsOn: 1 });
+          case 'monthly': return isThisMonth(submittedDate);
+          case 'yearly': return isThisYear(submittedDate);
+          default: return true;
+        }
+      });
+    }
 
     filtered.sort((a, b) => {
       const aVal = a[sortKey];
@@ -133,7 +151,7 @@ export default function ReportsPage() {
     });
 
     return filtered;
-  }, [loans, departmentFilter, assignedUserFilter, sortKey, sortDirection]);
+  }, [loans, departmentFilter, assignedUserFilter, dateRangeFilter, sortKey, sortDirection]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -159,10 +177,15 @@ export default function ReportsPage() {
       const timeInStage = loan.stageEntryDate ? formatPreciseDuration(parseISO(loan.stageEntryDate), new Date()) : 'N/A';
       
       let statusText = 'Active';
-      if (loan.isTerminalStage) statusText = 'Terminated';
-      else if (loan.isReadyForManagerReview) statusText = 'Review Pending';
-      else if (loan.isUrgent) statusText = 'Urgent';
-      else if (loan.isOverdue) statusText = 'Overdue';
+      if (loan.isTerminalStage) {
+          statusText = 'Terminated';
+      } else if (loan.isReadyForManagerReview) {
+          statusText = 'Review Pending';
+      } else if (loan.isUrgent) {
+          statusText = 'Urgent';
+      } else if (loan.isOverdue) {
+          statusText = 'Overdue';
+      }
 
       return [
         loan.loanNumber,
@@ -242,6 +265,7 @@ export default function ReportsPage() {
   const clearFilters = () => {
     setDepartmentFilter('all');
     setAssignedUserFilter('all');
+    setDateRangeFilter('all');
   }
 
   const renderSortIcon = (key: SortKey) => {
@@ -269,8 +293,8 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col sm:flex-row gap-4 items-end">
-          <div className="flex-1 w-full">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div className="w-full">
             <label htmlFor="dept-filter" className="text-sm font-medium">Department</label>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger id="dept-filter" className="mt-1">
@@ -282,7 +306,7 @@ export default function ReportsPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex-1 w-full">
+          <div className="w-full">
             <label htmlFor="user-filter" className="text-sm font-medium">Assigned Person</label>
             <Select value={assignedUserFilter} onValueChange={setAssignedUserFilter}>
               <SelectTrigger id="user-filter" className="mt-1">
@@ -294,7 +318,22 @@ export default function ReportsPage() {
               </SelectContent>
             </Select>
           </div>
-          {(departmentFilter !== 'all' || assignedUserFilter !== 'all') && (
+          <div className="w-full">
+            <label htmlFor="date-range-filter" className="text-sm font-medium">Date Range (Submitted)</label>
+            <Select value={dateRangeFilter} onValueChange={(value) => setDateRangeFilter(value as DateRangeFilter)}>
+              <SelectTrigger id="date-range-filter" className="mt-1">
+                <SelectValue placeholder="Filter by Date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="weekly">This Week</SelectItem>
+                <SelectItem value="monthly">This Month</SelectItem>
+                <SelectItem value="yearly">This Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(departmentFilter !== 'all' || assignedUserFilter !== 'all' || dateRangeFilter !== 'all') && (
             <Button variant="ghost" onClick={clearFilters} className="w-full sm:w-auto">
               <X className="mr-2 h-4 w-4"/> Clear Filters
             </Button>
@@ -420,4 +459,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
