@@ -21,6 +21,7 @@ export interface User {
   fullName: string; // Typically derived if firstName/lastName exist, or from a 'name' claim
   email: string;
   phoneNumber?: string;
+  imageUrl?: string;
 
   departmentId?: string;
   department?: Department; // Name of the department
@@ -146,7 +147,7 @@ export interface LoanRequest {
   assignedDepartmentId?: string;
   assignedDepartment?: string;
   
-  assignedToUsers: User[]; // User ID (Prisma User ID)
+  assignedToUsers: User[]; // Now an array for multiple assignees
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];

@@ -58,7 +58,7 @@ export default function DepartmentQueuePage() {
           setUnassignedLoans([]);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedDepartment && !loan.assignedTo && !loan.isReadyForManagerReview
+            loan.assignedDepartment && loan.assignedToUsers.length === 0 && !loan.isReadyForManagerReview
           );
           setUnassignedLoans(filteredLoans);
         } else {

@@ -27,8 +27,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User as UserIconLucide, Info, Phone, DollarSign, Type, Landmark, Mail } from 'lucide-react'; // Renamed User import
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, User as UserIconLucide, Info, Phone, DollarSign, Type, Landmark, Mail } from 'lucide-react';
 import type { LoanRequest, User as UserType, Department } from '@/types/loan';
 import { useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
@@ -43,7 +43,7 @@ const editLoanFormSchema = z.object({
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   loanType: z.string().min(2, { message: 'Loan type is required.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
-  assignedTo: z.string().optional(), // User ID
+  assignedTo: z.array(z.string()).optional(), // Array of User IDs
 });
 
 type EditLoanFormValues = z.infer<typeof editLoanFormSchema>;
@@ -52,8 +52,8 @@ interface EditLoanDetailsDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   loan: LoanRequest | null;
-  users: UserType[]; // Potentially filtered by department already
-  currentDepartment?: Department; // To inform the user
+  users: UserType[];
+  currentDepartment?: Department;
   onSubmit: (data: EditLoanFormValues) => Promise<void>;
   isSaving: boolean;
 }
@@ -62,7 +62,7 @@ export function EditLoanDetailsDialog({
   isOpen,
   onOpenChange,
   loan,
-  users, // These users should ideally be filtered by loan.assignedDepartment
+  users,
   currentDepartment,
   onSubmit,
   isSaving,
@@ -86,7 +86,7 @@ export function EditLoanDetailsDialog({
         loanAmount: loan.loanAmount,
         loanType: loan.loanType,
         loanPurpose: loan.loanPurpose,
-        assignedTo: loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE,
+        assignedTo: loan.assignedToUsers.map(u => u.id) || [],
       });
     }
   }, [loan, isOpen, form]);
@@ -100,7 +100,6 @@ export function EditLoanDetailsDialog({
           <DialogTitle>Edit Loan Details / Assign Staff</DialogTitle>
           <DialogDescription>
             Modify loan application info. Current Department: <span className="font-semibold">{currentDepartment || 'N/A'}</span>.
-            Assigning staff is typically for users within this department.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -111,39 +110,57 @@ export function EditLoanDetailsDialog({
               <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <FormControl><div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <FormControl><div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanType" render={({ field }) => ( <FormItem> <FormLabel>Loan Type</FormLabel> <FormControl><div className="relative"><Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., Personal, Mortgage, Auto" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
-              
-              {canAssignStaff && (
+            </div>
+
+             {canAssignStaff && (
                 <FormField
                   control={form.control}
                   name="assignedTo"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Assign to Staff (in {currentDepartment || 'current'} Dept)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || UNASSIGNED_DIALOG_OPTION_VALUE} disabled={isSaving || !canAssignStaff}>
-                        <FormControl>
-                          <div className="relative">
-                            <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <SelectTrigger className="pl-10">
-                                <SelectValue placeholder="Select staff member" />
-                            </SelectTrigger>
-                          </div>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned to Staff</SelectItem>
-                          {users.map(user => ( 
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''} {user.department && user.department !== currentDepartment ? `(${user.department} Dept)`: ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDesc>Only users from the current loan department should typically be assigned.</FormDesc>
+                       <FormLabel>Assign to Staff (in {currentDepartment || 'current'} Dept)</FormLabel>
+                        <div className="space-y-2 p-3 border rounded-md max-h-48 overflow-y-auto">
+                        {users.map((user) => (
+                            <FormField
+                            key={user.id}
+                            control={form.control}
+                            name="assignedTo"
+                            render={({ field }) => {
+                                return (
+                                <FormItem
+                                    key={user.id}
+                                    className="flex flex-row items-start space-x-3 space-y-0"
+                                >
+                                    <FormControl>
+                                    <Checkbox
+                                        checked={field.value?.includes(user.id)}
+                                        onCheckedChange={(checked) => {
+                                        return checked
+                                            ? field.onChange([...(field.value || []), user.id])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                (value) => value !== user.id
+                                                )
+                                            )
+                                        }}
+                                        disabled={isSaving}
+                                    />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">
+                                        {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''}
+                                    </FormLabel>
+                                </FormItem>
+                                )
+                            }}
+                            />
+                        ))}
+                        {users.length === 0 && <p className="text-sm text-muted-foreground text-center">No staff found for this department.</p>}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               )}
-            </div>
 
             <FormField control={form.control} name="loanPurpose" render={({ field }) => ( <FormItem> <FormLabel>Loan Purpose</FormLabel> <FormControl><div className="relative"><Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} rows={3} disabled={isSaving || !canEditDetails} /></div></FormControl> <FormDesc>Provide a clear and concise reason for the loan application.</FormDesc> <FormMessage /> </FormItem> )} />
             <DialogFooter className="pt-4">

@@ -175,11 +175,18 @@ export default function LoanDetailPage() {
 
     if (!canEditDetails && !canAssignStaff) return;
 
-    const finalAssignedTo = data.assignedTo === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : data.assignedTo;
+    // `data.assignedTo` will be an array of user IDs from the multi-select
+    const newAssignedUserIds = new Set(data.assignedTo || []);
+    const currentAssignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
 
     let historyUpdate: LoanHistoryEntry[] = [...loan.history];
-    if (canAssignStaff && finalAssignedTo !== loan.assignedTo) {
-        const assignedUserName = finalAssignedTo ? users.find(u=>u.id === finalAssignedTo)?.fullName : 'Unassigned';
+    
+    const assignmentChanged = newAssignedUserIds.size !== currentAssignedUserIds.size ||
+      !Array.from(newAssignedUserIds).every(id => currentAssignedUserIds.has(id));
+
+    if (canAssignStaff && assignmentChanged) {
+        const assignedUsers = users.filter(u => newAssignedUserIds.has(u.id));
+        const assignedNames = assignedUsers.length > 0 ? assignedUsers.map(u => u.fullName).join(', ') : 'Unassigned';
         const currentUserName = currentUser?.fullName || 'System Process';
         historyUpdate.push({
             id: `hist-assign-${Date.now()}`,
@@ -187,10 +194,10 @@ export default function LoanDetailPage() {
             timestamp: formatISO(new Date()),
             userId: currentUser?.id || 'system-prisma',
             userName: currentUserName,
-            notes: `Case assignment changed. Now assigned to: ${assignedUserName}.`
+            notes: `Case assignment changed. Now assigned to: ${assignedNames}.`
         });
     }
-
+    
     const payload: Partial<Omit<LoanRequest, 'id'>> = { history: historyUpdate };
     if (canEditDetails) {
         Object.assign(payload, {
@@ -203,9 +210,8 @@ export default function LoanDetailPage() {
         });
     }
     if (canAssignStaff) {
-        payload.assignedTo = finalAssignedTo;
+        payload.assignedToUsers = Array.from(newAssignedUserIds).map(id => users.find(u => u.id === id)).filter(Boolean) as UserType[];
     }
-
 
     const success = await handleLocalAndUpdateService(payload, "Loan details updated.");
     if (success) setIsEditLoanDialogOpen(false);
@@ -323,12 +329,12 @@ export default function LoanDetailPage() {
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
 
-    const actingUserId = loan.assignedTo || currentUser.id;
-    const actingUserName = loan.assignedTo ? (users.find(u=>u.id === loan.assignedTo)?.fullName || currentUser.fullName || 'Assigned Officer') : (currentUser.fullName || 'System Process');
+    const officer = loan.assignedToUsers.find(u => u.id === currentUser.id);
+    const actingUserName = officer?.fullName || currentUser.fullName || 'Assigned Officer';
 
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-      userId: actingUserId,
+      userId: currentUser.id,
       userName: actingUserName,
       notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
     };
@@ -367,8 +373,8 @@ export default function LoanDetailPage() {
     await handleLocalAndUpdateService({
       currentStageId: nextStageDef.id,
       currentStageStatus: initialStatusForNextStage,
-      assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This is not right
-      assignedTo: undefined,
+      assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This needs fixing
+      assignedToUsers: [],
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
@@ -376,7 +382,7 @@ export default function LoanDetailPage() {
     }, `${loan.customerName} moved to ${nextStageDef.name}.`);
   };
 
-  const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeId?: string) => {
+  const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeIds: string[]) => {
     if (!userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) || !currentUser || !loan || !currentStageDef) {
         toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
         return;
@@ -396,7 +402,7 @@ export default function LoanDetailPage() {
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
-      assignedTo: reworkAssigneeId,
+      assignedToUsers: users.filter(u => reworkAssigneeIds.includes(u.id)),
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
     if (success) setIsReturnForReworkDialogOpen(false);
@@ -467,7 +473,7 @@ export default function LoanDetailPage() {
         workflowVersionId: newWorkflowVersionId,
         currentStageId: newStageId,
         assignedDepartmentId: users.find(u => u.department === newStage.responsibleDepartment)?.departmentId,
-        assignedTo: undefined,
+        assignedToUsers: [],
         isReadyForManagerReview: false,
         history: [...loan.history, newHistoryEntry],
         stageDeadline: formatISO(addDays(new Date(), newStage.defaultTimelineDays)),
@@ -604,7 +610,7 @@ export default function LoanDetailPage() {
       workflowVersionId: newVersion.id,
       currentStageId: firstStageOfNewWorkflow.id,
       assignedDepartmentId: users.find(u => u.department === firstStageOfNewWorkflow.responsibleDepartment)?.departmentId,
-      assignedTo: undefined, // Un-assign staff on workflow change
+      assignedToUsers: [], // Un-assign staff on workflow change
       isReadyForManagerReview: false,
       history: [...loan.history, newHistoryEntry],
       stageDeadline: formatISO(addDays(new Date(), firstStageOfNewWorkflow.defaultTimelineDays)),
@@ -669,7 +675,6 @@ export default function LoanDetailPage() {
     );
   }
 
-  const assignedUser = users.find(u => u.id === loan.assignedTo);
   const isActionable = !loan.isTerminalStage;
 
 
@@ -790,7 +795,7 @@ export default function LoanDetailPage() {
           )}
 
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
-          <LoanInfoDisplay loan={loan} assignedUser={assignedUser} assignedDepartment={loanCurrentDept} />
+          <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
           <Separator className="my-8" />
           <div className="grid md:grid-cols-2 gap-8">
             <LoanDocumentsManager

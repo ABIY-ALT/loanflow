@@ -67,7 +67,7 @@ export default function MyAssignedCasesPage() {
           setAssignedLoans([]);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview
+            loan.assignedToUsers.some(u => u.id === currentUser.id) && !loan.isReadyForManagerReview
           );
           setAssignedLoans(filteredLoans);
         } else {

@@ -59,7 +59,7 @@ const mapPrismaUserToAppUser = (
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         customer: PrismaCustomer;
-        assignedToUser?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null;
+        assignedToUsers: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
@@ -94,7 +94,7 @@ const mapPrismaLoanToAppLoan = (
     assignedDepartmentId: prismaLoan.assignedDepartmentId || undefined,
     assignedDepartment: prismaLoan.assignedDepartment?.name as Department | undefined || 'N/A',
 
-    assignedTo: prismaLoan.assignedToUserId || undefined,
+    assignedToUsers: prismaLoan.assignedToUsers.map(mapPrismaUserToAppUser),
     submittedDate: formatISO(new Date(prismaLoan.submittedDate)),
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
     stageDeadline: prismaLoan.stageDeadline ? formatISO(new Date(prismaLoan.stageDeadline)) : undefined,
@@ -131,7 +131,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedTo' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -227,7 +227,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
         customer: true,
-        assignedToUser: { include: { department: true, customRole: true } },
+        assignedToUsers: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
         assignedDepartment: true,
@@ -253,7 +253,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
       where: { id },
       include: {
         customer: true,
-        assignedToUser: { include: { department: true, customRole: true } },
+        assignedToUsers: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
           include: {
@@ -320,9 +320,9 @@ export async function updateLoanRequest(
         });
       }
 
-
-      if (dataToUpdate.hasOwnProperty('assignedTo')) {
-        updatePayload.assignedToUser = dataToUpdate.assignedTo ? { connect: { id: dataToUpdate.assignedTo } } : { disconnect: true };
+      if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
+        const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
+        updatePayload.assignedToUsers = { set: userIds };
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
@@ -353,7 +353,7 @@ export async function updateLoanRequest(
         updatePayload.isTerminalStage = isTerminal;
         updatePayload.isOverdue = isBefore(newStageDeadline, new Date()) && !isTerminal;
 
-        if (!dataToUpdate.hasOwnProperty('assignedTo')) updatePayload.assignedToUser = { disconnect: true };
+        if (!dataToUpdate.hasOwnProperty('assignedToUsers')) updatePayload.assignedToUsers = { set: [] }; // Unassign on stage change
         if (!dataToUpdate.hasOwnProperty('assignedDepartmentId')) updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
       }
 
@@ -420,7 +420,7 @@ export async function updateLoanRequest(
         data: updatePayload,
         include: {
           customer: true,
-          assignedToUser: { include: { department: true, customRole: true } },
+          assignedToUsers: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
           assignedDepartment: true,
@@ -899,6 +899,7 @@ export async function searchLoanRequests(
         isUrgent: pl.isUrgent,
         documents: [],
         history: [],
+        assignedToUsers: [],
     }));
 
     return { loans: appLoans as LoanRequest[] };

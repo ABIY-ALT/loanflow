@@ -3,7 +3,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building, Flame } from 'lucide-react';
+import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building, Flame, Users as UsersIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,7 +21,6 @@ export default function ManagerReviewQueuePage() {
   const [reviewLoans, setReviewLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [users, setUsers] = useState<User[]>([]); // State to store users from service
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]); // State for workflow definitions
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string | undefined => {
@@ -61,15 +60,13 @@ export default function ManagerReviewQueuePage() {
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan => 
             loan.isReadyForManagerReview && 
-            loan.assignedTo &&
+            loan.assignedToUsers.length > 0 &&
             loan.assignedDepartment === currentUser.department
           );
           setReviewLoans(filteredLoans);
-          setUsers(loansResult.users || []); // Store users from the service
         } else {
           setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`));
           setReviewLoans([]);
-          setUsers([]);
         }
         
         if (wfResult.error) {
@@ -85,7 +82,6 @@ export default function ManagerReviewQueuePage() {
         const errorMessage = err.message || "An unknown error occurred fetching page data.";
         setError(errorMessage);
         setReviewLoans([]);
-        setUsers([]);
         setWorkflowDefs([]);
       } finally {
         setIsLoading(false);
@@ -94,10 +90,9 @@ export default function ManagerReviewQueuePage() {
     fetchPageData();
   }, [currentUser, authIsLoading]);
 
-  const getAssignedUserName = (userId?: string) => {
-    if (!userId) return "N/A";
-    const user = users.find(u => u.id === userId); // Use users state from service
-    return user ? user.name : "Unknown User";
+  const getAssignedUserNames = (users: User[]): string => {
+    if (users.length === 0) return "N/A";
+    return users.map(u => u.name).join(', ');
   };
   
   const sortedLoans = useMemo(() => {
@@ -192,7 +187,7 @@ export default function ManagerReviewQueuePage() {
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell><Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge></TableCell>
                     <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{loan.assignedDepartment || 'N/A'}</TableCell>
-                    <TableCell>{getAssignedUserName(loan.assignedTo)}</TableCell> 
+                    <TableCell><UsersIcon className="inline h-4 w-4 mr-1 text-muted-foreground"/>{getAssignedUserNames(loan.assignedToUsers)}</TableCell> 
                     <TableCell>{loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'MMM dd, yyyy') : <span className="text-muted-foreground">N/A</span>}</TableCell>
                     <TableCell className="text-center">
                       <Link href={`/loan-requests/${loan.id}`} passHref>
