@@ -146,7 +146,7 @@ export interface LoanRequest {
   assignedDepartmentId?: string;
   assignedDepartment?: string;
   
-  assignedTo?: string; // User ID (Prisma User ID)
+  assignedToUsers: User[]; // User ID (Prisma User ID)
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
