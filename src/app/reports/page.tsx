@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { getLoanRequests, getWorkflowDefinitions, getDepartments } from '@/services/loan-service-prisma';
 import type { LoanRequest, WorkflowDefinition, User as AppUser, Department as AppDepartment } from '@/types/loan';
-import { format, parseISO, formatDistanceToNowStrict } from 'date-fns';
+import { format, parseISO, intervalToDuration } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
@@ -88,6 +88,18 @@ export default function ReportsPage() {
     if (!assignedUsers || assignedUsers.length === 0) return "Unassigned";
     return assignedUsers.map(u => u.fullName).join(', ');
   }, []);
+
+  const formatPreciseDuration = (start: Date, end: Date): string => {
+    const duration = intervalToDuration({ start, end });
+    const parts: string[] = [];
+    if (duration.years && duration.years > 0) parts.push(`${duration.years}y`);
+    if (duration.months && duration.months > 0) parts.push(`${duration.months}m`);
+    if (duration.days && duration.days > 0) parts.push(`${duration.days}d`);
+    if (duration.hours && duration.hours > 0 && parts.length < 2) parts.push(`${duration.hours}h`);
+
+    if (parts.length === 0) return "Just now";
+    return parts.slice(0, 3).join(' '); // Show at most 3 parts (e.g., "1y 2m 3d")
+  };
   
   const filteredAndSortedLoans = useMemo(() => {
     let filtered = [...loans];
@@ -144,7 +156,7 @@ export default function ReportsPage() {
     ];
 
     const data = filteredAndSortedLoans.map(loan => {
-      const timeInStage = loan.stageEntryDate ? formatDistanceToNowStrict(parseISO(loan.stageEntryDate), { addSuffix: false }) : 'N/A';
+      const timeInStage = loan.stageEntryDate ? formatPreciseDuration(parseISO(loan.stageEntryDate), new Date()) : 'N/A';
       
       let statusText = 'Active';
       if (loan.isTerminalStage) statusText = 'Terminated';
@@ -314,7 +326,12 @@ export default function ReportsPage() {
                       {renderSortIcon('customerName')}
                     </Button>
                   </TableHead>
-                  <TableHead><DollarSign className="inline h-4 w-4 mr-1"/>Amount</TableHead>
+                  <TableHead>
+                    <Button variant="ghost" onClick={() => handleSort('loanAmount')} className="px-1">
+                        <DollarSign className="inline h-4 w-4 mr-1"/>Amount
+                        {renderSortIcon('loanAmount')}
+                    </Button>
+                  </TableHead>
                   <TableHead><Type className="inline h-4 w-4 mr-1"/>Loan Type</TableHead>
                   <TableHead>
                     <Button variant="ghost" onClick={() => handleSort('submittedDate')} className="px-1">
@@ -332,9 +349,7 @@ export default function ReportsPage() {
               </TableHeader>
               <TableBody>
                 {filteredAndSortedLoans.map((loan) => {
-                  const timeInStage = loan.stageEntryDate 
-                    ? formatDistanceToNowStrict(parseISO(loan.stageEntryDate), { addSuffix: false })
-                    : 'N/A';
+                  const timeInStage = loan.stageEntryDate ? formatPreciseDuration(parseISO(loan.stageEntryDate), new Date()) : 'N/A';
                   
                   let statusComponent;
                   if (loan.isTerminalStage) {
@@ -405,3 +420,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+
