@@ -735,7 +735,7 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
       where: {
         isActive: true,
         workflowDefinition: {
-          departmentId: { not: null }, // Ensure it has a starting department
+          //departmentId: { not: null }, // Ensure it has a starting department
         },
         stages: {
           some: {} // Ensure it has at least one stage
