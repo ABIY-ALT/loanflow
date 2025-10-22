@@ -1,7 +1,7 @@
 
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle } from 'lucide-react';
+import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle, BadgeCheck } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
@@ -46,6 +46,7 @@ export function LoanDetailHeader({
   const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
   const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
   const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
+  const hasCurrentUserCompleted = loan.stageCompletedBy?.some(u => u.id === currentUser.id) || false;
 
   return (
     <div className="flex items-center justify-between mb-8 flex-wrap gap-2">
@@ -67,12 +68,13 @@ export function LoanDetailHeader({
         }
 
         {isActionableStage && userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
-          <Button onClick={onMarkStageComplete} disabled={isSaving}>
+          <Button onClick={onMarkStageComplete} disabled={isSaving || hasCurrentUserCompleted}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <CheckSquare className="mr-2 h-4 w-4" /> Mark Stage Complete & Submit
+            {hasCurrentUserCompleted ? <BadgeCheck className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
+            {hasCurrentUserCompleted ? 'Part Submitted' : 'Mark Stage Complete & Submit'}
           </Button>
         )}
-
+        
         {isActionableStage && userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && loan.isReadyForManagerReview && (
             <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -333,6 +333,12 @@ export default function LoanDetailPage() {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
 
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
+    // If no one is assigned, no one can complete it.
+    if (assignedUserIds.size === 0) {
+      toast({ title: "Action Not Allowed", description: "Cannot complete stage: No staff assigned.", variant: "warning" });
+      return;
+    }
+
     const completedUserIds = new Set(loan.stageCompletedBy?.map(u => u.id) || []);
     
     // Add current user to completed list if they haven't already completed it.
@@ -341,7 +347,7 @@ export default function LoanDetailPage() {
     }
     
     // Check if all assigned users have now completed the stage
-    const allAssignedHaveCompleted = assignedUserIds.size > 0 && Array.from(assignedUserIds).every(id => completedUserIds.has(id));
+    const allAssignedHaveCompleted = Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
     const officerName = currentUser.fullName || 'Officer';
     const newHistoryEntry: LoanHistoryEntry = {
@@ -354,7 +360,8 @@ export default function LoanDetailPage() {
     if (allAssignedHaveCompleted) {
         newHistoryEntry.notes += ` All assigned staff have completed their tasks. Submitted for manager review in ${loan.assignedDepartment} department.`;
     } else {
-        newHistoryEntry.notes += ` Waiting for ${assignedUserIds.size - completedUserIds.size} other assigned staff to complete.`;
+        const remainingCount = assignedUserIds.size - completedUserIds.size;
+        newHistoryEntry.notes += ` Waiting for ${remainingCount} other assigned staff to complete.`;
     }
     
     const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
@@ -367,7 +374,22 @@ export default function LoanDetailPage() {
   };
 
   const handleManagerPromoteLoan = async () => {
-    if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !validateCurrentStageRequirements()) return;
+    if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef) return;
+
+    // Strict check: Manager cannot promote unless all assignees have completed their part.
+    const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
+    const completedUserIds = new Set(loan.stageCompletedBy.map(u => u.id));
+    if (assignedUserIds.size > 0 && !Array.from(assignedUserIds).every(id => completedUserIds.has(id))) {
+        toast({
+            title: "Promotion Blocked",
+            description: "Cannot promote stage. Not all assigned staff have marked their work as complete.",
+            variant: "destructive",
+            duration: 7000
+        });
+        return;
+    }
+
+    if (!validateCurrentStageRequirements()) return;
 
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (currentStageIndex === -1) {
