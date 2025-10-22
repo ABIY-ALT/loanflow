@@ -38,6 +38,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Navigation to /login is handled by AuthContext's useEffect
   };
   
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
   if (authIsLoadingGlobal && pathname !== '/login') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
