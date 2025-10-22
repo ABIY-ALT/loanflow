@@ -88,7 +88,7 @@ export interface WorkflowDefinition {
   name: string;
   departmentId: string;
   departmentName: string;
-c  loanTypeId: string;
+  loanTypeId: string;
   loanTypeName: string;
   description?: string;
   versions: WorkflowVersion[];
