@@ -15,6 +15,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 
 export default function ManagerReviewQueuePage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -59,7 +66,7 @@ export default function ManagerReviewQueuePage() {
           setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`));
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan => 
-            loan.isReadyForManagerReview && 
+            (loan.isReadyForManagerReview || (loan.stageCompletedBy && loan.stageCompletedBy.length > 0)) &&
             loan.assignedToUsers.length > 0 &&
             loan.assignedDepartment === currentUser.department
           );
@@ -97,10 +104,16 @@ export default function ManagerReviewQueuePage() {
   
   const sortedLoans = useMemo(() => {
     return [...reviewLoans].sort((a, b) => {
+      // Prioritize "Ready for Review"
+      if (a.isReadyForManagerReview && !b.isReadyForManagerReview) return -1;
+      if (!a.isReadyForManagerReview && b.isReadyForManagerReview) return 1;
+      // Then prioritize Urgent
       if (a.isUrgent && !b.isUrgent) return -1;
       if (!a.isUrgent && b.isUrgent) return 1;
+      // Then prioritize Overdue
       if (a.isOverdue && !b.isOverdue) return -1;
       if (!a.isOverdue && b.isOverdue) return 1;
+      // Finally, by last updated date
       return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
     });
   }, [reviewLoans]);
@@ -135,7 +148,7 @@ export default function ManagerReviewQueuePage() {
             Manager Review Queue
           </h1>
           <p className="text-muted-foreground">
-            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department are awaiting your review. Urgent cases are prioritized.
+            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department have been submitted for review. Urgent cases are prioritized.
           </p>
         </div>
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
@@ -151,9 +164,9 @@ export default function ManagerReviewQueuePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cases Awaiting Your Review ({reviewLoans.length})</CardTitle>
+          <CardTitle>Cases for Your Review ({reviewLoans.length})</CardTitle>
           <CardDescription>
-            Select a case to review its details, then approve & promote it or return it for rework.
+            Select a case to review its details. Cases marked 'Ready for Review' can be promoted or returned for rework.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -161,43 +174,79 @@ export default function ManagerReviewQueuePage() {
              <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-check-circle-2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Awaiting Review</p>
-              <p>There are currently no loan requests flagged for manager review in your department.</p>
+              <p>There are currently no loan requests submitted for manager review in your department.</p>
             </div>
           ) : (
+            <TooltipProvider>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Urgent</TableHead>
+                  <TableHead>Completion Status</TableHead>
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Loan Number</TableHead>
                   <TableHead>Current Stage</TableHead>
-                  <TableHead>Department</TableHead>
                   <TableHead>Assigned Staff</TableHead>
                   <TableHead>Last Updated</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedLoans.map((loan: LoanRequest) => (
-                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isUrgent && "bg-red-50 dark:bg-red-900/20")}>
+                {sortedLoans.map((loan: LoanRequest) => {
+                  const completedCount = loan.stageCompletedBy?.length || 0;
+                  const assignedCount = loan.assignedToUsers.length;
+                  const completionText = `${completedCount} of ${assignedCount} completed`;
+
+                  return (
+                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isReadyForManagerReview ? "bg-green-50 dark:bg-green-900/20" : "", loan.isUrgent && "border-2 border-red-400 dark:border-red-600")}>
                     <TableCell className="text-center">
                       {loan.isUrgent && <Flame className="h-5 w-5 text-red-500" />}
                     </TableCell>
+                    <TableCell>
+                      {loan.isReadyForManagerReview ? (
+                        <Badge className="bg-green-600 hover:bg-green-700 text-white">Ready for Review</Badge>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                             <Badge variant="outline">{`Pending Staff (${completionText})`}</Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Waiting for all assigned staff to complete their parts.</p>
+                            <ul className="list-disc pl-4 text-xs">
+                              {loan.assignedToUsers.map(u => (
+                                <li key={u.id} className={loan.stageCompletedBy.some(c => c.id === u.id) ? 'text-green-600' : 'text-amber-600'}>
+                                  {u.fullName} ({loan.stageCompletedBy.some(c => c.id === u.id) ? 'Completed' : 'Pending'})
+                                </li>
+                              ))}
+                            </ul>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
-                    <TableCell><Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge></TableCell>
-                    <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{loan.assignedDepartment || 'N/A'}</TableCell>
-                    <TableCell><UsersIcon className="inline h-4 w-4 mr-1 text-muted-foreground"/>{getAssignedUserNames(loan.assignedToUsers)}</TableCell> 
+                    <TableCell><Badge variant="secondary">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge></TableCell>
+                    <TableCell>
+                        <div className="flex items-center gap-1.5">
+                            <UsersIcon className="h-4 w-4 text-muted-foreground"/>
+                            {getAssignedUserNames(loan.assignedToUsers)}
+                        </div>
+                    </TableCell> 
                     <TableCell>{loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'MMM dd, yyyy') : <span className="text-muted-foreground">N/A</span>}</TableCell>
                     <TableCell className="text-center">
                       <Link href={`/loan-requests/${loan.id}`} passHref>
-                        <Button variant="ghost" size="sm">Review & Process <ExternalLink className="ml-2 h-3 w-3" /></Button>
+                        <Button variant="ghost" size="sm">
+                          {loan.isReadyForManagerReview ? 'Review & Process' : 'View Details'}
+                          <ExternalLink className="ml-2 h-3 w-3" />
+                        </Button>
                       </Link>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>
