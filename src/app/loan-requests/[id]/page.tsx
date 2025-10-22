@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -59,9 +58,9 @@ export default function LoanDetailPage() {
   const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
-
+  
+  // ALL HOOKS MOVED TO TOP LEVEL
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
-
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -73,6 +72,20 @@ export default function LoanDetailPage() {
     if (!loan || !currentWorkflowVersion || !loan.currentStageId) return null;
     return currentWorkflowVersion.stages.find(s => s.id === loan.currentStageId) || null;
   }, [loan, currentWorkflowVersion]);
+  
+  const terminationReason = useMemo(() => {
+    if (!loan?.isTerminalStage) return null;
+
+    const terminationEntry = [...loan.history]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .find(h => h.notes?.startsWith("Loan process terminated by higher authority. Reason:"));
+
+    if (terminationEntry?.notes) {
+      return terminationEntry.notes.replace("Loan process terminated by higher authority. Reason: ", "").trim();
+    }
+    
+    return "No reason provided.";
+  }, [loan]);
 
   const fetchLoanData = useCallback(async () => {
     if (!loanId) return;
@@ -115,7 +128,7 @@ export default function LoanDetailPage() {
   useEffect(() => {
     fetchLoanData();
   }, [fetchLoanData]);
-
+  
   const handleLocalAndUpdateService = useCallback(async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
@@ -683,8 +696,7 @@ export default function LoanDetailPage() {
       `Loan marked as ${isUrgent ? 'urgent' : 'not urgent'}.`
     );
   };
-
-
+  
   if (isLoading && !loan) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
@@ -730,22 +742,6 @@ export default function LoanDetailPage() {
   }
 
   const isActionable = !loan.isTerminalStage;
-
-  const terminationReason = useMemo(() => {
-    if (!loan?.isTerminalStage) return null;
-
-    const terminationEntry = [...loan.history]
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .find(h => h.notes?.startsWith("Loan process terminated by higher authority. Reason:"));
-
-    if (terminationEntry?.notes) {
-      return terminationEntry.notes.replace("Loan process terminated by higher authority. Reason: ", "").trim();
-    }
-    
-    return "No reason provided.";
-  }, [loan]);
-
-
   let progressPercentage = 0;
   if (currentWorkflowVersion && loan?.currentStageId) {
       const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
@@ -921,6 +917,3 @@ export default function LoanDetailPage() {
     </div>
   );
 }
-
-    
-    
