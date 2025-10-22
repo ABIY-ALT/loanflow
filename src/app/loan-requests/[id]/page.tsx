@@ -378,16 +378,19 @@ export default function LoanDetailPage() {
 
     // Strict check: Manager cannot promote unless all assignees have completed their part.
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
-    const completedUserIds = new Set(loan.stageCompletedBy.map(u => u.id));
-    if (assignedUserIds.size > 0 && !Array.from(assignedUserIds).every(id => completedUserIds.has(id))) {
-        toast({
-            title: "Promotion Blocked",
-            description: "Cannot promote stage. Not all assigned staff have marked their work as complete.",
-            variant: "destructive",
-            duration: 7000
-        });
-        return;
+    if (assignedUserIds.size > 0) {
+      const completedUserIds = new Set(loan.stageCompletedBy.map(u => u.id));
+      if (!Array.from(assignedUserIds).every(id => completedUserIds.has(id))) {
+          toast({
+              title: "Promotion Blocked",
+              description: "Cannot promote stage. Not all assigned staff have marked their work as complete.",
+              variant: "destructive",
+              duration: 7000
+          });
+          return;
+      }
     }
+
 
     if (!validateCurrentStageRequirements()) return;
 
@@ -728,6 +731,20 @@ export default function LoanDetailPage() {
 
   const isActionable = !loan.isTerminalStage;
 
+  const terminationReason = useMemo(() => {
+    if (!loan?.isTerminalStage) return null;
+
+    const terminationEntry = [...loan.history]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .find(h => h.notes?.startsWith("Loan process terminated by higher authority. Reason:"));
+
+    if (terminationEntry?.notes) {
+      return terminationEntry.notes.replace("Loan process terminated by higher authority. Reason: ", "").trim();
+    }
+    
+    return "No reason provided.";
+  }, [loan]);
+
 
   let progressPercentage = 0;
   if (currentWorkflowVersion && loan?.currentStageId) {
@@ -808,7 +825,9 @@ export default function LoanDetailPage() {
                     </Badge>
                 )}
                 {loan.isTerminalStage && (
-                     <Badge variant="destructive" className="text-lg py-1">Process Inactive / Terminated</Badge>
+                     <Badge variant="destructive" className="text-base py-1.5 px-3 h-auto">
+                        <span className="font-semibold">Terminated:</span>&nbsp;<span className="font-normal">{terminationReason}</span>
+                     </Badge>
                 )}
             </div>
           </div>
