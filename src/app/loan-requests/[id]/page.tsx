@@ -341,7 +341,7 @@ export default function LoanDetailPage() {
     }
     
     // Check if all assigned users have now completed the stage
-    const allAssignedHaveCompleted = Array.from(assignedUserIds).every(id => completedUserIds.has(id));
+    const allAssignedHaveCompleted = assignedUserIds.size > 0 && Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
     const officerName = currentUser.fullName || 'Officer';
     const newHistoryEntry: LoanHistoryEntry = {
