@@ -45,6 +45,7 @@ export function LoanDetailHeader({
   
   const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
   const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+  const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
 
   return (
     <div className="flex items-center justify-between mb-8 flex-wrap gap-2">
@@ -65,7 +66,7 @@ export function LoanDetailHeader({
             <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Info Request</Button>
         }
 
-        {isActionableStage && userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) && loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview && (
+        {isActionableStage && userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
           <Button onClick={onMarkStageComplete} disabled={isSaving}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <CheckSquare className="mr-2 h-4 w-4" /> Mark Stage Complete & Submit
