@@ -119,6 +119,7 @@ export function EditLoanDetailsDialog({
                   render={({ field }) => (
                     <FormItem>
                        <FormLabel>Assign to Staff (in {currentDepartment || 'current'} Dept)</FormLabel>
+                        <FormDesc>Changing assignments will reset any "stage complete" sign-offs for this stage.</FormDesc>
                         <div className="space-y-2 p-3 border rounded-md max-h-48 overflow-y-auto">
                         {users.map((user) => (
                             <FormField

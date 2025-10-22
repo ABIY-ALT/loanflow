@@ -76,7 +76,7 @@ export function ReturnLoanForReworkDialog({
         <DialogHeader>
           <DialogTitle>Return Loan for Rework: {loan.customerName}</DialogTitle>
           <DialogDescription>
-            Explain why this case is being returned to staff for further work. Department: {currentDepartment || 'N/A'}.
+            Explain why this case is being returned to staff for further work. Department: {currentDepartment || 'N/A'}. This will reset any "stage complete" sign-offs.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">

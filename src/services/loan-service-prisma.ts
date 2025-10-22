@@ -60,6 +60,7 @@ const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         customer: PrismaCustomer;
         assignedToUsers: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
+        stageCompletedBy: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { loanType: PrismaLoanType, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
@@ -95,6 +96,7 @@ const mapPrismaLoanToAppLoan = (
     assignedDepartment: prismaLoan.assignedDepartment?.name as Department | undefined || 'N/A',
 
     assignedToUsers: prismaLoan.assignedToUsers.map(mapPrismaUserToAppUser),
+    stageCompletedBy: prismaLoan.stageCompletedBy.map(mapPrismaUserToAppUser),
     submittedDate: formatISO(new Date(prismaLoan.submittedDate)),
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
     stageDeadline: prismaLoan.stageDeadline ? formatISO(new Date(prismaLoan.stageDeadline)) : undefined,
@@ -131,7 +133,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy'>
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -228,6 +230,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
       include: {
         customer: true,
         assignedToUsers: { include: { department: true, customRole: true } },
+        stageCompletedBy: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
         assignedDepartment: true,
@@ -254,6 +257,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
       include: {
         customer: true,
         assignedToUsers: { include: { department: true, customRole: true } },
+        stageCompletedBy: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
           include: {
@@ -290,7 +294,7 @@ export async function updateLoanRequest(
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
-      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true } });
+      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true, assignedToUsers: true, stageCompletedBy: true } });
 
       if (!existingLoan) {
         throw new Error(`Loan with ID "${id}" not found for update.`);
@@ -323,6 +327,15 @@ export async function updateLoanRequest(
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
+        
+        // If assignment changes, reset completions and review status
+        updatePayload.stageCompletedBy = { set: [] };
+        updatePayload.isReadyForManagerReview = false;
+      }
+
+      if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
+          const userIds = dataToUpdate.stageCompletedBy?.map(u => ({ id: u.id })) || [];
+          updatePayload.stageCompletedBy = { set: userIds };
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
@@ -345,6 +358,7 @@ export async function updateLoanRequest(
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
         updatePayload.isReadyForManagerReview = false;
+        updatePayload.stageCompletedBy = { set: [] }; // Reset completions for new stage
         
         const availableStatusesForDept = newStageDef.availableStatuses && typeof newStageDef.availableStatuses === 'object' && !Array.isArray(newStageDef.availableStatuses) ? (newStageDef.availableStatuses as Record<string, string[]>)[newStageDef.responsibleDepartment.name] : [];
         updatePayload.currentStageStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -421,6 +435,7 @@ export async function updateLoanRequest(
         include: {
           customer: true,
           assignedToUsers: { include: { department: true, customRole: true } },
+          stageCompletedBy: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { loanType: true, department: true } } } },
           assignedDepartment: true,
@@ -900,6 +915,7 @@ export async function searchLoanRequests(
         documents: [],
         history: [],
         assignedToUsers: [],
+        stageCompletedBy: [],
     }));
 
     return { loans: appLoans as LoanRequest[] };

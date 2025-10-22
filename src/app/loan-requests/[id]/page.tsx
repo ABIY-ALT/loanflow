@@ -211,6 +211,9 @@ export default function LoanDetailPage() {
     }
     if (canAssignStaff) {
         payload.assignedToUsers = Array.from(newAssignedUserIds).map(id => users.find(u => u.id === id)).filter(Boolean) as UserType[];
+        // When assignment changes, reset completions
+        payload.stageCompletedBy = [];
+        payload.isReadyForManagerReview = false;
     }
 
     const success = await handleLocalAndUpdateService(payload, "Loan details updated.");
@@ -329,16 +332,38 @@ export default function LoanDetailPage() {
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
 
-    const officer = loan.assignedToUsers.find(u => u.id === currentUser.id);
-    const actingUserName = officer?.fullName || currentUser.fullName || 'Assigned Officer';
+    const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
+    const completedUserIds = new Set(loan.stageCompletedBy?.map(u => u.id) || []);
+    
+    // Add current user to completed list if they haven't already completed it.
+    if (!completedUserIds.has(currentUser.id)) {
+        completedUserIds.add(currentUser.id);
+    }
+    
+    // Check if all assigned users have now completed the stage
+    const allAssignedHaveCompleted = Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
+    const officerName = currentUser.fullName || 'Officer';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
       userId: currentUser.id,
-      userName: actingUserName,
-      notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
+      userName: officerName,
+      notes: `Staff marked stage '${currentStageDef.name}' as their part complete.`,
     };
-    await handleLocalAndUpdateService({ isReadyForManagerReview: true, history: [...loan.history, newHistoryEntry] }, `Loan submitted for manager review.`);
+
+    if (allAssignedHaveCompleted) {
+        newHistoryEntry.notes += ` All assigned staff have completed their tasks. Submitted for manager review in ${loan.assignedDepartment} department.`;
+    } else {
+        newHistoryEntry.notes += ` Waiting for ${assignedUserIds.size - completedUserIds.size} other assigned staff to complete.`;
+    }
+    
+    const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
+
+    await handleLocalAndUpdateService({
+        isReadyForManagerReview: allAssignedHaveCompleted,
+        stageCompletedBy: updatedStageCompletedBy,
+        history: [...loan.history, newHistoryEntry] 
+    }, `Your part in stage '${currentStageDef.name}' marked complete.`);
   };
 
   const handleManagerPromoteLoan = async () => {
@@ -375,6 +400,7 @@ export default function LoanDetailPage() {
       currentStageStatus: initialStatusForNextStage,
       assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This needs fixing
       assignedToUsers: [],
+      stageCompletedBy: [], // Reset completions for new stage
       history: [...loan.history, newHistoryEntry],
       isReadyForManagerReview: false,
       stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
@@ -402,6 +428,7 @@ export default function LoanDetailPage() {
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
+      stageCompletedBy: [], // Reset completions on rework
       assignedToUsers: users.filter(u => reworkAssigneeIds.includes(u.id)),
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
@@ -474,6 +501,7 @@ export default function LoanDetailPage() {
         currentStageId: newStageId,
         assignedDepartmentId: users.find(u => u.department === newStage.responsibleDepartment)?.departmentId,
         assignedToUsers: [],
+        stageCompletedBy: [],
         isReadyForManagerReview: false,
         history: [...loan.history, newHistoryEntry],
         stageDeadline: formatISO(addDays(new Date(), newStage.defaultTimelineDays)),
@@ -611,6 +639,7 @@ export default function LoanDetailPage() {
       currentStageId: firstStageOfNewWorkflow.id,
       assignedDepartmentId: users.find(u => u.department === firstStageOfNewWorkflow.responsibleDepartment)?.departmentId,
       assignedToUsers: [], // Un-assign staff on workflow change
+      stageCompletedBy: [],
       isReadyForManagerReview: false,
       history: [...loan.history, newHistoryEntry],
       stageDeadline: formatISO(addDays(new Date(), firstStageOfNewWorkflow.defaultTimelineDays)),
