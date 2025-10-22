@@ -132,9 +132,10 @@ export default function ManageRolesPage() {
     if (result.error) {
       toast({ title: `Error ${editingRole ? 'Updating' : 'Adding'} Role`, description: result.error, variant: "destructive" });
     } else {
-      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" ${editingRole ? 'updated' : 'created'} successfully.` });
+      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" ${editingRole ? 'updated' : 'created'} successfully. Refreshing to apply changes.` });
       resetFormDialog();
-      await fetchRolesCallback(); 
+      // Force a reload to reflect permission changes for the current user
+      window.location.reload();
     }
     setIsSubmitting(false);
   };
@@ -368,3 +369,4 @@ export default function ManageRolesPage() {
 }
     
 
+    

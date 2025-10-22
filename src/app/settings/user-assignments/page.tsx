@@ -105,13 +105,14 @@ export default function ManageUserAssignmentsPage() {
     const result = await updateUserAssignments(editingUser.id, payload);
 
     if (result.success && result.user) {
-      toast({ title: "Assignments Updated", description: `Assignments for ${result.user.name} saved successfully.` });
-      await fetchPageData(); 
+      toast({ title: "Assignments Updated", description: `Assignments for ${result.user.name} saved. Refreshing to apply changes.` });
       setIsFormDialogOpen(false);
+      // Force a reload to reflect permission changes for the current user
+      window.location.reload();
     } else {
       toast({ title: "Update Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
   
   if (authLoading) {
@@ -283,3 +284,5 @@ export default function ManageUserAssignmentsPage() {
     </div>
   );
 }
+
+    
