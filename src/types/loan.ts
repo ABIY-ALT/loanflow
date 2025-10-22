@@ -40,6 +40,10 @@ export interface Customer {
   loanRequests: Pick<LoanRequest, 'id' | 'loanNumber' | 'loanAmount' | 'submittedDate' | 'currentStageName'>[];
 }
 
+export interface CustomerWithDepartment extends Customer {
+    mostRecentDepartment?: Department;
+}
+
 
 export enum DocumentRequirementType {
   UPLOAD = "UPLOAD",
@@ -84,7 +88,7 @@ export interface WorkflowDefinition {
   name: string;
   departmentId: string;
   departmentName: string;
-  loanTypeId: string;
+c  loanTypeId: string;
   loanTypeName: string;
   description?: string;
   versions: WorkflowVersion[];

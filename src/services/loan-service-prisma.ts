@@ -19,7 +19,7 @@ import type {
 
 import { LoanDocumentStatus as PrismaLoanDocumentStatus, DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
 
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement, Customer } from '@/types/loan';
+import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement, Customer, CustomerWithDepartment } from '@/types/loan';
 import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
 import type { AppPermission } from '@/lib/permissions';
 
@@ -783,7 +783,7 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
   }
 }
 
-export async function getCustomers(): Promise<{ customers?: Customer[]; error?: string }> {
+export async function getCustomers(): Promise<{ customers?: CustomerWithDepartment[]; error?: string }> {
   try {
     const prismaCustomers = await prisma.customer.findMany({
       orderBy: { name: 'asc' },
@@ -794,27 +794,32 @@ export async function getCustomers(): Promise<{ customers?: Customer[]; error?: 
             loanNumber: true,
             loanAmount: true,
             submittedDate: true,
-            currentWorkflowStage: { select: { name: true } }
+            currentWorkflowStage: { select: { name: true } },
+            assignedDepartment: { select: { name: true } },
           },
           orderBy: { submittedDate: 'desc' }
         }
       }
     });
 
-    const appCustomers: Customer[] = prismaCustomers.map(pc => ({
-      id: pc.id,
-      name: pc.name,
-      email: pc.email,
-      phone: pc.phone || undefined,
-      branch: pc.branch || undefined,
-      loanRequests: pc.loanRequests.map(lr => ({
-        id: lr.id,
-        loanNumber: lr.loanNumber,
-        loanAmount: lr.loanAmount.toNumber(),
-        submittedDate: formatISO(lr.submittedDate),
-        currentStageName: lr.currentWorkflowStage?.name || 'Unknown'
-      })),
-    }));
+    const appCustomers: CustomerWithDepartment[] = prismaCustomers.map(pc => {
+      const mostRecentLoan = pc.loanRequests[0];
+      return {
+        id: pc.id,
+        name: pc.name,
+        email: pc.email,
+        phone: pc.phone || undefined,
+        branch: pc.branch || undefined,
+        mostRecentDepartment: mostRecentLoan?.assignedDepartment?.name as Department | undefined,
+        loanRequests: pc.loanRequests.map(lr => ({
+          id: lr.id,
+          loanNumber: lr.loanNumber,
+          loanAmount: lr.loanAmount.toNumber(),
+          submittedDate: formatISO(lr.submittedDate),
+          currentStageName: lr.currentWorkflowStage?.name || 'Unknown'
+        })),
+      };
+    });
 
     return { customers: appCustomers };
   } catch (e: any) {

@@ -1,24 +1,25 @@
-
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getCustomers } from '@/services/loan-service-prisma';
-import type { Customer } from '@/types/loan';
-import { Loader2, Users, AlertCircle, ArrowLeft, ExternalLink } from 'lucide-react';
+import type { CustomerWithDepartment } from '@/types/loan';
+import { Loader2, Users, AlertCircle, ArrowLeft, ExternalLink, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { format } from 'date-fns';
+import { Input } from '@/components/ui/input';
+
 
 export default function CustomersPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerWithDepartment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const canViewCustomers = user?.permissions.includes(PERMISSIONS.VIEW_CUSTOMERS);
 
@@ -47,6 +48,19 @@ export default function CustomersPage() {
 
     fetchCustomers();
   }, [authLoading, canViewCustomers]);
+  
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm) {
+      return customers;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(lowercasedFilter) ||
+      customer.email.toLowerCase().includes(lowercasedFilter) ||
+      (customer.phone && customer.phone.toLowerCase().includes(lowercasedFilter))
+    );
+  }, [customers, searchTerm]);
+
 
   if (authLoading || isLoading) {
     return (
@@ -100,10 +114,23 @@ export default function CustomersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Customers ({customers.length})</CardTitle>
-          <CardDescription>
-            This table provides an overview of all customers and their associated loan requests.
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <CardTitle>All Customers ({filteredCustomers.length})</CardTitle>
+              <CardDescription>
+                This table provides an overview of all customers and their associated loan requests.
+              </CardDescription>
+            </div>
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, phone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -112,25 +139,25 @@ export default function CustomersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Branch</TableHead>
+                <TableHead>Current Department</TableHead>
                 <TableHead className="text-center">Loan Requests</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.length === 0 && !isLoading ? (
+              {filteredCustomers.length === 0 && !isLoading ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
-                    No customers found.
+                     {searchTerm ? 'No customers match your search.' : 'No customers found.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                customers.map((customer) => (
+                filteredCustomers.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.email}</TableCell>
                     <TableCell>{customer.phone || 'N/A'}</TableCell>
-                    <TableCell>{customer.branch || 'N/A'}</TableCell>
+                    <TableCell>{customer.mostRecentDepartment || 'N/A'}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary">{customer.loanRequests.length}</Badge>
                     </TableCell>
