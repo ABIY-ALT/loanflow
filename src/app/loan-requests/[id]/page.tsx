@@ -921,3 +921,5 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+
+    
