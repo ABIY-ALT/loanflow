@@ -254,25 +254,32 @@ export default function LoanProcessPage() {
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
-  const activeWorkflows = useMemo(() => {
-    if (!fetchedWorkflowDefinitions || fetchedWorkflowDefinitions.length === 0) return [];
+  const loansWithWorkflows = useMemo(() => {
+    if (!allLoans.length || !fetchedWorkflowDefinitions.length) return [];
     
-    return fetchedWorkflowDefinitions.map(def => {
-      const activeVersion = def.versions.find(v => v.isActive);
-      return activeVersion ? { ...def, activeVersion } : null;
-    }).filter(Boolean) as (WorkflowDefinition & { activeVersion: WorkflowVersion })[];
+    return allLoans.map(loan => {
+      const workflowVersion = fetchedWorkflowDefinitions
+        .flatMap(def => def.versions)
+        .find(v => v.id === loan.workflowVersionId);
+      
+      if (!workflowVersion) return null;
 
-  }, [fetchedWorkflowDefinitions]);
+      const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
+        const dept = stage.responsibleDepartment;
+        if (!acc[dept]) {
+          acc[dept] = [];
+        }
+        acc[dept].push(stage);
+        return acc;
+      }, {} as Record<string, WorkflowStageDefinition[]>);
 
-  const workflowsByLoanType = useMemo(() => {
-    const grouped = new Map<string, (WorkflowDefinition & { activeVersion: WorkflowVersion })>();
-    activeWorkflows.forEach(wf => {
-      // Since each loan type in the settings can only have one active workflow definition
-      // we can simply set it. If there were multiple, we'd push to an array.
-      grouped.set(wf.loanTypeName, wf);
-    });
-    return Array.from(grouped.entries());
-  }, [activeWorkflows]);
+      return {
+        loan,
+        workflowVersion,
+        stagesByDept,
+      };
+    }).filter(Boolean) as { loan: LoanRequest; workflowVersion: WorkflowVersion; stagesByDept: Record<string, WorkflowStageDefinition[]> }[];
+  }, [allLoans, fetchedWorkflowDefinitions]);
 
 
   const getStageDefById = useCallback((versionId?: string, stageId?: string): WorkflowStageDefinition | null => {
@@ -317,170 +324,17 @@ export default function LoanProcessPage() {
 
   useEffect(() => { fetchPageData(); }, [fetchPageData]);
 
-  const validateLoanForNextStep = useCallback((loan: LoanRequest): boolean => {
-    const stageDef = getStageDefById(loan.workflowVersionId, loan.currentStageId);
-    if (!stageDef) {
-        toast({title: "Error", description: "Cannot find stage definition.", variant: "destructive"});
-        return false;
-    }
-    const activeInfoReq = [...loan.history].reverse().find(e => e.requiredFulfilment && !e.notes?.includes("[FULFILLED MOCK]"));
-    if (activeInfoReq) {
-        toast({ title: "Action Pending", description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: "destructive", duration: 7000 });
-        return false;
-    }
-    const pendingDocs = stageDef.documentRequirements.filter(name => !loan.documents.find(d => d.name === name.name && d.status === 'Verified'));
-    if (pendingDocs.length > 0) {
-        toast({ title: "Documents Pending", description: `Docs for stage '${stageDef.name}' must be verified: ${pendingDocs.map(p => p.name).join(', ')}.`, variant: "destructive", duration: 7000 });
-        return false;
-    }
-    return true;
-  }, [toast, getStageDefById]);
-
-  const handleCardActionClick = useCallback(async (loan: LoanRequest) => {
-    if (!currentUser) {
-        toast({title: "Permission Denied", description: "You must be logged in to perform this action.", variant: "destructive"});
-        return;
-    }
-
-    const canPromote = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
-    const canMarkComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
-    const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
-
-    setSelectedLoanForDialog(loan);
-    const currentStageDef = getStageDefById(loan.workflowVersionId, loan.currentStageId);
-    if (!currentStageDef) {
-        toast({title: "Error", description: "Loan stage definition not found.", variant: "destructive"});
-        return;
-    }
-
-    if (canPromote && loan.isReadyForManagerReview) {
-        if (!validateLoanForNextStep(loan)) return;
-        setIsPromoteDialogOpen(true);
-    }
-    else if (canMarkComplete && isCurrentUserAssigned && !loan.isReadyForManagerReview) {
-        if (!validateLoanForNextStep(loan)) return;
-
-        setIsProcessingAction(true);
-        const officerName = currentUser.fullName || 'Officer';
-        const newHistoryEntry: LoanHistoryEntry = {
-            id: `hist-officer-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-            userId: currentUser.id, userName: officerName,
-            notes: `Staff marked stage '${currentStageDef.name}' complete. Submitted for manager review in ${loan.assignedDepartment} department.`,
-        };
-        const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-            isReadyForManagerReview: true,
-            history: [...(loan.history || []), newHistoryEntry],
-            lastUpdatedDate: formatISO(new Date())
-        };
-
-        setAllLoans(prev => prev.map(l => l.id === loan.id ? { ...l, ...updatedFields } : l));
-        const serviceResult = await updateLoanRequest(loan.id, updatedFields);
-        setIsProcessingAction(false);
-
-        if (serviceResult.error || !serviceResult.success) {
-            toast({ title: "Error", description: serviceResult.error || "Failed to mark stage complete.", variant: "destructive" });
-            fetchPageData();
-        } else {
-            toast({ title: "Success", description: `${loan.customerName}'s stage '${currentStageDef.name}' marked complete. Awaiting manager review.` });
-        }
-    } else {
-        if (userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS)) {
-            router.push(`/loan-requests/${loan.id}`);
-        } else {
-            toast({title: "Action Not Permitted", description: "You do not have permission for this action or the loan's state does not allow it.", variant: "warning"});
-        }
-    }
-  }, [toast, validateLoanForNextStep, fetchPageData, getStageDefById, router, currentUser, userPermissions]);
-
-  const handleConfirmPromotion = useCallback(async (loanId: string) => {
-    if (!currentUser || !userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
-        toast({title: "Permission Denied", description: "Only users with promote permission can promote loans.", variant: "destructive"});
-        return;
-    }
-    const loanToPromote = allLoans.find(l => l.id === loanId);
-    if (!loanToPromote) { toast({ title: "Error", description: "Loan not found.", variant: "destructive"}); return; }
-    
-    const currentWorkflow = activeWorkflows.find(wf => wf.activeVersion.id === loanToPromote.workflowVersionId);
-    if (!currentWorkflow) { toast({ title: "Error", description: "Workflow version not found.", variant: "destructive"}); return; }
-    
-    const currentVersion = currentWorkflow.activeVersion;
-    const currentStageIndex = currentVersion.stages.findIndex(s => s.id === loanToPromote.currentStageId);
-    if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) {
-      toast({ title: "Workflow End", description: "This is the last stage.", variant: "info" });
-      setIsPromoteDialogOpen(false);
-      return;
-    }
-
-    const nextStageDef = currentVersion.stages[currentStageIndex + 1];
-    setIsProcessingAction(true);
-    const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: currentUser.id, userName: currentUser.fullName || 'System Process',
-      notes: `Manager promoted from '${currentVersion.stages[currentStageIndex].name}' to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
-    };
-    
-    // We can't find a user to get the department ID from, so this needs to be fixed or rethought.
-    // For now, let's assume we can get the department ID some other way or it's handled in the backend.
-    // const nextDeptRecord = usersFromService.find(u => u.department === nextStageDef.responsibleDepartment);
-
-    const updatedFields: Partial<Omit<LoanRequest, 'id'>> = {
-      currentStageId: nextStageDef.id,
-      // assignedDepartmentId: nextDeptRecord?.departmentId, // This logic is flawed. We should get dept id from department name
-      assignedToUsers: [],
-      history: [...(loanToPromote.history || []), newHistoryEntry],
-      isReadyForManagerReview: false,
-      lastUpdatedDate: formatISO(new Date()),
-      stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
-      workflowVersionId: loanToPromote.workflowVersionId,
-    };
-
-    setAllLoans(prev => prev.map(l => l.id === loanId ? { ...l, ...updatedFields, assignedDepartment: nextStageDef.responsibleDepartment } : l));
-    setIsPromoteDialogOpen(false);
-    setSelectedLoanForDialog(null);
-
-    const serviceResult = await updateLoanRequest(loanId, updatedFields);
-    setIsProcessingAction(false);
-
-    if (serviceResult.error || !serviceResult.success) {
-      toast({ title: "Promotion Error", description: serviceResult.error || "Failed to promote.", variant: "destructive" });
-      fetchPageData();
-    } else {
-      toast({ title: "Promotion Successful", description: `${loanToPromote.customerName} moved to ${nextStageDef.name}.` });
-    }
-  }, [allLoans, toast, fetchPageData, activeWorkflows, currentUser, userPermissions]);
-
-  const loansByStageAndWorkflow = useCallback((stageId: string, workflowVersionId: string) => {
-    return allLoans.filter(loan => 
-        loan.currentStageId === stageId && 
-        loan.workflowVersionId === workflowVersionId
-    );
-  }, [allLoans]);
-
-  const currentStageNameForDialog = useMemo(() => {
-    if (!selectedLoanForDialog) return '';
-    return getStageDefById(selectedLoanForDialog.workflowVersionId, selectedLoanForDialog.currentStageId)?.name || 'N/A';
-  }, [selectedLoanForDialog, getStageDefById]);
-
-  const nextStageNameForDialog = useMemo(() => {
-    if (!selectedLoanForDialog || !fetchedWorkflowDefinitions) return '';
-    const currentVersion = fetchedWorkflowDefinitions.flatMap(wd => wd.versions).find(v => v.id === selectedLoanForDialog.workflowVersionId);
-    if (!currentVersion) return '';
-    const currentStageIndex = currentVersion.stages.findIndex(s => s.id === selectedLoanForDialog.currentStageId);
-    if (currentStageIndex === -1 || currentStageIndex >= currentVersion.stages.length - 1) return '';
-    return currentVersion.stages[currentStageIndex + 1]?.name || '';
-  }, [selectedLoanForDialog, fetchedWorkflowDefinitions]);
-
   if (authLoading || isLoading) {
     return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines & workflows...</p></div>);
   }
   if (error) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
 
-  if (workflowsByLoanType.length === 0 && !isLoading) {
+  if (loansWithWorkflows.length === 0 && !isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
             <p className="text-muted-foreground">Visualize and manage loans through their lifecycle.</p>
           </div>
           {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
@@ -489,10 +343,9 @@ export default function LoanProcessPage() {
         </div>
         <Alert variant="default" className="max-w-2xl mx-auto">
           <AlertTriangle className="h-5 w-5" />
-          <AlertTitleShadCN>No Active Loan Pipelines Found</AlertTitleShadCN>
+          <AlertTitleShadCN>No Active Loans Found</AlertTitleShadCN>
           <AlertDescShadCN>
-            There are no active workflow versions configured for any loan type.
-            Please go to Settings to define and activate loan workflows.
+            There are no active loans in the system to display in the pipeline.
           </AlertDescShadCN>
         </Alert>
       </div>
@@ -503,49 +356,71 @@ export default function LoanProcessPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
-          <p className="text-muted-foreground">Visualize and manage loans through their lifecycle, grouped by loan type.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
+          <p className="text-muted-foreground">Expand a loan to view its complete workflow, grouped by department.</p>
         </div>
         {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
         )}
       </div>
 
-      <Accordion type="multiple" className="w-full space-y-4" defaultValue={workflowsByLoanType.map(([loanType]) => loanType)}>
-        {workflowsByLoanType.map(([loanType, workflow]) => (
-          <AccordionItem value={loanType} key={loanType} className="border-none">
+      <Accordion type="multiple" className="w-full space-y-4">
+        {loansWithWorkflows.map(({ loan, workflowVersion, stagesByDept }) => (
+          <AccordionItem value={loan.id} key={loan.id} className="border-none">
              <Card className="shadow-lg">
                 <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <div className="text-left">
                         <CardTitle className="text-2xl font-semibold text-primary flex items-center">
-                          <FileDigit className="mr-3 h-6 w-6"/> {loanType} Pipeline
+                          <FileDigit className="mr-3 h-6 w-6"/> {loan.customerName}
                         </CardTitle>
-                        <CardDescription className="mt-1">Workflow: {workflow.name} (v{workflow.activeVersion.versionNumber})</CardDescription>
+                        <CardDescription className="mt-1">
+                          {loan.loanNumber} - {loan.loanType} - Workflow: {workflowVersion.workflowDefinition?.name} (v{workflowVersion.versionNumber})
+                        </CardDescription>
                       </div>
                       <div className="text-right">
-                          <p className="text-lg font-bold">{allLoans.filter(l => l.loanType === loanType).length}</p>
-                          <p className="text-xs text-muted-foreground">Active Loans</p>
+                          <Badge variant={loan.currentStageId === workflowVersion.stages[workflowVersion.stages.length - 1].id ? 'default' : 'secondary'}>
+                            {getStageDefById(loan.workflowVersionId, loan.currentStageId)?.name || 'Unknown Stage'}
+                          </Badge>
                       </div>
                   </CardHeader>
                 </AccordionTrigger>
                 <AccordionContent className="p-0">
-                    <CardContent className="p-4">
-                        <ScrollArea className="w-full whitespace-nowrap pb-4">
+                    <CardContent className="p-4 space-y-4">
+                      {Object.entries(stagesByDept).map(([deptName, stages]) => (
+                        <div key={deptName}>
+                          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><Building className="h-5 w-5 text-muted-foreground" /> {deptName} Department</h3>
+                          <ScrollArea className="w-full whitespace-nowrap pb-4">
                             <div className="flex gap-4">
-                            {workflow.activeVersion.stages.map((stageDef) => (
-                                <KanbanColumn
-                                key={stageDef.id}
-                                stageDef={stageDef}
-                                loans={loansByStageAndWorkflow(stageDef.id, workflow.activeVersion.id)}
-                                onCardActionClick={handleCardActionClick}
-                                currentUser={currentUser}
-                                router={router}
-                                />
-                            ))}
+                              {stages.map((stageDef) => (
+                                <div key={stageDef.id} className={cn("flex-shrink-0 w-80 rounded-lg p-2 min-h-[150px] border-2", loan.currentStageId === stageDef.id ? 'border-primary bg-primary/5' : 'bg-muted/30')}>
+                                  <div className="flex justify-between items-center p-2 mb-2 gap-2">
+                                    <h4 className="font-semibold text-foreground truncate">{stageDef.order + 1}. {stageDef.name}</h4>
+                                    {loan.currentStageId === stageDef.id && <Badge>Current</Badge>}
+                                  </div>
+                                  <div className="p-2 text-sm">
+                                      <p><span className="font-semibold">Timeline:</span> {stageDef.defaultTimelineDays} days</p>
+                                      <p><span className="font-semibold">Documents:</span> {stageDef.documentRequirements.length}</p>
+                                      {loan.currentStageId === stageDef.id && (
+                                        <>
+                                          <p className="mt-2 flex items-center gap-1.5"><UsersIcon className="h-4 w-4"/>
+                                            {loan.assignedToUsers.length > 0 ? loan.assignedToUsers.map(u => u.fullName).join(', ') : <span className="italic">Unassigned</span>}
+                                          </p>
+                                          <Link href={`/loan-requests/${loan.id}`} passHref>
+                                            <Button variant="outline" size="sm" className="w-full mt-4">
+                                              <Eye className="mr-2 h-4 w-4" /> View Details
+                                            </Button>
+                                          </Link>
+                                        </>
+                                      )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                             <ScrollBar orientation="horizontal" />
-                        </ScrollArea>
+                          </ScrollArea>
+                        </div>
+                      ))}
                     </CardContent>
                 </AccordionContent>
             </Card>
@@ -557,11 +432,9 @@ export default function LoanProcessPage() {
         isOpen={isPromoteDialogOpen}
         onOpenChange={(isOpen) => { setIsPromoteDialogOpen(isOpen); if (!isOpen) setSelectedLoanForDialog(null); }}
         selectedLoan={selectedLoanForDialog}
-        currentStageName={currentStageNameForDialog}
-        nextStageName={nextStageNameForDialog}
-        onConfirmPromotion={handleConfirmPromotion}
         isProcessingAction={isProcessingAction}
       />
     </div>
   );
 }
+
