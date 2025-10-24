@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, LoanHistoryEntry, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus, Eye, Flame, Users as UsersIcon } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Clock, Loader2, ArrowRight, CheckSquare, Building, UserCheck, UserPlus, Eye, Flame, Users as UsersIcon, FileDigit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -30,6 +30,12 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -258,6 +264,17 @@ export default function LoanProcessPage() {
 
   }, [fetchedWorkflowDefinitions]);
 
+  const workflowsByLoanType = useMemo(() => {
+    const grouped = new Map<string, (WorkflowDefinition & { activeVersion: WorkflowVersion })>();
+    activeWorkflows.forEach(wf => {
+      // Since each loan type in the settings can only have one active workflow definition
+      // we can simply set it. If there were multiple, we'd push to an array.
+      grouped.set(wf.loanTypeName, wf);
+    });
+    return Array.from(grouped.entries());
+  }, [activeWorkflows]);
+
+
   const getStageDefById = useCallback((versionId?: string, stageId?: string): WorkflowStageDefinition | null => {
     if (!versionId || !stageId || !fetchedWorkflowDefinitions) return null;
     for (const def of fetchedWorkflowDefinitions) {
@@ -432,10 +449,10 @@ export default function LoanProcessPage() {
     }
   }, [allLoans, toast, fetchPageData, activeWorkflows, currentUser, userPermissions]);
 
-  const loansByStageAndDepartment = useCallback((stageId: string, departmentName: string) => {
+  const loansByStageAndWorkflow = useCallback((stageId: string, workflowVersionId: string) => {
     return allLoans.filter(loan => 
         loan.currentStageId === stageId && 
-        loan.assignedDepartment === departmentName
+        loan.workflowVersionId === workflowVersionId
     );
   }, [allLoans]);
 
@@ -458,7 +475,7 @@ export default function LoanProcessPage() {
   }
   if (error) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
 
-  if (activeWorkflows.length === 0 && !isLoading) {
+  if (workflowsByLoanType.length === 0 && !isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -474,8 +491,8 @@ export default function LoanProcessPage() {
           <AlertTriangle className="h-5 w-5" />
           <AlertTitleShadCN>No Active Loan Pipelines Found</AlertTitleShadCN>
           <AlertDescShadCN>
-            There are no departments with an active workflow version configured.
-            Please go to Settings to define loan workflows for each department.
+            There are no active workflow versions configured for any loan type.
+            Please go to Settings to define and activate loan workflows.
           </AlertDescShadCN>
         </Alert>
       </div>
@@ -487,36 +504,54 @@ export default function LoanProcessPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipelines</h1>
-          <p className="text-muted-foreground">Visualize and manage loans through their lifecycle for each department's workflow.</p>
+          <p className="text-muted-foreground">Visualize and manage loans through their lifecycle, grouped by loan type.</p>
         </div>
         {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
         )}
       </div>
 
-      {activeWorkflows.map(workflow => (
-        <div key={workflow.id} className="mb-10 p-4 border rounded-lg shadow-md">
-          <h2 className="text-2xl font-semibold mb-1 text-primary flex items-center">
-             <Building className="mr-3 h-6 w-6"/> {workflow.departmentName} Department: {workflow.name}
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">Active Version: {workflow.activeVersion.versionNumber} | Stages: {workflow.activeVersion.stages.length}</p>
-          <ScrollArea className="w-full whitespace-nowrap pb-4">
-            <div className="flex gap-4">
-              {workflow.activeVersion.stages.map((stageDef) => (
-                <KanbanColumn
-                  key={stageDef.id}
-                  stageDef={stageDef}
-                  loans={loansByStageAndDepartment(stageDef.id, workflow.departmentName)}
-                  onCardActionClick={handleCardActionClick}
-                  currentUser={currentUser}
-                  router={router}
-                />
-              ))}
-            </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        </div>
-      ))}
+      <Accordion type="multiple" className="w-full space-y-4" defaultValue={workflowsByLoanType.map(([loanType]) => loanType)}>
+        {workflowsByLoanType.map(([loanType, workflow]) => (
+          <AccordionItem value={loanType} key={loanType} className="border-none">
+             <Card className="shadow-lg">
+                <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
+                  <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
+                     <div className="text-left">
+                        <CardTitle className="text-2xl font-semibold text-primary flex items-center">
+                          <FileDigit className="mr-3 h-6 w-6"/> {loanType} Pipeline
+                        </CardTitle>
+                        <CardDescription className="mt-1">Workflow: {workflow.name} (v{workflow.activeVersion.versionNumber})</CardDescription>
+                      </div>
+                      <div className="text-right">
+                          <p className="text-lg font-bold">{allLoans.filter(l => l.loanType === loanType).length}</p>
+                          <p className="text-xs text-muted-foreground">Active Loans</p>
+                      </div>
+                  </CardHeader>
+                </AccordionTrigger>
+                <AccordionContent className="p-0">
+                    <CardContent className="p-4">
+                        <ScrollArea className="w-full whitespace-nowrap pb-4">
+                            <div className="flex gap-4">
+                            {workflow.activeVersion.stages.map((stageDef) => (
+                                <KanbanColumn
+                                key={stageDef.id}
+                                stageDef={stageDef}
+                                loans={loansByStageAndWorkflow(stageDef.id, workflow.activeVersion.id)}
+                                onCardActionClick={handleCardActionClick}
+                                currentUser={currentUser}
+                                router={router}
+                                />
+                            ))}
+                            </div>
+                            <ScrollBar orientation="horizontal" />
+                        </ScrollArea>
+                    </CardContent>
+                </AccordionContent>
+            </Card>
+          </AccordionItem>
+        ))}
+      </Accordion>
 
       <ManagerPromoteDialog
         isOpen={isPromoteDialogOpen}
