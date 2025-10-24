@@ -146,10 +146,10 @@ export default function LoanProcessPage() {
                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <div className="text-left">
                         <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                          {loan.customerName}
+                          {loan.loanType}
                         </CardTitle>
                         <CardDescription className="mt-1 text-xs">
-                          {loan.loanNumber} - {loan.loanType} - Workflow: {workflowVersion.workflowDefinition?.name} (v{workflowVersion.versionNumber})
+                          {loan.loanNumber} - {loan.customerName} - Workflow: {workflowVersion.workflowDefinition?.name} (v{workflowVersion.versionNumber})
                         </CardDescription>
                       </div>
                       <div className="text-right">
