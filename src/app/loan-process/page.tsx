@@ -149,7 +149,7 @@ export default function LoanProcessPage() {
                           {loan.loanType}
                         </CardTitle>
                         <CardDescription className="mt-1 text-xs">
-                          {loan.loanNumber} - {loan.customerName} - Workflow: {workflowVersion.workflowDefinition?.name} (v{workflowVersion.versionNumber})
+                          {loan.loanNumber} - {loan.customerName}
                         </CardDescription>
                       </div>
                       <div className="text-right">
