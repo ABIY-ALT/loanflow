@@ -44,12 +44,23 @@ export default function LoanProcessPage() {
       
       if (!workflowVersion) return null;
 
-      // The stages are already sorted by `order` from the service
+      // Group stages by department
+      const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
+        const dept = stage.responsibleDepartment;
+        if (!acc[dept]) {
+          acc[dept] = [];
+        }
+        acc[dept].push(stage);
+        return acc;
+      }, {} as Record<string, WorkflowStageDefinition[]>);
+
+
       return {
         loan,
         workflowVersion,
+        stagesByDept,
       };
-    }).filter(Boolean) as { loan: LoanRequest; workflowVersion: WorkflowVersion; }[];
+    }).filter(Boolean) as { loan: LoanRequest; workflowVersion: WorkflowVersion; stagesByDept: Record<string, WorkflowStageDefinition[]> }[];
   }, [allLoans, fetchedWorkflowDefinitions]);
 
 
@@ -131,7 +142,7 @@ export default function LoanProcessPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
-          <p className="text-muted-foreground">Expand a loan to view its complete workflow.</p>
+          <p className="text-muted-foreground">Expand a loan to view its complete workflow, grouped by department.</p>
         </div>
         {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
@@ -139,7 +150,7 @@ export default function LoanProcessPage() {
       </div>
 
       <Accordion type="multiple" className="w-full space-y-4">
-        {loansWithWorkflows.map(({ loan, workflowVersion }) => (
+        {loansWithWorkflows.map(({ loan, workflowVersion, stagesByDept }) => (
           <AccordionItem value={loan.id} key={loan.id} className="border-none">
              <Card className="shadow-sm hover:shadow-md transition-shadow">
                 <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
@@ -161,41 +172,45 @@ export default function LoanProcessPage() {
                 </AccordionTrigger>
                 <AccordionContent className="p-0">
                     <CardContent className="p-4 space-y-4">
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">End-to-End Workflow</h3>
-                        <ScrollArea className="w-full whitespace-nowrap pb-4">
-                          <div className="flex gap-4">
-                            {workflowVersion.stages.map((stageDef) => (
-                              <div key={stageDef.id} className={cn("flex-shrink-0 w-72 rounded-lg p-3 min-h-[150px] border-2 flex flex-col", loan.currentStageId === stageDef.id ? 'border-primary bg-primary/5' : 'bg-muted/30')}>
-                                <div className="flex-grow">
-                                    <div className="flex justify-between items-center mb-2 gap-2">
-                                        <h4 className="font-semibold text-foreground truncate whitespace-normal">{stageDef.order + 1}. {stageDef.name}</h4>
-                                        {loan.currentStageId === stageDef.id && <Badge>Current</Badge>}
-                                    </div>
-                                    <div className="p-2 text-sm text-muted-foreground space-y-1">
-                                        <p className="flex items-center gap-1.5"><Building className="h-4 w-4"/>Dept: {stageDef.responsibleDepartment}</p>
-                                        <p><span className="font-semibold">Timeline:</span> {stageDef.defaultTimelineDays} days</p>
-                                        <p><span className="font-semibold">Docs:</span> {stageDef.documentRequirements.length}</p>
-                                    </div>
-                                </div>
-                                {loan.currentStageId === stageDef.id && (
-                                  <div className="mt-auto pt-2">
-                                    <p className="text-sm mb-2 flex items-center gap-1.5 text-foreground"><UsersIcon className="h-4 w-4"/>
-                                      {loan.assignedToUsers.length > 0 ? loan.assignedToUsers.map(u => u.fullName).join(', ') : <span className="italic text-muted-foreground">Unassigned</span>}
-                                    </p>
-                                    <Link href={`/loan-requests/${loan.id}`} passHref>
-                                      <Button variant="outline" size="sm" className="w-full">
-                                        <Eye className="mr-2 h-4 w-4" /> View Details
-                                      </Button>
-                                    </Link>
+                      {Object.entries(stagesByDept).map(([dept, stages]) => (
+                        <div key={dept}>
+                          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                             <Building className="h-5 w-5 text-muted-foreground"/>
+                             Dept: {dept}
+                          </h3>
+                          <ScrollArea className="w-full whitespace-nowrap pb-4">
+                            <div className="flex gap-4">
+                              {stages.map((stageDef) => (
+                                <div key={stageDef.id} className={cn("flex-shrink-0 w-72 rounded-lg p-3 min-h-[150px] border-2 flex flex-col", loan.currentStageId === stageDef.id ? 'border-primary bg-primary/5' : 'bg-muted/30')}>
+                                  <div className="flex-grow">
+                                      <div className="flex justify-between items-center mb-2 gap-2">
+                                          <h4 className="font-semibold text-foreground truncate whitespace-normal">{stageDef.order + 1}. {stageDef.name}</h4>
+                                          {loan.currentStageId === stageDef.id && <Badge>Current</Badge>}
+                                      </div>
+                                      <div className="p-2 text-sm text-muted-foreground space-y-1">
+                                          <p><span className="font-semibold">Timeline:</span> {stageDef.defaultTimelineDays} days</p>
+                                          <p><span className="font-semibold">Docs:</span> {stageDef.documentRequirements.length}</p>
+                                      </div>
                                   </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          <ScrollBar orientation="horizontal" />
-                        </ScrollArea>
-                      </div>
+                                  {loan.currentStageId === stageDef.id && (
+                                    <div className="mt-auto pt-2">
+                                      <p className="text-sm mb-2 flex items-center gap-1.5 text-foreground"><UsersIcon className="h-4 w-4"/>
+                                        {loan.assignedToUsers.length > 0 ? loan.assignedToUsers.map(u => u.fullName).join(', ') : <span className="italic text-muted-foreground">Unassigned</span>}
+                                      </p>
+                                      <Link href={`/loan-requests/${loan.id}`} passHref>
+                                        <Button variant="outline" size="sm" className="w-full">
+                                          <Eye className="mr-2 h-4 w-4" /> View Details
+                                        </Button>
+                                      </Link>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            <ScrollBar orientation="horizontal" />
+                          </ScrollArea>
+                        </div>
+                      ))}
                     </CardContent>
                 </AccordionContent>
             </Card>
