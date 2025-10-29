@@ -55,6 +55,7 @@ export interface Customer {
 
 export interface CustomerWithDepartment extends Customer {
     mostRecentDepartment?: Department;
+    mostRecentStageName?: string;
 }
 
 

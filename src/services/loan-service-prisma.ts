@@ -821,6 +821,7 @@ export async function getCustomers(): Promise<{ customers?: CustomerWithDepartme
         phone: pc.phone || undefined,
         branch: pc.branch || undefined,
         mostRecentDepartment: mostRecentLoan?.assignedDepartment?.name as Department | undefined,
+        mostRecentStageName: mostRecentLoan?.currentWorkflowStage?.name,
         loanRequests: pc.loanRequests.map(lr => ({
           id: lr.id,
           loanNumber: lr.loanNumber,

@@ -139,7 +139,7 @@ export default function CustomersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Current Department</TableHead>
+                <TableHead>Current Department / Stage</TableHead>
                 <TableHead className="text-center">Loan Requests</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -157,7 +157,12 @@ export default function CustomersPage() {
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.email}</TableCell>
                     <TableCell>{customer.phone || 'N/A'}</TableCell>
-                    <TableCell>{customer.mostRecentDepartment || 'N/A'}</TableCell>
+                    <TableCell>
+                      <div>{customer.mostRecentDepartment || 'N/A'}</div>
+                      {customer.mostRecentStageName && (
+                        <div className="text-xs text-muted-foreground">{customer.mostRecentStageName}</div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary">{customer.loanRequests.length}</Badge>
                     </TableCell>
