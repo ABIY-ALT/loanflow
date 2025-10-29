@@ -36,24 +36,24 @@ export default function LoanProcessPage() {
 
   const loansWithWorkflows = useMemo(() => {
     if (!allLoans.length || !fetchedWorkflowDefinitions.length) return [];
-
+  
     return allLoans
       .map((loan) => {
         const workflowVersionId = loan.workflowVersionId;
         if (!workflowVersionId) return null;
-
+  
         // Find the definition that contains this version
         const workflowDefinition = fetchedWorkflowDefinitions.find((def) =>
           def.versions.some((v) => v.id === workflowVersionId)
         );
-
+  
         if (!workflowDefinition) return null;
-
+  
         const workflowVersion = workflowDefinition.versions.find(
           (v) => v.id === workflowVersionId
         );
         if (!workflowVersion) return null;
-
+  
         // Group stages by department
         const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
           const dept = stage.responsibleDepartment;
@@ -63,7 +63,7 @@ export default function LoanProcessPage() {
           acc[dept].push(stage);
           return acc;
         }, {} as Record<string, WorkflowStageDefinition[]>);
-
+  
         return {
           loan,
           workflowDefinition,
@@ -172,9 +172,12 @@ export default function LoanProcessPage() {
                 <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <div className="text-left">
-                        <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                          {workflowDefinition.name}
-                        </CardTitle>
+                        <div className="flex items-center gap-3">
+                          <CardTitle className="text-xl font-semibold text-primary">
+                            {workflowDefinition.name}
+                          </CardTitle>
+                          <Badge variant="outline">{workflowDefinition.loanTypeName}</Badge>
+                        </div>
                         <CardDescription className="mt-1 text-xs">
                           {loan.loanNumber} - {loan.customerName}
                         </CardDescription>
