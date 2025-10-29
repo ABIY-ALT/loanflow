@@ -622,6 +622,20 @@ export default function SettingsPage() {
     const activatedVersion = targetDefToActivate?.versions.find(v => v.id === versionIdToActivate);
     toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its Department/Loan Type. Click "Save All Settings" to persist.` });
   };
+  
+  const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
+    if (!canManageWorkflows) return;
+    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+        if (def.id === definitionId) {
+            return {
+                ...def,
+                versions: def.versions.map(v => v.id === versionId ? { ...v, isActive: false } : v)
+            };
+        }
+        return def;
+    }));
+    toast({ title: "Success (Local)", description: `Version deactivated locally. Click "Save All Settings" to persist.` });
+};
 
 
   const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion) => {
@@ -1057,14 +1071,15 @@ export default function SettingsPage() {
                           <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                            {!version.isActive &&
+                            {!version.isActive ? (
                                 <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
                                     <ShieldCheck className="mr-2 h-4 w-4"/>Set Active
-                                </Button>}
-                            {version.isActive &&
-                                <Button variant="ghost" size="sm" disabled className="text-green-600 cursor-default">
-                                    <ShieldCheck className="mr-2 h-4 w-4"/>Currently Active
-                                </Button>}
+                                </Button>
+                            ) : (
+                                <Button variant="secondary" size="sm" onClick={() => handleDeactivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData} className="text-amber-700 border-amber-500 hover:bg-amber-100">
+                                    <ShieldOff className="mr-2 h-4 w-4"/>Deactivate
+                                </Button>
+                            )}
                             <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}>
                                 <Edit className="mr-2 h-4 w-4" />Edit Stages
                             </Button>
