@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -204,13 +205,10 @@ export default function NewLoanRequestPage() {
               <FormField control={form.control} name="loanPurpose" render={({ field }) => ( <FormItem> <FormLabel>Loan Purpose</FormLabel> <div className="relative"> <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /> <FormControl> <Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} /> </FormControl> </div> <FormDescription> Provide a clear and concise reason for the loan application. </FormDescription> <FormMessage /> </FormItem> )} />
               
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoading || availableWorkflows.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
+                 {isSubmitting ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
                 ) : (
-                  'Submit Loan Request'
+                    'Submit Loan Request'
                 )}
               </Button>
             </form>
