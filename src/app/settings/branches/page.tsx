@@ -33,7 +33,7 @@ export default function ManageBranchesPage() {
 
   const canManageBranches = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isInitialLoad = false) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -45,7 +45,7 @@ export default function ManageBranchesPage() {
       setDistricts(fetchedDistricts);
       setBranches(branchesResult.branches || []);
 
-      if (fetchedDistricts.length > 0 && !selectedDistrictId) {
+      if (isInitialLoad && fetchedDistricts.length > 0 && !selectedDistrictId) {
         setSelectedDistrictId(fetchedDistricts[0].id);
       }
     } catch (err: any) {
@@ -53,13 +53,14 @@ export default function ManageBranchesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDistrictId]);
+  }, [selectedDistrictId]); // Keep selectedDistrictId here only for the initial check logic within the function if needed, but the call below will be modified.
 
   useEffect(() => {
     if (canManageBranches) {
-      fetchData();
+      fetchData(true); // Pass true for the initial load
     }
-  }, [fetchData, canManageBranches]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageBranches]); // This effect runs only once when canManageBranches changes.
 
   const handleAddDistrict = async () => {
     if (!newDistrictName.trim()) return toast({ title: "Validation Error", description: "District name cannot be empty.", variant: "destructive" });
