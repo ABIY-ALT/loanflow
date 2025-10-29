@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -159,7 +158,7 @@ function WorkflowStageConfigItem({
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
         <div className="grid md:grid-cols-3 gap-4">
           <div><Label htmlFor={`s-name-${stage.id}`}>Stage Name</Label><Input id={`s-name-${stage.id}`} value={stage.name} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'name', e.target.value)} className="mt-1"/></div>
-          <div><Label htmlFor={`s-dept-${stage.id}`}>Responsible Department</Label><Input id={`s-dept-${stage.id}`} value={stage.responsibleDepartment} className="mt-1" disabled /></div>
+          <div><Label>Responsible Department</Label><Input value={stage.responsibleDepartment} className="mt-1" disabled /></div>
           <div><Label htmlFor={`s-time-${stage.id}`}>Timeline (days)</Label><Input id={`s-time-${stage.id}`} type="number" value={stage.defaultTimelineDays} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
           <div><Label htmlFor={`s-weight-${stage.id}`}>Weight (%)</Label><Input id={`s-weight-${stage.id}`} type="number" value={stage.percentageWeight} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/></div>
         </div>
@@ -229,7 +228,7 @@ interface EditWorkflowVersionDialogProps {
 }
 
 function EditWorkflowVersionDialog({
-  isOpen, onOpenChange, workflowDefinition, versionToEdit, departments, onSaveVersion,
+  isOpen, onOpenChange, workflowDefinition, versionToEdit, onSaveVersion,
 }: EditWorkflowVersionDialogProps) {
   const [editedVersion, setEditedVersion] = useState<WorkflowVersion | null>(null);
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
@@ -276,17 +275,16 @@ function EditWorkflowVersionDialog({
       return { ...prev, stages: updateStageOrder(updatedStages) };
     });
   };
-  const handleInternalAddStageToVersion = () => {
+  
+  const handleInternalAddStageToVersion = (departmentName: string) => {
     if (!editedVersion || !workflowDefinition) return;
     if(!newStageName.trim()){
         toast({ title: "Error", description: "New stage name is required.", variant: "destructive"});
         return;
     }
     
-    const departmentForNewStage = workflowDefinition.departmentName;
-
     const newOrder = editedVersion.stages.length;
-    const newStage = createNewStage(newStageName, departmentForNewStage, newStageTimeline, newStageWeight, newOrder);
+    const newStage = createNewStage(newStageName, departmentName, newStageTimeline, newStageWeight, newOrder);
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
@@ -295,6 +293,7 @@ function EditWorkflowVersionDialog({
     setNewStageTimeline(3);
     setNewStageWeight(10);
   };
+
   const handleInternalReorderStages = (event: DragEndEvent) => {
     if (!editedVersion) return;
     const { active, over } = event;
@@ -408,7 +407,7 @@ function EditWorkflowVersionDialog({
                         key={stage.id}
                         stage={stage}
                         workflowVersionId={editedVersion.id}
-                        departments={departments}
+                        departments={[]}
                         onStageChange={handleInternalStageChange}
                         onRemoveStage={handleInternalRemoveStage}
                         onAddRequiredDocument={handleInternalAddReqDoc}
@@ -428,7 +427,7 @@ function EditWorkflowVersionDialog({
                     <div className="sm:col-span-2"><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
                     <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
                     <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
-                    <Button onClick={handleInternalAddStageToVersion} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
+                    <Button onClick={() => handleInternalAddStageToVersion(workflowDefinition.departmentName)} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
                 </div>
             </div>
         </div>
@@ -462,6 +461,10 @@ export default function SettingsPage() {
   const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
   const [newWorkflowLoanTypeId, setNewWorkflowLoanTypeId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
+  
+  const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
+  const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
+
 
   const [newLoanTypeName, setNewLoanTypeName] = useState('');
 
@@ -482,7 +485,7 @@ export default function SettingsPage() {
         ]);
 
         if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
-        setWorkflowDefinitions(wfResult.workflows || []);
+        setWorkflowDefinitions((wfResult.workflows || []).sort((a,b) => (a.order || 0) - (b.order || 0)));
 
         if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
         const fetchedDepts = deptResult.departments || [];
@@ -494,6 +497,11 @@ export default function SettingsPage() {
 
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
         if(fetchedLoanTypes.length > 0 && newWorkflowLoanTypeId === '') setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
+        
+        if (wfResult.workflows && wfResult.workflows.length > 0) {
+            const sortedWfs = wfResult.workflows.sort((a,b) => (a.order || 0) - (b.order || 0));
+            setNewWorkflowReferenceId(sortedWfs[sortedWfs.length - 1].id);
+        }
 
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -505,7 +513,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast, newWorkflowDepartmentId, newWorkflowLoanTypeId]);
+    }, [toast]);
 
 
   useEffect(() => {
@@ -526,16 +534,13 @@ export default function SettingsPage() {
     if (!targetDefToActivate) return;
     
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-        // If this definition is for the same Department-LoanType pair...
         if (def.departmentId === targetDefToActivate.departmentId && def.loanTypeId === targetDefToActivate.loanTypeId) {
-            // ...activate the selected version if it's the target definition, and deactivate all others in this definition
             if (def.id === definitionIdToActivate) {
                 return {
                     ...def,
                     versions: def.versions.map(v => ({ ...v, isActive: v.id === versionIdToActivate }))
                 };
             }
-            // ...deactivate all versions in other definitions of the same pair (shouldn't happen with unique constraint, but good practice)
             return {
                 ...def,
                 versions: def.versions.map(v => ({ ...v, isActive: false }))
@@ -590,34 +595,52 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowLoanTypeId) {
-        toast({ title: "Validation Error", description: "Workflow name, department, and loan type are all required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowLoanTypeId || !newWorkflowReferenceId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, loan type, and a reference workflow are all required.", variant: "destructive", duration: 9000 });
         return;
     }
-    
-    setIsSavingData(true);
-    const definitionData = {
-        name: newWorkflowName,
-        departmentId: newWorkflowDepartmentId,
-        loanTypeId: newWorkflowLoanTypeId,
-        description: newWorkflowDescription,
-    };
 
-    try {
-      const result = await addWorkflowDefinition(definitionData);
-      if (result.error || !result.id) {
-          toast({ title: "Error Adding Workflow", description: result.error || "Failed to save new workflow definition.", variant: "destructive", duration: 9000 });
-      } else {
-          setNewWorkflowName('');
-          setNewWorkflowDescription('');
-          toast({ title: "Workflow Definition Added", description: `Workflow '${definitionData.name}' created. Now fetching updated list.` });
-          await fetchInitialData(); 
-      }
-    } catch (error: any) {
-        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive", duration: 9000 });
-    } finally {
-        setIsSavingData(false);
+    const newWf: Omit<WorkflowDefinition, 'id' | 'versions'> = {
+        name: newWorkflowName,
+        description: newWorkflowDescription,
+        departmentId: newWorkflowDepartmentId,
+        departmentName: departments.find(d => d.id === newWorkflowDepartmentId)?.name || 'Unknown',
+        loanTypeId: newWorkflowLoanTypeId,
+        loanTypeName: loanTypes.find(lt => lt.id === newWorkflowLoanTypeId)?.name || 'Unknown',
+        order: 0,
+    };
+    
+    let updatedWfList = [...workflowDefinitions];
+    const referenceIndex = updatedWfList.findIndex(wf => wf.id === newWorkflowReferenceId);
+    if(referenceIndex === -1 && updatedWfList.length > 0) {
+        toast({ title: "Error", description: "Reference workflow not found.", variant: "destructive" });
+        return;
     }
+
+    const insertIndex = newWorkflowInsertMode === 'after' ? referenceIndex + 1 : referenceIndex;
+    
+    const newWorkflowWithId = {
+        ...newWf,
+        id: `wf-def-custom-${Date.now()}`,
+        versions: [],
+    };
+    
+    if (updatedWfList.length === 0) {
+        updatedWfList.push(newWorkflowWithId);
+    } else {
+        updatedWfList.splice(insertIndex, 0, newWorkflowWithId);
+    }
+
+    // Re-assign order to all items
+    const finalList = updatedWfList.map((wf, index) => ({ ...wf, order: index }));
+    
+    setWorkflowDefinitions(finalList);
+
+    // Reset form
+    setNewWorkflowName('');
+    setNewWorkflowDescription('');
+    
+    toast({ title: "Workflow Added Locally", description: `"${newWorkflowName}" was added. Save all settings to persist.` });
   };
 
    const handleAddLoanType = async () => {
@@ -726,6 +749,8 @@ export default function SettingsPage() {
     );
   }
 
+  const sortedWorkflowDefinitions = workflowDefinitions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
   return (
     <div className="space-y-8">
       <div>
@@ -801,92 +826,135 @@ export default function SettingsPage() {
               </Table>
           </CardContent>
       </Card>
+      
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
           <CardDescription>Manage workflows for different departments and loan types. New loans will use the active version for their specific department and loan type combination.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {workflowDefinitions.length === 0 && !isLoadingData && (
-            <div className="p-4 text-center border rounded-md bg-muted/50">
-                <p className="text-muted-foreground mb-2">No workflow definitions found.</p>
-                <p className="text-sm text-muted-foreground">Please add one below or check database connection and console for errors.</p>
+          <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+            <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., Standard Personal Loan Process" disabled={isSavingAll || isSavingData} /></div>
+              <div>
+                <Label htmlFor="new-wf-loantype">For Loan Type</Label>
+                <Select value={newWorkflowLoanTypeId} onValueChange={(value) => setNewWorkflowLoanTypeId(value)}>
+                  <SelectTrigger id="new-wf-loantype" className="mt-1"><SelectValue placeholder="Select Loan Type" /></SelectTrigger>
+                  <SelectContent>
+                    {loanTypes.map(lt => <SelectItem key={`new-wf-lt-option-${lt.id}`} value={lt.id}>{lt.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="new-wf-dept">For Department</Label>
+                <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
+                  <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                  <SelectContent>
+                    {departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-3"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
             </div>
-          )}
-          {workflowDefinitions.map(def => (
-            <Card key={def.id} className="shadow-sm">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-xl">{def.name}</CardTitle>
-                    <CardDescription>{def.description || "No description."} <Badge variant="outline" className="ml-2">Dept: {def.departmentName || 'N/A'}</Badge><Badge variant="outline" className="ml-2">Loan Type: {def.loanTypeName || 'N/A'}</Badge></CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <h4 className="font-medium text-sm">Versions (Latest first):</h4>
-                {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined for this workflow. Add one below.</p>}
-                {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
-                  <div key={version.id} className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 border rounded-md gap-2 ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
-                    <div>
-                      <div className="font-semibold flex items-center">
-                        Version {version.versionNumber}
-                        {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
-                      </div>
-                      <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                        {!version.isActive &&
-                            <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
-                                <ShieldCheck className="mr-2 h-4 w-4"/>Set Active
-                            </Button>}
-                        {version.isActive &&
-                            <Button variant="ghost" size="sm" disabled className="text-green-600 cursor-default">
-                                <ShieldCheck className="mr-2 h-4 w-4"/>Currently Active
-                            </Button>}
-                        <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}>
-                            <Edit className="mr-2 h-4 w-4" />Edit Stages
-                        </Button>
-                    </div>
-                  </div>
+            
+            <div className="grid md:grid-cols-3 gap-4 items-end">
+              <div className="flex items-center space-x-2">
+                <Label>Insert</Label>
+                <Select value={newWorkflowInsertMode} onValueChange={(v) => setNewWorkflowInsertMode(v as 'before' | 'after')}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="before">Before</SelectItem>
+                    <SelectItem value="after">After</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Reference Workflow</Label>
+                <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={sortedWorkflowDefinitions.length === 0}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference workflow"/></SelectTrigger>
+                  <SelectContent>
+                    {sortedWorkflowDefinitions.length === 0 && <SelectItem value="" disabled>No existing workflows</SelectItem>}
+                    {sortedWorkflowDefinitions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Workflow
+              </Button>
+            </div>
+            {(loanTypes.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: Both a department and a loan type must be configured first.</p>}
+          </div>
+
+          <Separator/>
+          
+          <h4 className="font-medium text-lg">Current Workflow Order</h4>
+          <div className="p-4 border rounded-lg overflow-x-auto">
+            <div className="flex items-center space-x-4 min-w-max">
+                {sortedWorkflowDefinitions.map((def, index) => (
+                    <React.Fragment key={def.id}>
+                        <div className="flex flex-col items-center text-center">
+                            <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg">
+                                {def.order + 1}
+                            </div>
+                            <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
+                            <div className="text-xs text-muted-foreground">{def.loanTypeName} / {def.departmentName}</div>
+                        </div>
+                        {index < sortedWorkflowDefinitions.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0"/>}
+                    </React.Fragment>
                 ))}
-                <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2" disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" />Add New Version to &quot;{def.name}&quot;</Button>
-              </CardContent>
-            </Card>
-          ))}
-          <Separator />
-           <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
-                <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
-                <div className="grid md:grid-cols-2 gap-4 items-end">
-                    <div><Label htmlFor="new-wf-name">Workflow Definition Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e=>setNewWorkflowName(e.target.value)} placeholder="e.g., Standard Personal Loan Process" disabled={isSavingAll || isSavingData}/></div>
-                     <div>
-                        <Label htmlFor="new-wf-dept">For Department</Label>
-                        <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
-                            <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
-                            <SelectContent>
-                                {departments.length === 0 && <SelectItem value="no-depts-found" disabled>No departments found</SelectItem>}
-                                {departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                     </div>
-                     <div>
-                        <Label htmlFor="new-wf-loantype">For Loan Type</Label>
-                        <Select value={newWorkflowLoanTypeId} onValueChange={(value) => setNewWorkflowLoanTypeId(value)}>
-                            <SelectTrigger id="new-wf-loantype" className="mt-1"><SelectValue placeholder="Select Loan Type" /></SelectTrigger>
-                            <SelectContent>
-                                {loanTypes.length === 0 && <SelectItem value="no-loan-types-found" disabled>No loan types found</SelectItem>}
-                                {loanTypes.map(lt => <SelectItem key={`new-wf-lt-option-${lt.id}`} value={lt.id}>{lt.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                     </div>
-                </div>
-                <div><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e=>setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData}/></div>
-                <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData || loanTypes.length === 0 || departments.length === 0}>
-                    {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Add Workflow Definition
-                </Button>
-                {(loanTypes.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: Both a department and a loan type must be configured first.</p>}
+                {sortedWorkflowDefinitions.length === 0 && <p className="text-muted-foreground">No workflows defined yet. Add one above to start.</p>}
             </div>
+          </div>
+            
+          <Accordion type="multiple" className="w-full space-y-4">
+          {sortedWorkflowDefinitions.map(def => (
+            <AccordionItem value={def.id} key={def.id}>
+              <Card className="shadow-sm">
+                <AccordionTrigger className="hover:no-underline p-0">
+                  <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
+                    <div>
+                      <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
+                      <CardDescription>{def.description || "No description."} <Badge variant="outline" className="ml-2">Dept: {def.departmentName || 'N/A'}</Badge><Badge variant="outline" className="ml-2">Loan Type: {def.loanTypeName || 'N/A'}</Badge></CardDescription>
+                    </div>
+                  </CardHeader>
+                </AccordionTrigger>
+                <AccordionContent className="p-0">
+                  <CardContent className="space-y-3 p-4">
+                    <h4 className="font-medium text-sm">Versions (Latest first):</h4>
+                    {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined for this workflow. Add one below.</p>}
+                    {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
+                      <div key={version.id} className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 border rounded-md gap-2 ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
+                        <div>
+                          <div className="font-semibold flex items-center">
+                            Version {version.versionNumber}
+                            {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                            {!version.isActive &&
+                                <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
+                                    <ShieldCheck className="mr-2 h-4 w-4"/>Set Active
+                                </Button>}
+                            {version.isActive &&
+                                <Button variant="ghost" size="sm" disabled className="text-green-600 cursor-default">
+                                    <ShieldCheck className="mr-2 h-4 w-4"/>Currently Active
+                                </Button>}
+                            <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}>
+                                <Edit className="mr-2 h-4 w-4" />Edit Stages
+                            </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2" disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" />Add New Version to &quot;{def.name}&quot;</Button>
+                  </CardContent>
+                </AccordionContent>
+              </Card>
+            </AccordionItem>
+          ))}
+          </Accordion>
         </CardContent>
       </Card>
       </>

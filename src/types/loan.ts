@@ -92,6 +92,7 @@ export interface WorkflowDefinition {
   loanTypeName: string;
   description?: string;
   versions: WorkflowVersion[];
+  order: number; // Added for ordering
   createdAt?: string;
   updatedAt?: string;
 }

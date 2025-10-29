@@ -456,7 +456,7 @@ export async function updateLoanRequest(
 export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDefinition[]; error?: string }> {
   try {
     const prismaWorkflowDefs = await prisma.workflowDefinition.findMany({
-      orderBy: { department: { name: 'asc' } },
+      orderBy: { order: 'asc' },
       include: {
         loanType: true,
         department: true,
@@ -480,6 +480,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
       departmentId: def.departmentId,
       departmentName: def.department.name,
       description: def.description || undefined,
+      order: def.order,
       createdAt: formatISO(new Date(def.createdAt)),
       updatedAt: formatISO(new Date(def.updatedAt)),
       versions: def.versions.map(v => ({
@@ -516,7 +517,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 }
 
 export async function addWorkflowDefinition(
-  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'loanTypeName' | 'departmentName'>
+  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'loanTypeName' | 'departmentName' | 'order'>
 ): Promise<{ id?: string; error?: string }> {
   try {
     const existing = await prisma.workflowDefinition.findUnique({
@@ -526,12 +527,16 @@ export async function addWorkflowDefinition(
       return createErrorResult(`A workflow definition for this department and loan type combination already exists.`, "addWorkflowDefinition");
     }
 
+    const maxOrder = await prisma.workflowDefinition.aggregate({ _max: { order: true }});
+    const nextOrder = (maxOrder._max.order ?? -1) + 1;
+
     const newDef = await prisma.workflowDefinition.create({
       data: {
         name: definitionData.name,
         department: { connect: { id: definitionData.departmentId } },
         loanType: { connect: { id: definitionData.loanTypeId } },
         description: definitionData.description,
+        order: nextOrder,
       },
     });
     return { id: newDef.id };
@@ -552,12 +557,14 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             id: definition.id || undefined,
             name: defData.name,
             description: defData.description,
+            order: defData.order,
             department: { connect: { id: defData.departmentId } },
             loanType: { connect: { id: defData.loanTypeId } }
           },
           update: {
             name: defData.name,
             description: defData.description,
+            order: defData.order,
             department: { connect: { id: defData.departmentId } },
             loanType: { connect: { id: defData.loanTypeId } },
             updatedAt: new Date(),
