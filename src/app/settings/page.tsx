@@ -226,10 +226,11 @@ interface EditWorkflowVersionDialogProps {
   versionToEdit: WorkflowVersion | null;
   departments: DepartmentObject[];
   onSaveVersion: (definitionId: string, version: WorkflowVersion) => void;
+  departmentName: string;
 }
 
 function EditWorkflowVersionDialog({
-  isOpen, onOpenChange, workflowDefinition, versionToEdit, onSaveVersion,
+  isOpen, onOpenChange, workflowDefinition, versionToEdit, onSaveVersion, departmentName,
 }: EditWorkflowVersionDialogProps) {
   const [editedVersion, setEditedVersion] = useState<WorkflowVersion | null>(null);
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
@@ -277,7 +278,7 @@ function EditWorkflowVersionDialog({
     });
   };
   
-  const handleInternalAddStageToVersion = (departmentName: string) => {
+  const handleInternalAddStageToVersion = (deptName: string) => {
     if (!editedVersion || !workflowDefinition) return;
     if(!newStageName.trim()){
         toast({ title: "Error", description: "New stage name is required.", variant: "destructive"});
@@ -285,7 +286,7 @@ function EditWorkflowVersionDialog({
     }
     
     const newOrder = editedVersion.stages.length;
-    const newStage = createNewStage(newStageName, departmentName, newStageTimeline, newStageWeight, newOrder);
+    const newStage = createNewStage(newStageName, deptName, newStageTimeline, newStageWeight, newOrder);
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
@@ -428,7 +429,7 @@ function EditWorkflowVersionDialog({
                     <div className="sm:col-span-2"><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
                     <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
                     <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
-                    <Button onClick={() => handleInternalAddStageToVersion(workflowDefinition.departmentName)} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
+                    <Button onClick={() => handleInternalAddStageToVersion(departmentName)} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
                 </div>
             </div>
         </div>
@@ -602,6 +603,21 @@ export default function SettingsPage() {
         return;
     }
     
+    // Client-side validation for duplicate department/loan type combination
+    const alreadyExists = workflowDefinitions.some(
+        wf => wf.departmentId === newWorkflowDepartmentId && wf.loanTypeId === newWorkflowLoanTypeId
+    );
+
+    if (alreadyExists) {
+        toast({
+            title: "Duplicate Workflow",
+            description: "A workflow for this department and loan type combination already exists. Please choose a different combination.",
+            variant: "destructive",
+            duration: 9000
+        });
+        return;
+    }
+
     if (workflowDefinitions.length > 0 && !newWorkflowReferenceId) {
       toast({ title: "Validation Error", description: "A reference workflow must be selected to determine the order.", variant: "destructive", duration: 9000 });
       return;
@@ -1004,6 +1020,7 @@ export default function SettingsPage() {
         versionToEdit={currentVersionToEdit}
         departments={departments}
         onSaveVersion={handleSaveVersion}
+        departmentName={currentWorkflowDefForEdit?.departmentName || ''}
       />
 
       <Card>
