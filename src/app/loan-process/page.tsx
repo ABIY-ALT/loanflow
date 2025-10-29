@@ -36,31 +36,47 @@ export default function LoanProcessPage() {
 
   const loansWithWorkflows = useMemo(() => {
     if (!allLoans.length || !fetchedWorkflowDefinitions.length) return [];
-    
-    return allLoans.map(loan => {
-      const workflowDefinition = fetchedWorkflowDefinitions.find(def => def.id === loan.workflowDefinitionId);
-      const workflowVersion = workflowDefinition?.versions.find(v => v.id === loan.workflowVersionId);
-      
-      if (!workflowVersion || !workflowDefinition) return null;
 
-      // Group stages by department
-      const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
-        const dept = stage.responsibleDepartment;
-        if (!acc[dept]) {
-          acc[dept] = [];
-        }
-        acc[dept].push(stage);
-        return acc;
-      }, {} as Record<string, WorkflowStageDefinition[]>);
+    return allLoans
+      .map((loan) => {
+        const workflowVersionId = loan.workflowVersionId;
+        if (!workflowVersionId) return null;
 
+        // Find the definition that contains this version
+        const workflowDefinition = fetchedWorkflowDefinitions.find((def) =>
+          def.versions.some((v) => v.id === workflowVersionId)
+        );
 
-      return {
-        loan,
-        workflowDefinition,
-        workflowVersion,
-        stagesByDept,
-      };
-    }).filter(Boolean) as { loan: LoanRequest; workflowDefinition: WorkflowDefinition; workflowVersion: WorkflowVersion; stagesByDept: Record<string, WorkflowStageDefinition[]> }[];
+        if (!workflowDefinition) return null;
+
+        const workflowVersion = workflowDefinition.versions.find(
+          (v) => v.id === workflowVersionId
+        );
+        if (!workflowVersion) return null;
+
+        // Group stages by department
+        const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
+          const dept = stage.responsibleDepartment;
+          if (!acc[dept]) {
+            acc[dept] = [];
+          }
+          acc[dept].push(stage);
+          return acc;
+        }, {} as Record<string, WorkflowStageDefinition[]>);
+
+        return {
+          loan,
+          workflowDefinition,
+          workflowVersion,
+          stagesByDept,
+        };
+      })
+      .filter(Boolean) as {
+      loan: LoanRequest;
+      workflowDefinition: WorkflowDefinition;
+      workflowVersion: WorkflowVersion;
+      stagesByDept: Record<string, WorkflowStageDefinition[]>;
+    }[];
   }, [allLoans, fetchedWorkflowDefinitions]);
 
 
