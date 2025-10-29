@@ -239,6 +239,13 @@ function EditWorkflowVersionDialog({
   const [newStageName, setNewStageName] = useState('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [newStageWeight, setNewStageWeight] = useState(10);
+  
+  const [newStageDocReqs, setNewStageDocReqs] = useState<DocumentRequirement[]>([]);
+  const [newStageStatuses, setNewStageStatuses] = useState<string[]>(['Initiated', 'In Progress', 'Completed']);
+  
+  const [newDocReqName, setNewDocReqName] = useState('');
+  const [newStatusName, setNewStatusName] = useState('');
+
 
   useEffect(() => {
     if (versionToEdit) {
@@ -287,13 +294,22 @@ function EditWorkflowVersionDialog({
     
     const newOrder = editedVersion.stages.length;
     const newStage = createNewStage(newStageName, deptName, newStageTimeline, newStageWeight, newOrder);
+    
+    // Add the doc reqs and statuses from the "add stage" form state
+    newStage.documentRequirements = newStageDocReqs;
+    newStage.availableStatuses = { [deptName]: newStageStatuses };
+    
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
     });
+
+    // Reset form
     setNewStageName('');
     setNewStageTimeline(3);
     setNewStageWeight(10);
+    setNewStageDocReqs([]);
+    setNewStageStatuses(['Initiated', 'In Progress', 'Completed']);
   };
 
   const handleInternalReorderStages = (event: DragEndEvent) => {
@@ -423,14 +439,50 @@ function EditWorkflowVersionDialog({
                 </SortableContext>
             </DndContext>
             <Separator />
-            <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
-                <h5 className="font-medium">Add New Stage to this Version</h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                <h5 className="font-medium text-lg">Add New Stage to this Version</h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                     <div className="sm:col-span-2"><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
                     <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
                     <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
-                    <Button onClick={() => handleInternalAddStageToVersion(departmentName)} size="sm" className="sm:col-span-2"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
                 </div>
+                
+                <Separator/>
+                
+                {/* Add Document Requirements section */}
+                <div className="space-y-2">
+                    <h6 className="font-medium">Document Requirements</h6>
+                    {newStageDocReqs.map((req, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
+                           <span className="flex-grow text-sm">{req.name}</span>
+                           <Button variant="ghost" size="icon" onClick={() => setNewStageDocReqs(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                    ))}
+                    <div className="flex items-end gap-2">
+                       <div className="flex-grow"><Label htmlFor="add-new-req-name" className="sr-only">New Doc Name</Label><Input id="add-new-req-name" value={newDocReqName} onChange={e => setNewDocReqName(e.target.value)} placeholder="e.g., Passport Copy" /></div>
+                       <Button type="button" size="sm" onClick={() => { if(newDocReqName.trim()) { setNewStageDocReqs(prev => [...prev, createNewDocumentRequirement(newDocReqName.trim())]); setNewDocReqName(''); }}}><PlusCircle className="mr-2 h-4 w-4"/> Add</Button>
+                    </div>
+                </div>
+                
+                <Separator/>
+                
+                {/* Add Available Statuses section */}
+                <div className="space-y-2">
+                     <h6 className="font-medium">Available Statuses for {departmentName}</h6>
+                     {newStageStatuses.map((status, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
+                           <span className="flex-grow text-sm">{status}</span>
+                           {index > 2 && <Button variant="ghost" size="icon" onClick={() => setNewStageStatuses(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
+                           {index <= 2 && <span className="text-xs text-muted-foreground">(default)</span>}
+                        </div>
+                    ))}
+                    <div className="flex items-end gap-2">
+                       <div className="flex-grow"><Label htmlFor="add-new-status-name" className="sr-only">New Status Name</Label><Input id="add-new-status-name" value={newStatusName} onChange={e => setNewStatusName(e.target.value)} placeholder="e.g., On Hold" /></div>
+                       <Button type="button" size="sm" onClick={() => { if(newStatusName.trim() && !newStageStatuses.includes(newStatusName.trim())) { setNewStageStatuses(prev => [...prev, newStatusName.trim()]); setNewStatusName(''); }}}><PlusCircle className="mr-2 h-4 w-4"/> Add</Button>
+                    </div>
+                </div>
+                
+                <Button onClick={() => handleInternalAddStageToVersion(departmentName)} className="w-full mt-4"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
             </div>
         </div>
         <DialogFooter className="mt-auto pt-4 border-t">
