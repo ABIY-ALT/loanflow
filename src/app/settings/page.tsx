@@ -80,11 +80,11 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed'] }, // Default statuses
 });
 
-const createNewDocumentRequirement = (name: string): DocumentRequirement => ({
+const createNewDocumentRequirement = (name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
   id: `doc-req-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
   name,
-  isMandatory: true,
-  type: DocumentRequirementType.UPLOAD,
+  isMandatory,
+  type,
 });
 
 
@@ -244,6 +244,8 @@ function EditWorkflowVersionDialog({
   const [newStageStatuses, setNewStageStatuses] = useState<string[]>(['Initiated', 'In Progress', 'Completed']);
   
   const [newDocReqName, setNewDocReqName] = useState('');
+  const [newDocReqIsMandatory, setNewDocReqIsMandatory] = useState(true);
+  const [newDocReqType, setNewDocReqType] = useState<DocumentRequirementType>(DocumentRequirementType.UPLOAD);
   const [newStatusName, setNewStatusName] = useState('');
 
 
@@ -327,7 +329,7 @@ function EditWorkflowVersionDialog({
   };
 
   const handleInternalAddReqDoc = (versionId: string, stageId: string, docName: string) => {
-    const newDocReq = createNewDocumentRequirement(docName);
+    const newDocReq = createNewDocumentRequirement(docName, true, DocumentRequirementType.UPLOAD);
     setEditedVersion(prev => {
         if(!prev) return null;
         return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: [...s.documentRequirements, newDocReq]} : s)};
@@ -449,18 +451,32 @@ function EditWorkflowVersionDialog({
                 
                 <Separator/>
                 
-                {/* Add Document Requirements section */}
                 <div className="space-y-2">
-                    <h6 className="font-medium">Document Requirements</h6>
+                    <h6 className="font-medium">Document Requirements for New Stage</h6>
                     {newStageDocReqs.map((req, index) => (
-                        <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
-                           <span className="flex-grow text-sm">{req.name}</span>
+                        <div key={index} className="flex items-center justify-between gap-2 p-2 border rounded-md bg-background">
+                            <div className="flex flex-col">
+                                <span className="font-medium text-sm">{req.name}</span>
+                                <span className="text-xs text-muted-foreground">{req.type} - {req.isMandatory ? 'Mandatory' : 'Optional'}</span>
+                            </div>
                            <Button variant="ghost" size="icon" onClick={() => setNewStageDocReqs(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </div>
                     ))}
-                    <div className="flex items-end gap-2">
-                       <div className="flex-grow"><Label htmlFor="add-new-req-name" className="sr-only">New Doc Name</Label><Input id="add-new-req-name" value={newDocReqName} onChange={e => setNewDocReqName(e.target.value)} placeholder="e.g., Passport Copy" /></div>
-                       <Button type="button" size="sm" onClick={() => { if(newDocReqName.trim()) { setNewStageDocReqs(prev => [...prev, createNewDocumentRequirement(newDocReqName.trim())]); setNewDocReqName(''); }}}><PlusCircle className="mr-2 h-4 w-4"/> Add</Button>
+                     <div className="flex flex-col sm:flex-row items-end gap-2 pt-2">
+                       <div className="flex-grow w-full"><Label htmlFor="add-new-req-name" className="sr-only">New Doc Name</Label><Input id="add-new-req-name" value={newDocReqName} onChange={e => setNewDocReqName(e.target.value)} placeholder="e.g., Passport Copy" /></div>
+                       <div className="flex items-center gap-4">
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="add-new-req-mandatory" checked={newDocReqIsMandatory} onCheckedChange={(checked) => setNewDocReqIsMandatory(!!checked)} />
+                            <Label htmlFor="add-new-req-mandatory">Mandatory</Label>
+                         </div>
+                         <Select value={newDocReqType} onValueChange={(value) => setNewDocReqType(value as DocumentRequirementType)}>
+                           <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                           <SelectContent><SelectItem value={DocumentRequirementType.UPLOAD}>Upload</SelectItem><SelectItem value={DocumentRequirementType.CHECKBOX}>Checkbox</SelectItem></SelectContent>
+                         </Select>
+                         <Button type="button" size="sm" onClick={() => { if(newDocReqName.trim()) { setNewStageDocReqs(prev => [...prev, createNewDocumentRequirement(newDocReqName.trim(), newDocReqIsMandatory, newDocReqType)]); setNewDocReqName(''); }}}>
+                           <PlusCircle className="mr-2 h-4 w-4"/> Add
+                         </Button>
+                       </div>
                     </div>
                 </div>
                 
@@ -472,8 +488,7 @@ function EditWorkflowVersionDialog({
                      {newStageStatuses.map((status, index) => (
                         <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
                            <span className="flex-grow text-sm">{status}</span>
-                           {index > 2 && <Button variant="ghost" size="icon" onClick={() => setNewStageStatuses(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
-                           {index <= 2 && <span className="text-xs text-muted-foreground">(default)</span>}
+                           {index > 2 ? <Button variant="ghost" size="icon" onClick={() => setNewStageStatuses(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button> : <span className="text-xs text-muted-foreground">(default)</span>}
                         </div>
                     ))}
                     <div className="flex items-end gap-2">
