@@ -520,11 +520,14 @@ export async function addWorkflowDefinition(
   definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'loanTypeName' | 'departmentName' | 'order'>
 ): Promise<{ id?: string; error?: string }> {
   try {
-    const existing = await prisma.workflowDefinition.findUnique({
-      where: { departmentId_loanTypeId: { departmentId: definitionData.departmentId, loanTypeId: definitionData.loanTypeId } },
+    const existing = await prisma.workflowDefinition.findFirst({
+        where: {
+            departmentId: definitionData.departmentId,
+            loanTypeId: definitionData.loanTypeId,
+        },
     });
     if (existing) {
-      return createErrorResult(`A workflow definition for this department and loan type combination already exists.`, "addWorkflowDefinition");
+        return createErrorResult(`A workflow definition for this department and loan type combination already exists.`, "addWorkflowDefinition");
     }
 
     const maxOrder = await prisma.workflowDefinition.aggregate({ _max: { order: true }});
