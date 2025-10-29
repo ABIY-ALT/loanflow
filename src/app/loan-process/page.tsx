@@ -38,11 +38,10 @@ export default function LoanProcessPage() {
     if (!allLoans.length || !fetchedWorkflowDefinitions.length) return [];
     
     return allLoans.map(loan => {
-      const workflowVersion = fetchedWorkflowDefinitions
-        .flatMap(def => def.versions)
-        .find(v => v.id === loan.workflowVersionId);
+      const workflowDefinition = fetchedWorkflowDefinitions.find(def => def.id === loan.workflowDefinitionId);
+      const workflowVersion = workflowDefinition?.versions.find(v => v.id === loan.workflowVersionId);
       
-      if (!workflowVersion) return null;
+      if (!workflowVersion || !workflowDefinition) return null;
 
       // Group stages by department
       const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
@@ -57,10 +56,11 @@ export default function LoanProcessPage() {
 
       return {
         loan,
+        workflowDefinition,
         workflowVersion,
         stagesByDept,
       };
-    }).filter(Boolean) as { loan: LoanRequest; workflowVersion: WorkflowVersion; stagesByDept: Record<string, WorkflowStageDefinition[]> }[];
+    }).filter(Boolean) as { loan: LoanRequest; workflowDefinition: WorkflowDefinition; workflowVersion: WorkflowVersion; stagesByDept: Record<string, WorkflowStageDefinition[]> }[];
   }, [allLoans, fetchedWorkflowDefinitions]);
 
 
@@ -150,7 +150,7 @@ export default function LoanProcessPage() {
       </div>
 
       <Accordion type="multiple" className="w-full space-y-4">
-        {loansWithWorkflows.map(({ loan, workflowVersion, stagesByDept }) => (
+        {loansWithWorkflows.map(({ loan, workflowVersion, stagesByDept, workflowDefinition }) => (
           <AccordionItem value={loan.id} key={loan.id} className="border-none">
              <Card className="shadow-sm hover:shadow-md transition-shadow">
                 <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
@@ -172,19 +172,24 @@ export default function LoanProcessPage() {
                 </AccordionTrigger>
                 <AccordionContent className="p-0">
                     <CardContent className="p-4 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-semibold text-foreground">
+                          Workflow: {workflowDefinition.name} (v{workflowVersion.versionNumber})
+                        </h3>
+                      </div>
                       {Object.entries(stagesByDept).map(([dept, stages]) => (
                         <div key={dept}>
-                          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                          <h4 className="text-lg font-semibold mb-2 flex items-center gap-2">
                              <Building className="h-5 w-5 text-muted-foreground"/>
                              Dept: {dept}
-                          </h3>
+                          </h4>
                           <ScrollArea className="w-full whitespace-nowrap pb-4">
                             <div className="flex gap-4">
                               {stages.map((stageDef) => (
                                 <div key={stageDef.id} className={cn("flex-shrink-0 w-72 rounded-lg p-3 min-h-[150px] border-2 flex flex-col", loan.currentStageId === stageDef.id ? 'border-primary bg-primary/5' : 'bg-muted/30')}>
                                   <div className="flex-grow">
                                       <div className="flex justify-between items-center mb-2 gap-2">
-                                          <h4 className="font-semibold text-foreground truncate whitespace-normal">{stageDef.order + 1}. {stageDef.name}</h4>
+                                          <h5 className="font-semibold text-foreground truncate whitespace-normal">{stageDef.order + 1}. {stageDef.name}</h5>
                                           {loan.currentStageId === stageDef.id && <Badge>Current</Badge>}
                                       </div>
                                       <div className="p-2 text-sm text-muted-foreground space-y-1">
