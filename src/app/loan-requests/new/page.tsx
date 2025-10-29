@@ -146,14 +146,14 @@ export default function NewLoanRequestPage() {
                     <FormItem>
                       <FormLabel>Customer Branch</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0} >
-                           <FormControl>
-                             <div className="relative">
-                                <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                                <SelectTrigger className="pl-10">
-                                  <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
-                                </SelectTrigger>
-                             </div>
-                           </FormControl>
+                           <div className="relative">
+                                <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <FormControl>
+                                    <SelectTrigger className="pl-10">
+                                      <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
+                                    </SelectTrigger>
+                                </FormControl>
+                           </div>
                            <SelectContent>
                               {branches.map(branch => ( <SelectItem key={branch.id} value={branch.name}> {branch.name} ({branch.districtName}) </SelectItem> ))}
                               {branches.length === 0 && !isLoading && ( <SelectItem value="no-branches" disabled>No branches configured</SelectItem> )}
@@ -179,14 +179,14 @@ export default function NewLoanRequestPage() {
                           defaultValue={field.value}
                           disabled={isLoading || isSubmitting || availableWorkflows.length === 0}
                         >
-                          <FormControl>
                             <div className="relative">
-                              <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                              <SelectTrigger className="pl-10">
-                                <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
-                              </SelectTrigger>
-                            </div>
-                          </FormControl>
+                               <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                               <FormControl>
+                                    <SelectTrigger className="pl-10">
+                                        <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
+                                    </SelectTrigger>
+                               </FormControl>
+                           </div>
                           <SelectContent>
                             {availableWorkflows.map(wf => (
                               <SelectItem key={wf.id} value={wf.id}>
