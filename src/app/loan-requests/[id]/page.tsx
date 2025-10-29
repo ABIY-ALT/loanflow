@@ -792,11 +792,11 @@ export default function LoanDetailPage() {
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}>
                   Stage: {currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
                 </Badge>
-                {availableStatuses.length > 0 ? (
+                {availableStatuses.length > 0 && isActionable ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Status:</span>
-                    <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving || !isActionable}>
-                      <SelectTrigger className="h-8 text-sm" disabled={!isActionable}>
+                    <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving}>
+                      <SelectTrigger className="h-8 text-sm">
                         <SelectValue placeholder="Set Status" />
                       </SelectTrigger>
                       <SelectContent>
