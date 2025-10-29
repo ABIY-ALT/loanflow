@@ -10,11 +10,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { getDistricts, addDistrict, deleteDistrict, getBranches, addBranch, deleteBranch } from '@/services/branch-service';
 import { Loader2, PlusCircle, Trash2, AlertTriangle, Building, ArrowLeft, ShieldAlert, Map } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
+import { Label } from '@/components/ui/label';
 
 interface DistrictItem { id: string; name: string; }
 interface BranchItem { id: string; name: string; districtName: string; }
@@ -34,6 +45,10 @@ export default function ManageBranchesPage() {
   const canManageBranches = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES);
 
   const fetchData = useCallback(async (isInitialLoad = false) => {
+    if (!canManageBranches) {
+        setIsLoading(false);
+        return;
+    };
     setIsLoading(true);
     setError(null);
     try {
@@ -53,14 +68,12 @@ export default function ManageBranchesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDistrictId]); // Keep selectedDistrictId here only for the initial check logic within the function if needed, but the call below will be modified.
+  }, [canManageBranches, selectedDistrictId]);
 
   useEffect(() => {
-    if (canManageBranches) {
-      fetchData(true); // Pass true for the initial load
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canManageBranches]); // This effect runs only once when canManageBranches changes.
+    fetchData(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageBranches]);
 
   const handleAddDistrict = async () => {
     if (!newDistrictName.trim()) return toast({ title: "Validation Error", description: "District name cannot be empty.", variant: "destructive" });

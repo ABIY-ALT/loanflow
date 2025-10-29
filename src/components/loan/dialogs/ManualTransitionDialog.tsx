@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -93,9 +94,11 @@ export function ManualTransitionDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <Shuffle className="mr-2 h-5 w-5" />
-            Manual Stage Transition
+          <DialogTitle>
+            <span className="flex items-center">
+              <Shuffle className="mr-2 h-5 w-5" />
+              Manual Stage Transition
+            </span>
           </DialogTitle>
           <DialogDescription>
             Force transition for loan <span className="font-semibold">{currentLoan.loanNumber}</span> to any active stage. This action is for authorized users only and will be logged.
