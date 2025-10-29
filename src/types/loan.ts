@@ -13,6 +13,19 @@ export interface LoanType {
   updatedAt?: string;
 }
 
+export interface District {
+  id: string;
+  name: string;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  districtId: string;
+  districtName: string;
+}
+
+
 // Application-level User type, populated from Prisma after token validation
 export interface User {
   id: string; // This is the Prisma User ID, which should align with JWT 'sub' after registration

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import Link from 'next/link';
@@ -18,6 +19,7 @@ import {
   Users2 as UsersIcon,
   BarChartBig,
   Users,
+  Map,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -101,12 +103,12 @@ const navItemsConfig: NavItemConfig[] = [
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    // A user needs at least one settings-related permission to see the main Settings link
     requiredPermissions: [
         PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS, 
         PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS,
+        PERMISSIONS.MANAGE_SETTINGS_BRANCHES,
         PERMISSIONS.MANAGE_SETTINGS_ROLES,
-        PERMISSIONS.MANAGE_USERS, // Added for register user link if it's inside settings
+        PERMISSIONS.MANAGE_USERS,
     ], 
     subItems: [
       {
@@ -114,6 +116,12 @@ const navItemsConfig: NavItemConfig[] = [
         label: 'Manage Departments',
         icon: Building,
         requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS]
+      },
+      {
+        href: '/settings/branches',
+        label: 'Manage Branches',
+        icon: Map,
+        requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_BRANCHES]
       },
       {
         href: '/settings/roles-management',
@@ -125,13 +133,13 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/settings/user-assignments',
         label: 'Manage User Assignments',
         icon: UsersIcon,
-        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Or a more specific one if created
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS]
       },
       {
-        href: '/settings/register-user', // Added link for user registration page
+        href: '/settings/register-user',
         label: 'Register New User',
-        icon: FilePlus2, // Reusing icon, consider a UserPlus icon if available
-        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Typically admin/user manager
+        icon: FilePlus2,
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS]
       }
     ],
   },
@@ -165,9 +173,7 @@ export default function SidebarNav() {
   const userPermissions = new Set(user.permissions || []);
 
   const canView = (itemRequiredPermissions?: AppPermission[]): boolean => {
-    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public item or no specific permission needed beyond login
-
-    // Check if user has AT LEAST ONE of the required permissions for the item
+    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true;
     return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
   
@@ -188,8 +194,6 @@ export default function SidebarNav() {
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
 
-        // Open sub-menu if the current path starts with the main item's href,
-        // it has sub-items, and it's not the root dashboard page (which has no settings sub-menu).
         const openSubMenu = item.subItems && item.subItems.length > 0 && 
                             currentPathname.startsWith(item.href) && item.href !== '/';
 

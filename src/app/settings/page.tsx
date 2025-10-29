@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -47,7 +47,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
-import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
+import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService } from '@/services/loan-type-service';
 import type { LoanType } from '@/types/loan';
@@ -795,6 +795,9 @@ export default function SettingsPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && (
              <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
+          )}
+           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES) && (
+             <Link href="/settings/branches" passHref><Button variant="outline">Manage Branches & Districts</Button></Link>
           )}
           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) && (
              <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
