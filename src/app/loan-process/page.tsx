@@ -4,10 +4,9 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
+import type { LoanRequest, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Eye, Users as UsersIcon, FileDigit, ListFilter } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
@@ -18,93 +17,33 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow, parseISO } from 'date-fns';
+
+interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers'> {}
+
+interface PipelineStage extends WorkflowStageDefinition {
+  loans: PipelineLoan[];
+}
+
+interface PipelineWorkflow extends WorkflowDefinition {
+  stages: PipelineStage[];
+}
+
+interface PipelineLoanType {
+  loanTypeName: string;
+  workflows: PipelineWorkflow[];
+}
 
 export default function LoanProcessPage() {
-  const router = useRouter();
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
-  
-  const [loanTypeFilter, setLoanTypeFilter] = useState<string>('all');
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
-
-  const loansWithWorkflows = useMemo(() => {
-    if (!allLoans.length || !fetchedWorkflowDefinitions.length) return [];
-  
-    return allLoans
-      .map((loan) => {
-        const workflowVersionId = loan.workflowVersionId;
-        if (!workflowVersionId) return null;
-  
-        const workflowDefinition = fetchedWorkflowDefinitions.find((def) =>
-          def.versions.some((v) => v.id === workflowVersionId)
-        );
-  
-        if (!workflowDefinition) return null;
-  
-        const workflowVersion = workflowDefinition.versions.find(
-          (v) => v.id === workflowVersionId
-        );
-        if (!workflowVersion) return null;
-  
-        const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
-          const dept = stage.responsibleDepartment;
-          if (!acc[dept]) {
-            acc[dept] = [];
-          }
-          acc[dept].push(stage);
-          return acc;
-        }, {} as Record<string, WorkflowStageDefinition[]>);
-  
-        return {
-          loan,
-          workflowDefinition,
-          workflowVersion,
-          stagesByDept,
-        };
-      })
-      .filter(Boolean) as {
-      loan: LoanRequest;
-      workflowDefinition: WorkflowDefinition;
-      workflowVersion: WorkflowVersion;
-      stagesByDept: Record<string, WorkflowStageDefinition[]>;
-    }[];
-  }, [allLoans, fetchedWorkflowDefinitions]);
-  
-  const availableLoanTypes = useMemo(() => {
-    const types = new Set(loansWithWorkflows.map(item => item.workflowDefinition.loanTypeName));
-    return Array.from(types);
-  }, [loansWithWorkflows]);
-
-  const filteredLoans = useMemo(() => {
-    if (loanTypeFilter === 'all') {
-      return loansWithWorkflows;
-    }
-    return loansWithWorkflows.filter(item => item.workflowDefinition.loanTypeName === loanTypeFilter);
-  }, [loansWithWorkflows, loanTypeFilter]);
-
-
-  const getStageDefById = useCallback((versionId?: string, stageId?: string): WorkflowStageDefinition | null => {
-    if (!versionId || !stageId || !fetchedWorkflowDefinitions) return null;
-    for (const def of fetchedWorkflowDefinitions) {
-      const version = def.versions.find(v => v.id === versionId);
-      if (version) {
-        const stage = version.stages.find(s => s.id === stageId);
-        if (stage) return stage;
-      }
-    }
-    return null;
-  }, [fetchedWorkflowDefinitions]);
-
 
   const fetchPageData = useCallback(async () => {
     setIsLoading(true);
@@ -115,164 +54,179 @@ export default function LoanProcessPage() {
         getWorkflowDefinitions()
       ]);
 
-      if (loansResult.error) { setError(prev => (prev ? `${prev}\\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
+      if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); }
       else if (loansResult.loans) {
         setAllLoans(loansResult.loans.filter(l => !l.isTerminalStage));
       }
-      else { setError(prev => (prev ? `${prev}\\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
 
-      if (wfResult.error) { setError(prev => (prev ? `${prev}\\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); setFetchedWorkflowDefinitions([]); }
+      if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); }
       else if (wfResult.workflows) { setFetchedWorkflowDefinitions(wfResult.workflows); }
-      else { setError(prev => (prev ? `${prev}\\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`)); setFetchedWorkflowDefinitions([]); }
 
     } catch (err: any) {
-      setError(prev => (prev ? `${prev}\\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
-      setAllLoans([]);
-      setFetchedWorkflowDefinitions([]);
+      setError(prev => (prev ? `${prev}\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
     }
     finally { setIsLoading(false); }
   }, []);
 
   useEffect(() => { fetchPageData(); }, [fetchPageData]);
+  
+  const pipelineData = useMemo(() => {
+    if (!fetchedWorkflowDefinitions.length) return [];
+
+    const loansByStage: Record<string, PipelineLoan[]> = {};
+    allLoans.forEach(loan => {
+      if (loan.currentStageId) {
+        if (!loansByStage[loan.currentStageId]) {
+          loansByStage[loan.currentStageId] = [];
+        }
+        loansByStage[loan.currentStageId].push({
+          id: loan.id,
+          loanNumber: loan.loanNumber,
+          customerName: loan.customerName,
+          loanAmount: loan.loanAmount,
+          isUrgent: loan.isUrgent,
+          isOverdue: !!loan.isOverdue,
+          lastUpdatedDate: loan.lastUpdatedDate,
+          assignedToUsers: loan.assignedToUsers,
+        });
+      }
+    });
+
+    const workflowsByLoanType = fetchedWorkflowDefinitions.reduce((acc, wfDef) => {
+      const activeVersion = wfDef.versions.find(v => v.isActive);
+      if (!activeVersion || activeVersion.stages.length === 0) return acc;
+      
+      if (!acc[wfDef.loanTypeName]) {
+        acc[wfDef.loanTypeName] = [];
+      }
+
+      const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
+        ...stage,
+        loans: loansByStage[stage.id] || [],
+      }));
+
+      acc[wfDef.loanTypeName].push({
+        ...wfDef,
+        stages: stagesWithLoans,
+      });
+
+      return acc;
+    }, {} as Record<string, PipelineWorkflow[]>);
+
+    return Object.entries(workflowsByLoanType).map(([loanTypeName, workflows]) => ({
+      loanTypeName,
+      workflows,
+    }));
+  }, [allLoans, fetchedWorkflowDefinitions]);
+
 
   if (authLoading || isLoading) {
-    return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipelines & workflows...</p></div>);
+    return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p></div>);
   }
   if (error) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
-
-  if (loansWithWorkflows.length === 0 && !isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
-            <p className="text-muted-foreground">Visualize and manage loans through their lifecycle.</p>
-          </div>
-          {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
-            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
-          )}
-        </div>
-        <Card className="text-center py-10">
-            <CardContent>
-                <h3 className="text-xl font-semibold text-muted-foreground">No Active Loans</h3>
-                <p className="text-muted-foreground">There are no active loans in the system to display in the pipeline.</p>
-                 {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
-                    <Link href="/loan-requests/new" passHref><Button className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Start a New Loan Request</Button></Link>
-                )}
-            </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  
+  const totalActiveLoans = allLoans.length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
-          <p className="text-muted-foreground">Expand a loan to view its complete workflow, grouped by department.</p>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center">
+            <KanbanSquare className="mr-3 h-8 w-8 text-primary" />
+            Loan Pipeline ({totalActiveLoans})
+          </h1>
+          <p className="text-muted-foreground">Hierarchical view of all active loans by type, workflow, and stage.</p>
         </div>
-        <div className="flex items-center gap-2">
-            <div className="w-full sm:w-[180px]">
-              <Select value={loanTypeFilter} onValueChange={setLoanTypeFilter}>
-                <SelectTrigger className="w-full">
-                  <ListFilter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Filter by Loan Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Loan Types</SelectItem>
-                  {availableLoanTypes.map(type => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
-            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
-            )}
-        </div>
+        {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
+          <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
+        )}
       </div>
 
-      <Accordion type="multiple" className="w-full space-y-4">
-        {filteredLoans.map(({ loan, workflowVersion, stagesByDept, workflowDefinition }) => (
-          <AccordionItem value={loan.id} key={loan.id} className="border-none">
-             <Card className="shadow-sm hover:shadow-md transition-shadow">
-                <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
-                  <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
-                     <div className="text-left">
-                        <div className="flex items-center gap-3">
-                          <CardTitle className="text-xl font-semibold text-primary">
-                            {workflowDefinition.name}
-                          </CardTitle>
-                          <Badge variant="outline">{workflowDefinition.loanTypeName}</Badge>
-                        </div>
-                        <CardDescription className="mt-1 text-xs">
-                          {loan.loanNumber} - {loan.customerName}
-                        </CardDescription>
-                      </div>
-                      <div className="text-right">
-                          <Badge variant={loan.currentStageId === workflowVersion.stages[workflowVersion.stages.length - 1].id ? 'default' : 'secondary'}>
-                            {getStageDefById(loan.workflowVersionId, loan.currentStageId)?.name || 'Unknown Stage'}
-                          </Badge>
-                      </div>
+      {pipelineData.length === 0 && !isLoading ? (
+        <Card className="text-center py-10">
+          <CardContent>
+              <h3 className="text-xl font-semibold text-muted-foreground">No Active Loans or Workflows</h3>
+              <p className="text-muted-foreground">There are no active loans, or no workflows with active versions are configured.</p>
+               {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
+                  <Link href="/loan-requests/new" passHref><Button className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Start a New Loan Request</Button></Link>
+              )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Accordion type="multiple" className="w-full space-y-4">
+          {pipelineData.map(({ loanTypeName, workflows }) => (
+            <AccordionItem value={`loantype-${loanTypeName}`} key={`loantype-${loanTypeName}`} className="border-none">
+              <Card className="shadow-sm">
+                <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
+                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
+                     <CardTitle className="text-xl font-semibold text-primary">{loanTypeName}</CardTitle>
+                     <Badge variant="secondary">{workflows.reduce((sum, wf) => sum + wf.stages.reduce((s, st) => s + st.loans.length, 0), 0)} Active Loans</Badge>
                   </CardHeader>
                 </AccordionTrigger>
-                <AccordionContent className="p-0">
-                    <CardContent className="p-4 space-y-4">
-                      {Object.entries(stagesByDept).map(([dept, stages]) => (
-                        <div key={dept}>
-                          <h4 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                             <Building className="h-5 w-5 text-muted-foreground"/>
-                             Dept: {dept}
-                          </h4>
-                          <ScrollArea className="w-full whitespace-nowrap pb-4">
-                            <div className="flex gap-4">
-                              {stages.map((stageDef) => (
-                                <div key={stageDef.id} className={cn("flex-shrink-0 w-72 rounded-lg p-3 min-h-[150px] border-2 flex flex-col", loan.currentStageId === stageDef.id ? 'border-primary bg-primary/5' : 'bg-muted/30')}>
-                                  <div className="flex-grow">
-                                      <div className="flex justify-between items-center mb-2 gap-2">
-                                          <h5 className="font-semibold text-foreground truncate whitespace-normal">{stageDef.order + 1}. {stageDef.name}</h5>
-                                          {loan.currentStageId === stageDef.id && <Badge>Current</Badge>}
-                                      </div>
-                                      <div className="p-2 text-sm text-muted-foreground space-y-1">
-                                          <p><span className="font-semibold">Timeline:</span> {stageDef.defaultTimelineDays} days</p>
-                                          <p><span className="font-semibold">Docs:</span> {stageDef.documentRequirements.length}</p>
-                                      </div>
-                                  </div>
-                                  {loan.currentStageId === stageDef.id && (
-                                    <div className="mt-auto pt-2">
-                                      <p className="text-sm mb-2 flex items-center gap-1.5 text-foreground"><UsersIcon className="h-4 w-4"/>
-                                        {loan.assignedToUsers.length > 0 ? loan.assignedToUsers.map(u => u.fullName).join(', ') : <span className="italic text-muted-foreground">Unassigned</span>}
-                                      </p>
-                                      <Link href={`/loan-requests/${loan.id}`} passHref>
-                                        <Button variant="outline" size="sm" className="w-full">
-                                          <Eye className="mr-2 h-4 w-4" /> View Details
-                                        </Button>
-                                      </Link>
-                                    </div>
-                                  )}
+                <AccordionContent className="p-4 space-y-4">
+                  <Accordion type="multiple" className="w-full space-y-3">
+                    {workflows.map(workflow => (
+                      <AccordionItem value={`workflow-${workflow.id}`} key={`workflow-${workflow.id}`} className="border-b-0">
+                         <Card className="bg-muted/30">
+                           <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
+                              <CardHeader className="flex flex-row justify-between items-center w-full p-3 rounded-t-md hover:bg-background/50">
+                                <div>
+                                  <h4 className="font-semibold">{workflow.name}</h4>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Building className="h-3 w-3" /> Dept: {workflow.departmentName}</p>
                                 </div>
-                              ))}
-                            </div>
-                            <ScrollBar orientation="horizontal" />
-                          </ScrollArea>
-                        </div>
-                      ))}
-                    </CardContent>
+                                <Badge variant="outline">{workflow.stages.reduce((sum, st) => sum + st.loans.length, 0)} Loans</Badge>
+                              </CardHeader>
+                           </AccordionTrigger>
+                           <AccordionContent className="p-3">
+                              <div className="space-y-3">
+                                {workflow.stages.map(stage => (
+                                  <div key={stage.id}>
+                                    <h5 className="font-medium text-sm mb-2 flex items-center justify-between">
+                                      <span>{stage.order + 1}. {stage.name}</span>
+                                      <span className="text-xs font-normal text-muted-foreground">({stage.loans.length} loans)</span>
+                                    </h5>
+                                    {stage.loans.length > 0 ? (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                        {stage.loans.map(loan => (
+                                          <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
+                                            <CardContent className="p-3 space-y-2">
+                                              <div className="flex justify-between items-start">
+                                                <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
+                                                {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
+                                              </div>
+                                              <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
+                                              <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
+                                                 <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
+                                                   <Clock className="h-3 w-3"/>
+                                                   {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
+                                                 </span>
+                                                 <Link href={`/loan-requests/${loan.id}`} passHref>
+                                                   <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                                                     View <ExternalLink className="ml-1 h-3 w-3" />
+                                                   </Button>
+                                                 </Link>
+                                              </div>
+                                            </CardContent>
+                                          </Card>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-center text-muted-foreground py-2 border rounded-md border-dashed">No loans in this stage.</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                           </AccordionContent>
+                         </Card>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
                 </AccordionContent>
-            </Card>
-          </AccordionItem>
-        ))}
-      </Accordion>
-      
-      {filteredLoans.length === 0 && loansWithWorkflows.length > 0 && (
-        <Card>
-            <CardContent className="p-6 text-center text-muted-foreground">
-                <p>No loans found for the selected type: <span className="font-semibold text-foreground">{loanTypeFilter}</span>.</p>
-            </CardContent>
-        </Card>
+              </Card>
+            </AccordionItem>
+          ))}
+        </Accordion>
       )}
-
     </div>
   );
 }
