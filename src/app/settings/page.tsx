@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -465,6 +465,7 @@ export default function SettingsPage() {
   
   const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
   const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
 
   const [newLoanTypeName, setNewLoanTypeName] = useState('');
@@ -514,7 +515,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast]);
+    }, [toast, newWorkflowDepartmentId, newWorkflowLoanTypeId]);
 
 
   useEffect(() => {
@@ -713,6 +714,18 @@ export default function SettingsPage() {
     }
   };
 
+  const toggleDescription = (id: string) => {
+    setExpandedDescriptions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
   if (authLoading || isLoadingData) {
     return (
         <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
@@ -877,10 +890,15 @@ export default function SettingsPage() {
               <div>
                 <Label>Reference Workflow</Label>
                 <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={sortedWorkflowDefinitions.length === 0}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference workflow"/></SelectTrigger>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select reference workflow"/>
+                  </SelectTrigger>
                   <SelectContent>
-                    {sortedWorkflowDefinitions.length === 0 && <SelectItem value="no-workflows" disabled>No existing workflows</SelectItem>}
-                    {sortedWorkflowDefinitions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)}
+                    {sortedWorkflowDefinitions.length === 0 ? (
+                      <SelectItem value="no-workflows-found" disabled>No existing workflows</SelectItem>
+                    ) : (
+                      sortedWorkflowDefinitions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -919,9 +937,23 @@ export default function SettingsPage() {
               <Card className="shadow-sm">
                 <AccordionTrigger className="hover:no-underline p-0">
                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
-                    <div>
+                    <div className="text-left">
                       <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
-                      <CardDescription>{def.description || "No description."} <Badge variant="outline" className="ml-2">Dept: {def.departmentName || 'N/A'}</Badge><Badge variant="outline" className="ml-2">Loan Type: {def.loanTypeName || 'N/A'}</Badge></CardDescription>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
+                        <Badge variant="outline">Loan Type: {def.loanTypeName || 'N/A'}</Badge>
+                        {def.description && (
+                          <Button variant="ghost" size="sm" className="h-auto p-1 text-xs" onClick={(e) => { e.stopPropagation(); toggleDescription(def.id); }}>
+                            {expandedDescriptions.has(def.id) ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+                            {expandedDescriptions.has(def.id) ? 'Hide' : 'Show'} Desc.
+                          </Button>
+                        )}
+                      </div>
+                      {expandedDescriptions.has(def.id) && (
+                        <CardDescription className="mt-2 text-sm text-muted-foreground animate-in fade-in-0">
+                          {def.description || "No description."}
+                        </CardDescription>
+                      )}
                     </div>
                   </CardHeader>
                 </AccordionTrigger>
