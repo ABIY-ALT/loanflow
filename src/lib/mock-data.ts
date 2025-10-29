@@ -1,4 +1,5 @@
 
+
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
 
@@ -101,7 +102,7 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     id: 'wf_def_personal_loan',
     name: 'Standard Personal Loan Process',
     loanType: 'Personal Loan',
-    description: 'Default workflow for processing personal loan applications.',
+    description: 'This workflow outlines the end-to-end process for personal loan applications. It begins with online application intake and automated document verification. The request then moves to AI-assisted credit scoring for a preliminary risk assessment. An underwriter conducts a detailed review before the file is prepared for e-signature and closing. The process concludes once the loan is officially closed and funds are disbursed. Each stage is designed to ensure efficiency, accuracy, and compliance, providing a smooth experience for both staff and the customer.',
     versions: [
       {
         id: 'pl_v_1',
