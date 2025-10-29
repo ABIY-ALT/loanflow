@@ -86,19 +86,19 @@ export default function LoanProcessPage() {
         getWorkflowDefinitions()
       ]);
 
-      if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
+      if (loansResult.error) { setError(prev => (prev ? `${prev}\\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
       else if (loansResult.loans) {
         // Filter out terminal loans from this view
         setAllLoans(loansResult.loans.filter(l => !l.isTerminalStage));
       }
-      else { setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
+      else { setError(prev => (prev ? `${prev}\\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
 
-      if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); setFetchedWorkflowDefinitions([]); }
+      if (wfResult.error) { setError(prev => (prev ? `${prev}\\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); setFetchedWorkflowDefinitions([]); }
       else if (wfResult.workflows) { setFetchedWorkflowDefinitions(wfResult.workflows); }
-      else { setError(prev => (prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`)); setFetchedWorkflowDefinitions([]); }
+      else { setError(prev => (prev ? `${prev}\\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`)); setFetchedWorkflowDefinitions([]); }
 
     } catch (err: any) {
-      setError(prev => (prev ? `${prev}\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
+      setError(prev => (prev ? `${prev}\\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
       setAllLoans([]);
       setFetchedWorkflowDefinitions([]);
     }
@@ -157,7 +157,7 @@ export default function LoanProcessPage() {
                   <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <div className="text-left">
                         <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                          {loan.loanType}
+                          {workflowDefinition.name}
                         </CardTitle>
                         <CardDescription className="mt-1 text-xs">
                           {loan.loanNumber} - {loan.customerName}
@@ -172,11 +172,6 @@ export default function LoanProcessPage() {
                 </AccordionTrigger>
                 <AccordionContent className="p-0">
                     <CardContent className="p-4 space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-xl font-semibold text-foreground">
-                          Workflow: {workflowDefinition.name} (v{workflowVersion.versionNumber})
-                        </h3>
-                      </div>
                       {Object.entries(stagesByDept).map(([dept, stages]) => (
                         <div key={dept}>
                           <h4 className="text-lg font-semibold mb-2 flex items-center gap-2">
