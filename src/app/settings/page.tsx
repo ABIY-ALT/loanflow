@@ -583,7 +583,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast, newWorkflowDepartmentId, newWorkflowLoanTypeId]);
+    }, [toast]);
 
 
   useEffect(() => {
@@ -1134,3 +1134,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
