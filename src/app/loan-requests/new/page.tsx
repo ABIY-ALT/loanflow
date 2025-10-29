@@ -145,18 +145,18 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Customer Branch</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0} >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
-                            </SelectTrigger>
-                          </FormControl>
-                           <SelectContent>
-                              {branches.map(branch => ( <SelectItem key={branch.id} value={branch.name}> {branch.name} ({branch.districtName}) </SelectItem> ))}
-                              {branches.length === 0 && !isLoading && ( <SelectItem value="no-branches" disabled>No branches configured</SelectItem> )}
-                           </SelectContent>
-                         </Select>
-                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {branches.map(branch => ( <SelectItem key={branch.id} value={branch.name}> {branch.name} ({branch.districtName}) </SelectItem> ))}
+                          {branches.length === 0 && !isLoading && ( <SelectItem value="no-branches" disabled>No branches configured</SelectItem> )}
+                        </SelectContent>
+                      </Select>
+                      {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -178,7 +178,7 @@ export default function NewLoanRequestPage() {
                         >
                           <FormControl>
                             <SelectTrigger>
-                                <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
+                              <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -205,10 +205,13 @@ export default function NewLoanRequestPage() {
               <FormField control={form.control} name="loanPurpose" render={({ field }) => ( <FormItem> <FormLabel>Loan Purpose</FormLabel> <div className="relative"> <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /> <FormControl> <Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} /> </FormControl> </div> <FormDescription> Provide a clear and concise reason for the loan application. </FormDescription> <FormMessage /> </FormItem> )} />
               
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoading || availableWorkflows.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}>
-                 {isSubmitting ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
                 ) : (
-                    'Submit Loan Request'
+                  'Submit Loan Request'
                 )}
               </Button>
             </form>
