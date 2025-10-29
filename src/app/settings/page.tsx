@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -595,9 +596,14 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowLoanTypeId || !newWorkflowReferenceId) {
-        toast({ title: "Validation Error", description: "Workflow name, department, loan type, and a reference workflow are all required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowLoanTypeId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, and loan type are all required.", variant: "destructive", duration: 9000 });
         return;
+    }
+    
+    if (workflowDefinitions.length > 0 && !newWorkflowReferenceId) {
+      toast({ title: "Validation Error", description: "A reference workflow must be selected to determine the order.", variant: "destructive", duration: 9000 });
+      return;
     }
 
     const newWf: Omit<WorkflowDefinition, 'id' | 'versions'> = {
@@ -611,13 +617,6 @@ export default function SettingsPage() {
     };
     
     let updatedWfList = [...workflowDefinitions];
-    const referenceIndex = updatedWfList.findIndex(wf => wf.id === newWorkflowReferenceId);
-    if(referenceIndex === -1 && updatedWfList.length > 0) {
-        toast({ title: "Error", description: "Reference workflow not found.", variant: "destructive" });
-        return;
-    }
-
-    const insertIndex = newWorkflowInsertMode === 'after' ? referenceIndex + 1 : referenceIndex;
     
     const newWorkflowWithId = {
         ...newWf,
@@ -628,6 +627,12 @@ export default function SettingsPage() {
     if (updatedWfList.length === 0) {
         updatedWfList.push(newWorkflowWithId);
     } else {
+        const referenceIndex = updatedWfList.findIndex(wf => wf.id === newWorkflowReferenceId);
+        if(referenceIndex === -1) {
+            toast({ title: "Error", description: "Reference workflow not found.", variant: "destructive" });
+            return;
+        }
+        const insertIndex = newWorkflowInsertMode === 'after' ? referenceIndex + 1 : referenceIndex;
         updatedWfList.splice(insertIndex, 0, newWorkflowWithId);
     }
 
@@ -874,7 +879,7 @@ export default function SettingsPage() {
                 <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={sortedWorkflowDefinitions.length === 0}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference workflow"/></SelectTrigger>
                   <SelectContent>
-                    {sortedWorkflowDefinitions.length === 0 && <SelectItem value="" disabled>No existing workflows</SelectItem>}
+                    {sortedWorkflowDefinitions.length === 0 && <SelectItem value="no-workflows" disabled>No existing workflows</SelectItem>}
                     {sortedWorkflowDefinitions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
