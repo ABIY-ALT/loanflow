@@ -1,10 +1,8 @@
-
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -12,113 +10,140 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ========== Customer Model ==========
+// ================================================= //
+//                AUTHENTICATION & USERS             //
+// ================================================= //
+
+model User {
+  id              String      @id @default(uuid())
+  userId          String?     @unique // ID from the external Identity Server
+  name            String
+  firstName       String?
+  lastName        String?
+  email           String      @unique
+  phoneNumber     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  department      Department? @relation(fields: [departmentId], references: [id])
+  departmentId    String?
+  customRole      Role?       @relation(fields: [customRoleId], references: [id])
+  customRoleId    String?
+  assignedLoans   LoanRequest[] @relation("LoanAssignedTo")
+  completedStages LoanRequest[] @relation("StageCompletedBy")
+  historyEntries  LoanHistoryEntry[]
+}
+
+model Department {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  nameLowercase String   @unique // For case-insensitive lookups
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  users         User[]
+  workflows     WorkflowDefinition[]
+  loanAssignments LoanRequest[]           @relation("LoanDepartmentAssignment")
+  workflowStages WorkflowStageDefinition[] @relation("StageDepartmentResponsibility")
+}
+
+model District {
+  id       String   @id @default(uuid())
+  name     String   @unique
+  branches Branch[]
+}
+
+model Branch {
+  id         String   @id @default(uuid())
+  name       String
+  district   District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  districtId String
+  customers  Customer[]
+}
+
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+// ================================================= //
+//                LOAN & WORKFLOW                    //
+// ================================================= //
+
 model Customer {
-  id           String        @id @default(cuid())
+  id           String        @id @default(uuid())
   name         String
   email        String        @unique
   phone        String?
   branch       String?
   loanRequests LoanRequest[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  branchInfo   Branch?       @relation(fields: [branchId], references: [id])
+  branchId     String?
 }
 
-// ========== Loan and Workflow Models ==========
-model LoanRequest {
-  id                       String    @id @default(cuid())
-  loanNumber               String    @unique
-  customer                 Customer  @relation(fields: [customerId], references: [id])
-  customerId               String
-  loanAmount               Decimal   @db.Decimal(12, 2)
-  loanType                 String
-  loanPurpose              String
-  submittedDate            DateTime  @default(now())
-  lastUpdatedDate          DateTime  @updatedAt
-  stageEntryDate           DateTime? @default(now())
-  stageDeadline            DateTime?
-  isReadyForManagerReview  Boolean   @default(false)
-  isUrgent                 Boolean   @default(false)
-  isOverdue                Boolean   @default(false)
-  isTerminalStage          Boolean   @default(false)
-  currentStageStatus       String?
-  assignedToUsers          User[]    @relation("LoanAssignedTo")
-  stageCompletedBy         User[]    @relation("LoanStageCompletedBy")
-  assignedDepartmentId     String?
-  assignedDepartment       Department? @relation(fields: [assignedDepartmentId], references: [id])
-  workflowVersionIdMirror  String?
-  workflowVersion          WorkflowVersion? @relation(fields: [workflowVersionIdMirror], references: [id])
-  currentStageIdMirror     String?
-  currentWorkflowStage     WorkflowStageDefinition? @relation(fields: [currentStageIdMirror], references: [id])
-  history                  LoanHistoryEntry[]
-  documents                LoanDocument[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([customerId])
-  @@index([assignedDepartmentId])
+model LoanType {
+  id                 String               @id @default(uuid())
+  name               String               @unique
+  workflowDefinitions WorkflowDefinition[]
 }
 
 model WorkflowDefinition {
-  id           String            @id @default(cuid())
+  id           String              @id @default(uuid())
   name         String
   description  String?
+  department   Department          @relation(fields: [departmentId], references: [id])
   departmentId String
-  department   Department        @relation(fields: [departmentId], references: [id])
+  loanType     LoanType            @relation(fields: [loanTypeId], references: [id])
   loanTypeId   String
-  loanType     LoanType          @relation(fields: [loanTypeId], references: [id])
+  order        Int                 @default(0)
   versions     WorkflowVersion[]
-  order        Int               @default(0) // Add the order field here
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([departmentId, loanTypeId]) // A department can only have one workflow definition per loan type
+  @@unique([departmentId, loanTypeId])
 }
 
 model WorkflowVersion {
-  id                   String                    @id @default(cuid())
+  id                   String                    @id @default(uuid())
+  workflowDefinition     WorkflowDefinition        @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
   workflowDefinitionId String
-  workflowDefinition   WorkflowDefinition        @relation(fields: [workflowDefinitionId], references: [id])
   versionNumber        Int
   isActive             Boolean                   @default(false)
   stages               WorkflowStageDefinition[]
-  loanRequests         LoanRequest[] // For reverse relation
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([workflowDefinitionId, versionNumber])
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime?                 @updatedAt
+  loanRequests         LoanRequest[]
 }
 
 model WorkflowStageDefinition {
-  id                      String                  @id @default(cuid())
-  name                    String
+  id                      String                 @id @default(uuid())
+  workflowVersion         WorkflowVersion        @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
   workflowVersionId       String
-  workflowVersion         WorkflowVersion         @relation(fields: [workflowVersionId], references: [id])
-  responsibleDepartmentId String
-  responsibleDepartment   Department              @relation(fields: [responsibleDepartmentId], references: [id])
-  defaultTimelineDays     Int
-  documentRequirements    DocumentRequirement[]
-  percentageWeight        Int
+  name                    String
   order                   Int
+  responsibleDepartment   Department             @relation("StageDepartmentResponsibility", fields: [responsibleDepartmentId], references: [id])
+  responsibleDepartmentId String
+  defaultTimelineDays     Int
+  percentageWeight        Int
+  documentRequirements    DocumentRequirement[]
   availableStatuses       Json?
-  activeLoanRequests      LoanRequest[] // For reverse relation
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime?              @updatedAt
+  loanRequests            LoanRequest[]          @relation("CurrentStage")
 }
 
 model DocumentRequirement {
-  id              String                  @id @default(cuid())
+  id              String                  @id @default(uuid())
+  workflowStage   WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
+  workflowStageId String
   name            String
   isMandatory     Boolean                 @default(true)
   type            DocumentRequirementType @default(UPLOAD)
-  workflowStageId String
-  workflowStage   WorkflowStageDefinition @relation(fields: [workflowStageId], references: [id])
-  uploadedDocs    LoanDocument[]
+  documents       LoanDocument[]
 }
 
 enum DocumentRequirementType {
@@ -126,20 +151,52 @@ enum DocumentRequirementType {
   CHECKBOX
 }
 
+model LoanRequest {
+  id                   String                   @id @default(uuid())
+  loanNumber           String                   @unique
+  customer             Customer                 @relation(fields: [customerId], references: [id])
+  customerId           String
+  loanAmount           Decimal                  @db.Decimal(12, 2)
+  loanType             String
+  loanPurpose          String
+  submittedDate        DateTime
+  lastUpdatedDate      DateTime
+  stageEntryDate       DateTime?
+  isReadyForManagerReview Boolean                  @default(false)
+  isUrgent             Boolean                  @default(false)
+  isTerminalStage      Boolean                  @default(false)
+  currentStageStatus   String?
+  
+  assignedDepartment   Department?              @relation("LoanDepartmentAssignment", fields: [assignedDepartmentId], references: [id])
+  assignedDepartmentId String?
+  assignedToUsers      User[]                   @relation("LoanAssignedTo")
+  stageCompletedBy     User[]                   @relation("StageCompletedBy")
+
+  workflowVersion      WorkflowVersion?         @relation(fields: [workflowVersionIdMirror], references: [id])
+  workflowVersionIdMirror String?
+  currentWorkflowStage WorkflowStageDefinition? @relation("CurrentStage", fields: [currentStageIdMirror], references: [id])
+  currentStageIdMirror String?
+  stageDeadline        DateTime?
+
+  history   LoanHistoryEntry[]
+  documents LoanDocument[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
 model LoanDocument {
-  id            String               @id @default(cuid())
+  id            String               @id @default(uuid())
+  loan          LoanRequest          @relation(fields: [loanId], references: [id], onDelete: Cascade)
   loanId        String
-  loan          LoanRequest          @relation(fields: [loanId], references: [id])
+  requirement   DocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   requirementId String?
-  requirement   DocumentRequirement? @relation(fields: [requirementId], references: [id])
   name          String
   status        LoanDocumentStatus
   filePath      String?
   notes         String?
   uploadedAt    DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 }
 
 enum LoanDocumentStatus {
@@ -150,70 +207,15 @@ enum LoanDocumentStatus {
 }
 
 model LoanHistoryEntry {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
+  loan      LoanRequest @relation(fields: [loanId], references: [id], onDelete: Cascade)
   loanId    String
-  loan      LoanRequest @relation(fields: [loanId], references: [id])
-  userId    String
   user      User     @relation(fields: [userId], references: [id])
+  userId    String
   stageName String
   timestamp DateTime
   notes     String?
   requiredFulfilment String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ========== User and Role Models ==========
-model User {
-  id                      String             @id @default(cuid())
-  userId                  String             @unique // ID from the external Identity Server
-  name                    String
-  email                   String             @unique
-  firstName               String?
-  lastName                String?
-  phoneNumber             String?
-  departmentId            String?
-  department              Department?        @relation(fields: [departmentId], references: [id])
-  customRoleId            String?
-  customRole              Role?              @relation(fields: [customRoleId], references: [id])
-  assignedLoans           LoanRequest[]      @relation("LoanAssignedTo")
-  completedStages         LoanRequest[]      @relation("LoanStageCompletedBy")
-  historyEntries          LoanHistoryEntry[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  permissions String[]
-  users       User[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Department {
-  id                  String                    @id @default(cuid())
-  name                String                    @unique
-  nameLowercase       String                    @unique // For case-insensitive checks
-  users               User[]
-  workflowDefinitions WorkflowDefinition[]
-  workflowStages      WorkflowStageDefinition[]
-  loanRequests        LoanRequest[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model LoanType {
-  id                  String               @id @default(cuid())
-  name                String               @unique
-  workflowDefinitions WorkflowDefinition[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
