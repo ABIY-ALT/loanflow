@@ -145,20 +145,20 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Customer Branch</FormLabel>
-                      <div className="relative">
-                         <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                          <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0} >
+                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0} >
                            <FormControl>
-                            <SelectTrigger className="pl-10">
-                              <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
-                            </SelectTrigger>
+                             <div className="relative">
+                                <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                                <SelectTrigger className="pl-10">
+                                  <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
+                                </SelectTrigger>
+                             </div>
                            </FormControl>
                            <SelectContent>
                               {branches.map(branch => ( <SelectItem key={branch.id} value={branch.name}> {branch.name} ({branch.districtName}) </SelectItem> ))}
                               {branches.length === 0 && !isLoading && ( <SelectItem value="no-branches" disabled>No branches configured</SelectItem> )}
                            </SelectContent>
                          </Select>
-                      </div>
                        {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
@@ -168,7 +168,43 @@ export default function NewLoanRequestPage() {
                 <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <div className="relative"> <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
 
                 <div className="md:col-span-1">
-                  <FormField control={form.control} name="workflowVersionId" render={({ field }) => ( <FormItem> <FormLabel>Workflow</FormLabel> <div className="relative"> <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" /> <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || availableWorkflows.length === 0} > <FormControl> <SelectTrigger className="pl-10"> <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} /> </SelectTrigger> </FormControl> <SelectContent> {availableWorkflows.map(wf => ( <SelectItem key={wf.id} value={wf.id}> {wf.name} ({wf.loanTypeName} / Dept: {wf.departmentName}) </SelectItem> ))} {availableWorkflows.length === 0 && !isLoading && ( <SelectItem value="no-workflows-found-disabled" disabled>No active workflows found</SelectItem> )} </SelectContent> </Select> </div> {error?.includes('Workflows') && <p className="text-sm text-destructive mt-2">{error}</p>} <FormMessage /> </FormItem> )} />
+                  <FormField
+                    control={form.control}
+                    name="workflowVersionId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Workflow</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={isLoading || isSubmitting || availableWorkflows.length === 0}
+                        >
+                          <FormControl>
+                            <div className="relative">
+                              <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                              <SelectTrigger className="pl-10">
+                                <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
+                              </SelectTrigger>
+                            </div>
+                          </FormControl>
+                          <SelectContent>
+                            {availableWorkflows.map(wf => (
+                              <SelectItem key={wf.id} value={wf.id}>
+                                {wf.name} ({wf.loanTypeName} / Dept: {wf.departmentName})
+                              </SelectItem>
+                            ))}
+                            {availableWorkflows.length === 0 && !isLoading && (
+                              <SelectItem value="no-workflows-found-disabled" disabled>
+                                No active workflows found
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {error?.includes('Workflows') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
 
