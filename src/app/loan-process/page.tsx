@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Eye, Users as UsersIcon, FileDigit } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Eye, Users as UsersIcon, FileDigit, ListFilter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
@@ -18,6 +18,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -31,6 +32,8 @@ export default function LoanProcessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  const [loanTypeFilter, setLoanTypeFilter] = useState<string>('all');
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
@@ -42,7 +45,6 @@ export default function LoanProcessPage() {
         const workflowVersionId = loan.workflowVersionId;
         if (!workflowVersionId) return null;
   
-        // Find the definition that contains this version
         const workflowDefinition = fetchedWorkflowDefinitions.find((def) =>
           def.versions.some((v) => v.id === workflowVersionId)
         );
@@ -54,7 +56,6 @@ export default function LoanProcessPage() {
         );
         if (!workflowVersion) return null;
   
-        // Group stages by department
         const stagesByDept = workflowVersion.stages.reduce((acc, stage) => {
           const dept = stage.responsibleDepartment;
           if (!acc[dept]) {
@@ -78,6 +79,18 @@ export default function LoanProcessPage() {
       stagesByDept: Record<string, WorkflowStageDefinition[]>;
     }[];
   }, [allLoans, fetchedWorkflowDefinitions]);
+  
+  const availableLoanTypes = useMemo(() => {
+    const types = new Set(loansWithWorkflows.map(item => item.workflowDefinition.loanTypeName));
+    return Array.from(types);
+  }, [loansWithWorkflows]);
+
+  const filteredLoans = useMemo(() => {
+    if (loanTypeFilter === 'all') {
+      return loansWithWorkflows;
+    }
+    return loansWithWorkflows.filter(item => item.workflowDefinition.loanTypeName === loanTypeFilter);
+  }, [loansWithWorkflows, loanTypeFilter]);
 
 
   const getStageDefById = useCallback((versionId?: string, stageId?: string): WorkflowStageDefinition | null => {
@@ -104,7 +117,6 @@ export default function LoanProcessPage() {
 
       if (loansResult.error) { setError(prev => (prev ? `${prev}\\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); setAllLoans([]); }
       else if (loansResult.loans) {
-        // Filter out terminal loans from this view
         setAllLoans(loansResult.loans.filter(l => !l.isTerminalStage));
       }
       else { setError(prev => (prev ? `${prev}\\nLoans: No loan data received.` : `Loans: No loan data received.`)); setAllLoans([]); }
@@ -160,13 +172,29 @@ export default function LoanProcessPage() {
           <h1 className="text-3xl font-bold tracking-tight">Loan Pipeline</h1>
           <p className="text-muted-foreground">Expand a loan to view its complete workflow, grouped by department.</p>
         </div>
-        {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
-           <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan Request</Button></Link>
-        )}
+        <div className="flex items-center gap-2">
+            <div className="w-full sm:w-[180px]">
+              <Select value={loanTypeFilter} onValueChange={setLoanTypeFilter}>
+                <SelectTrigger className="w-full">
+                  <ListFilter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Filter by Loan Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Loan Types</SelectItem>
+                  {availableLoanTypes.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
+            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
+            )}
+        </div>
       </div>
 
       <Accordion type="multiple" className="w-full space-y-4">
-        {loansWithWorkflows.map(({ loan, workflowVersion, stagesByDept, workflowDefinition }) => (
+        {filteredLoans.map(({ loan, workflowVersion, stagesByDept, workflowDefinition }) => (
           <AccordionItem value={loan.id} key={loan.id} className="border-none">
              <Card className="shadow-sm hover:shadow-md transition-shadow">
                 <AccordionTrigger className="hover:no-underline data-[state=open]:border-b-0 p-0">
@@ -236,6 +264,15 @@ export default function LoanProcessPage() {
           </AccordionItem>
         ))}
       </Accordion>
+      
+      {filteredLoans.length === 0 && loansWithWorkflows.length > 0 && (
+        <Card>
+            <CardContent className="p-6 text-center text-muted-foreground">
+                <p>No loans found for the selected type: <span className="font-semibold text-foreground">{loanTypeFilter}</span>.</p>
+            </CardContent>
+        </Card>
+      )}
+
     </div>
   );
 }
