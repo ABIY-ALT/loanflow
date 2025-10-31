@@ -365,7 +365,6 @@ export async function updateLoanRequest(
 
         const isTerminal = newStageDef.name.toLowerCase().includes("closed") || newStageDef.name.toLowerCase().includes("rejected") || newStageDef.name.toLowerCase().includes("funded") || dataToUpdate.isTerminalStage === true;
         updatePayload.isTerminalStage = isTerminal;
-        updatePayload.isOverdue = isBefore(newStageDeadline, new Date()) && !isTerminal;
 
         if (!dataToUpdate.hasOwnProperty('assignedToUsers')) updatePayload.assignedToUsers = { set: [] }; // Unassign on stage change
         if (!dataToUpdate.hasOwnProperty('assignedDepartmentId')) updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
