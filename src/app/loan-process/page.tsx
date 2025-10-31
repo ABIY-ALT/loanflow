@@ -47,6 +47,15 @@ export default function LoanProcessPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
+  
+  const loanOptions = useMemo(() => allLoans.map(loan => ({
+    value: loan.loanNumber.toLowerCase(),
+    label: `${loan.loanNumber} - ${loan.customerName}`,
+  })), [allLoans]);
+  
+  const totalActiveLoans = useMemo(() => {
+    return allLoans.filter(l => !l.isTerminalStage).length;
+  }, [allLoans]);
 
   const fetchPageData = useCallback(async () => {
     setIsLoading(true);
@@ -134,17 +143,13 @@ export default function LoanProcessPage() {
     })).filter(loanType => loanType.workflows.length > 0); // Only include loan types that have workflows with loans
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm]);
 
-  const totalActiveLoans = useMemo(() => {
+  const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
       total + loanType.workflows.reduce((wfTotal, wf) => 
         wfTotal + wf.stages.reduce((stageTotal, stage) => 
           stageTotal + stage.loans.length, 0), 0), 0);
   }, [pipelineData]);
 
-  const loanOptions = useMemo(() => allLoans.map(loan => ({
-    value: loan.loanNumber.toLowerCase(),
-    label: `${loan.loanNumber} - ${loan.customerName}`,
-  })), [allLoans]);
 
   if (authLoading || isLoading) {
     return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p></div>);
@@ -157,7 +162,7 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
             <KanbanSquare className="mr-3 h-8 w-8 text-primary" />
-            Loan Pipeline ({totalActiveLoans})
+            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{totalActiveLoans})
           </h1>
           <p className="text-muted-foreground">Hierarchical view of all active loans by type, workflow, and stage.</p>
         </div>
@@ -169,20 +174,14 @@ export default function LoanProcessPage() {
                 const loan = allLoans.find(l => l.loanNumber.toLowerCase() === currentValue);
                 setSearchTerm(loan ? loan.loanNumber : '');
               }}
-              placeholder="Quick jump to loan..."
-              searchPlaceholder="Search by loan # or name..."
+              onInputChange={(inputValue) => {
+                setSearchTerm(inputValue);
+              }}
+              placeholder="Search or jump to loan..."
+              searchPlaceholder="Filter by loan # or name..."
               notFoundText="No loan found."
-              className="w-full sm:w-[250px]"
+              className="w-full sm:w-[300px]"
             />
-            <div className="relative w-full sm:w-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Filter by loan or name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full"
-              />
-            </div>
           {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
             <Link href="/loan-requests/new" passHref><Button className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
           )}
