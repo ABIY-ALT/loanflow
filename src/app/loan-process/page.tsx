@@ -23,7 +23,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 
-interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers'> {}
+interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'loanType'> {}
 
 interface PipelineStage extends WorkflowStageDefinition {
   loans: PipelineLoan[];
@@ -48,14 +48,14 @@ export default function LoanProcessPage() {
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
+  const totalActiveLoans = useMemo(() => {
+    return allLoans.filter(l => !l.isTerminalStage).length;
+  }, [allLoans]);
+  
   const loanOptions = useMemo(() => allLoans.map(loan => ({
     value: loan.loanNumber.toLowerCase(),
     label: `${loan.loanNumber} - ${loan.customerName}`,
   })), [allLoans]);
-  
-  const totalActiveLoans = useMemo(() => {
-    return allLoans.filter(l => !l.isTerminalStage).length;
-  }, [allLoans]);
 
   const fetchPageData = useCallback(async () => {
     setIsLoading(true);
@@ -90,7 +90,8 @@ export default function LoanProcessPage() {
       const lowercasedFilter = searchTerm.toLowerCase();
       filteredLoans = allLoans.filter(loan =>
         loan.customerName.toLowerCase().includes(lowercasedFilter) ||
-        loan.loanNumber.toLowerCase().includes(lowercasedFilter)
+        loan.loanNumber.toLowerCase().includes(lowercasedFilter) ||
+        loan.loanType.toLowerCase().includes(lowercasedFilter)
       );
     }
 
@@ -109,6 +110,7 @@ export default function LoanProcessPage() {
           isOverdue: !!loan.isOverdue,
           lastUpdatedDate: loan.lastUpdatedDate,
           assignedToUsers: loan.assignedToUsers,
+          loanType: loan.loanType,
         });
       }
     });
@@ -177,7 +179,7 @@ export default function LoanProcessPage() {
               onInputChange={(inputValue) => {
                 setSearchTerm(inputValue);
               }}
-              placeholder="Search or jump to loan..."
+              placeholder="Search by name, loan #, or type..."
               searchPlaceholder="Filter by loan # or name..."
               notFoundText="No loan found."
               className="w-full sm:w-[300px]"
