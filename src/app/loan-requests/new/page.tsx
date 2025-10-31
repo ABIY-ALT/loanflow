@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Building } from 'lucide-react';
+import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Building } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
@@ -151,16 +151,16 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
-                      <Combobox
-                        options={branchOptions}
-                        {...field}
-                        onSelect={field.onChange}
-                        placeholder={isLoading ? "Loading branches..." : "Select a branch"}
-                        searchPlaceholder="Search branch..."
-                        notFoundText="No branch found."
-                        className="w-full"
-                        disabled={isLoading || isSubmitting || branches.length === 0}
-                      />
+                        <Combobox
+                          options={branchOptions}
+                          value={field.value}
+                          onSelect={field.onChange}
+                          placeholder={isLoading ? "Loading branches..." : "Select a branch"}
+                          searchPlaceholder="Search branch..."
+                          notFoundText="No branch found."
+                          className="w-full"
+                          disabled={isLoading || isSubmitting || branches.length === 0}
+                        />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
