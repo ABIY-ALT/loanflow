@@ -155,8 +155,8 @@ export default function NewLoanRequestPage() {
                       <Combobox
                         options={branchOptions}
                         value={field.value}
-                        onSelect={(currentValue) => {
-                          field.onChange(currentValue);
+                        onSelect={(value) => {
+                          form.setValue("customerBranch", value, { shouldValidate: true });
                         }}
                         placeholder={isLoading ? "Loading branches..." : "Select a branch"}
                         searchPlaceholder="Search branch..."
