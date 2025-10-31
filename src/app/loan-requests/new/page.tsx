@@ -152,7 +152,8 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
-                       <Combobox
+                      <FormControl>
+                        <Combobox
                           options={branchOptions}
                           value={field.value}
                           onSelect={(currentValue) => {
@@ -164,6 +165,7 @@ export default function NewLoanRequestPage() {
                           className="w-full"
                           disabled={isLoading || isSubmitting || branches.length === 0}
                         />
+                      </FormControl>
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
