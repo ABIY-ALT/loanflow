@@ -21,11 +21,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, ListFilter, Building } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
 import type { LoanRequest, ActiveWorkflow, Branch } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 
 
 const loanRequestFormSchema = z.object({
@@ -81,6 +82,12 @@ export default function NewLoanRequestPage() {
     }
     fetchPageData();
   }, []);
+  
+  const branchOptions = useMemo(() => 
+    branches.map(branch => ({
+      value: branch.name,
+      label: `${branch.name} (${branch.districtName})`,
+    })), [branches]);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -143,19 +150,20 @@ export default function NewLoanRequestPage() {
                   control={form.control}
                   name="customerBranch"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || branches.length === 0}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={isLoading ? "Loading branches..." : "Select a branch"} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {branches.map(branch => ( <SelectItem key={branch.id} value={branch.name}> {branch.name} ({branch.districtName}) </SelectItem> ))}
-                          {branches.length === 0 && !isLoading && ( <SelectItem value="no-branches" disabled>No branches configured</SelectItem> )}
-                        </SelectContent>
-                      </Select>
+                       <Combobox
+                          options={branchOptions}
+                          value={field.value}
+                          onSelect={(currentValue) => {
+                            field.onChange(currentValue);
+                          }}
+                          placeholder={isLoading ? "Loading branches..." : "Select a branch"}
+                          searchPlaceholder="Search branch..."
+                          notFoundText="No branch found."
+                          className="w-full"
+                          disabled={isLoading || isSubmitting || branches.length === 0}
+                        />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>

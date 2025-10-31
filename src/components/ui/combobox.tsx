@@ -29,6 +29,7 @@ interface ComboboxProps {
     searchPlaceholder?: string;
     notFoundText?: string;
     className?: string;
+    disabled?: boolean;
 }
 
 export function Combobox({ 
@@ -40,6 +41,7 @@ export function Combobox({
     searchPlaceholder = "Search...",
     notFoundText = "No option found.",
     className,
+    disabled = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -53,6 +55,7 @@ export function Combobox({
           role="combobox"
           aria-expanded={open}
           className={cn("w-[200px] justify-between", className)}
+          disabled={disabled}
         >
           <span className="truncate">
             {value ? selectedLabel : placeholder}
