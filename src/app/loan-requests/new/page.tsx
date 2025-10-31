@@ -151,23 +151,36 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
-                        <Combobox
-                          options={branchOptions}
-                          value={field.value}
-                          onSelect={field.onChange}
-                          placeholder={isLoading ? "Loading branches..." : "Select a branch"}
-                          searchPlaceholder="Search branch..."
-                          notFoundText="No branch found."
-                          className="w-full"
-                          disabled={isLoading || isSubmitting || branches.length === 0}
-                        />
+                      <Combobox
+                        options={branchOptions}
+                        value={field.value}
+                        onSelect={field.onChange}
+                        placeholder={isLoading ? "Loading branches..." : "Select a branch"}
+                        searchPlaceholder="Search branch..."
+                        notFoundText="No branch found."
+                        className="w-full"
+                        disabled={isLoading || isSubmitting || branches.length === 0}
+                      />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <div className="relative"> <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
+                <FormField
+                  control={form.control}
+                  name="loanAmount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Loan Amount</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="e.g., 10000" {...field} disabled={isSubmitting} />
+                      </FormControl>
+                      <FormDescription>Enter amount in birr</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <div className="md:col-span-1">
                   <FormField
