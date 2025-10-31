@@ -20,7 +20,10 @@ export default function RootLayout({
   const nonce = headers().get('x-nonce') || ''; // Get the nonce from the headers
 
   return (
-    <html lang="en" suppressHydrationWarning nonce={nonce}>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script nonce={nonce}></script>
+      </head>
       <body className="antialiased">
         <AuthProvider> {/* Ensure AuthProvider wraps AppLayout and children */}
           <AppLayout>
