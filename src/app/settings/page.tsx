@@ -568,11 +568,6 @@ export default function SettingsPage() {
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
         if(fetchedLoanTypes.length > 0 && newWorkflowLoanTypeId === '') setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
         
-        if (wfResult.workflows && wfResult.workflows.length > 0) {
-            const sortedWfs = wfResult.workflows.sort((a,b) => (a.order || 0) - (b.order || 0));
-            setNewWorkflowReferenceId(sortedWfs[sortedWfs.length - 1].id);
-        }
-
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
         setError(errorMessage);
@@ -595,6 +590,22 @@ export default function SettingsPage() {
         fetchInitialData();
     }
   }, [fetchInitialData, currentUser]);
+  
+  const referenceWorkflowOptions = useMemo(() => {
+    return workflowDefinitions
+      .filter(wf => wf.loanTypeId === newWorkflowLoanTypeId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [workflowDefinitions, newWorkflowLoanTypeId]);
+  
+  useEffect(() => {
+    if (referenceWorkflowOptions.length > 0) {
+      if (!newWorkflowReferenceId || !referenceWorkflowOptions.some(wf => wf.id === newWorkflowReferenceId)) {
+        setNewWorkflowReferenceId(referenceWorkflowOptions[referenceWorkflowOptions.length - 1].id);
+      }
+    } else {
+      setNewWorkflowReferenceId('');
+    }
+  }, [referenceWorkflowOptions, newWorkflowReferenceId]);
 
 
   const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
@@ -699,7 +710,7 @@ export default function SettingsPage() {
         return;
     }
 
-    if (workflowDefinitions.length > 0 && !newWorkflowReferenceId) {
+    if (referenceWorkflowOptions.length > 0 && !newWorkflowReferenceId) {
       toast({ title: "Validation Error", description: "A reference workflow must be selected to determine the order.", variant: "destructive", duration: 9000 });
       return;
     }
@@ -722,7 +733,7 @@ export default function SettingsPage() {
         versions: [],
     };
     
-    if (updatedWfList.length === 0) {
+    if (referenceWorkflowOptions.length === 0) {
         updatedWfList.push(newWorkflowWithId);
     } else {
         const referenceIndex = updatedWfList.findIndex(wf => wf.id === newWorkflowReferenceId);
@@ -989,15 +1000,15 @@ export default function SettingsPage() {
               </div>
               <div>
                 <Label>Reference Workflow</Label>
-                <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={sortedWorkflowDefinitions.length === 0}>
+                <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={referenceWorkflowOptions.length === 0}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select reference workflow"/>
                   </SelectTrigger>
                   <SelectContent>
-                    {sortedWorkflowDefinitions.length === 0 ? (
-                      <SelectItem value="no-workflows-found" disabled>No existing workflows</SelectItem>
+                    {referenceWorkflowOptions.length === 0 ? (
+                      <SelectItem value="no-workflows-found" disabled>No existing workflows for this loan type</SelectItem>
                     ) : (
-                      sortedWorkflowDefinitions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)
+                      referenceWorkflowOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)
                     )}
                   </SelectContent>
                 </Select>
@@ -1134,5 +1145,7 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
 
     
