@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -146,15 +145,11 @@ export default function NewLoanRequestPage() {
                 <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <div className="relative"> <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormDescription>A new customer profile will be created if this email is not found.</FormDescription> <FormMessage /> </FormItem> )} />
                 <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <div className="relative"> <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
                 
-                <FormField
-                  control={form.control}
-                  name="customerBranch"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Customer Branch</FormLabel>
-                      <Combobox
+                <div className="space-y-2">
+                    <FormLabel>Customer Branch</FormLabel>
+                    <Combobox
                         options={branchOptions}
-                        value={field.value}
+                        value={form.watch("customerBranch")}
                         onSelect={(value) => {
                           form.setValue("customerBranch", value, { shouldValidate: true });
                         }}
@@ -163,12 +158,10 @@ export default function NewLoanRequestPage() {
                         notFoundText="No branch found."
                         className="w-full"
                         disabled={isLoading || isSubmitting || branches.length === 0}
-                      />
-                      {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    />
+                    {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                    <FormMessage>{form.formState.errors.customerBranch?.message}</FormMessage>
+                </div>
 
                 <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <div className="relative"> <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
 
