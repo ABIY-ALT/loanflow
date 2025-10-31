@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import Link from 'next/link';
@@ -22,6 +21,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
 
 interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers'> {}
 
@@ -147,6 +147,11 @@ export default function LoanProcessPage() {
   }
   if (error) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
   
+  const loanOptions = useMemo(() => allLoans.map(loan => ({
+    value: loan.loanNumber.toLowerCase(),
+    label: `${loan.loanNumber} - ${loan.customerName}`,
+  })), [allLoans]);
+
 
   return (
     <div className="space-y-6">
@@ -158,18 +163,30 @@ export default function LoanProcessPage() {
           </h1>
           <p className="text-muted-foreground">Hierarchical view of all active loans by type, workflow, and stage.</p>
         </div>
-         <div className="flex items-center gap-2">
-            <div className="relative w-full sm:max-w-xs">
+         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <Combobox
+              options={loanOptions}
+              value={searchTerm}
+              onSelect={(currentValue) => {
+                const loan = allLoans.find(l => l.loanNumber.toLowerCase() === currentValue);
+                setSearchTerm(loan ? loan.loanNumber : '');
+              }}
+              placeholder="Quick jump to loan..."
+              searchPlaceholder="Search by loan # or name..."
+              notFoundText="No loan found."
+              className="w-full sm:w-[250px]"
+            />
+            <div className="relative w-full sm:w-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Filter loans..."
+                placeholder="Filter by loan or name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 w-full"
               />
             </div>
           {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
-            <Link href="/loan-requests/new" passHref><Button><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
+            <Link href="/loan-requests/new" passHref><Button className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
           )}
         </div>
       </div>
