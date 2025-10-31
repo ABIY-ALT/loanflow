@@ -152,20 +152,18 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
-                      <FormControl>
-                        <Combobox
-                          options={branchOptions}
-                          value={field.value}
-                          onSelect={(currentValue) => {
-                            field.onChange(currentValue);
-                          }}
-                          placeholder={isLoading ? "Loading branches..." : "Select a branch"}
-                          searchPlaceholder="Search branch..."
-                          notFoundText="No branch found."
-                          className="w-full"
-                          disabled={isLoading || isSubmitting || branches.length === 0}
-                        />
-                      </FormControl>
+                      <Combobox
+                        options={branchOptions}
+                        value={field.value}
+                        onSelect={(currentValue) => {
+                          field.onChange(currentValue);
+                        }}
+                        placeholder={isLoading ? "Loading branches..." : "Select a branch"}
+                        searchPlaceholder="Search branch..."
+                        notFoundText="No branch found."
+                        className="w-full"
+                        disabled={isLoading || isSubmitting || branches.length === 0}
+                      />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
                       <FormMessage />
                     </FormItem>
