@@ -101,6 +101,10 @@ export default function NewLoanRequestPage() {
     },
   });
 
+  useEffect(() => {
+    form.register('customerBranch');
+  }, [form]);
+
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
