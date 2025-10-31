@@ -153,7 +153,7 @@ export default function NewLoanRequestPage() {
                       <FormLabel>Customer Branch</FormLabel>
                       <Combobox
                         options={branchOptions}
-                        value={field.value}
+                        {...field}
                         onSelect={field.onChange}
                         placeholder={isLoading ? "Loading branches..." : "Select a branch"}
                         searchPlaceholder="Search branch..."
