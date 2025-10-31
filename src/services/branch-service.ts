@@ -44,6 +44,21 @@ export async function addDistrict(name: string): Promise<{ id?: string; error?: 
   }
 }
 
+export async function updateDistrict(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
+    if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateDistrict");
+    if (!name.trim()) return createErrorResult("District name cannot be empty.", "updateDistrict");
+    try {
+        const existing = await prisma.district.findFirst({ where: { name: name.trim(), id: { not: id } } });
+        if (existing) return createErrorResult(`Another district with name "${name.trim()}" already exists.`, "updateDistrict");
+        
+        await prisma.district.update({ where: { id }, data: { name: name.trim() } });
+        return { success: true };
+    } catch (e: any) {
+        if ((e as any).code === 'P2025') return createErrorResult(`District not found.`, "updateDistrict", e);
+        return createErrorResult("Failed to update district.", "updateDistrict", e);
+    }
+}
+
 export async function deleteDistrict(id: string): Promise<{ success?: boolean; error?: string }> {
   if (!await hasPermission()) return createErrorResult("Unauthorized access.", "deleteDistrict");
   try {
@@ -101,6 +116,25 @@ export async function addBranch(name: string, districtId: string): Promise<{ id?
     return createErrorResult("Failed to add branch.", "addBranch", e);
   }
 }
+
+export async function updateBranch(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
+    if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateBranch");
+    if (!name.trim()) return createErrorResult("Branch name cannot be empty.", "updateBranch");
+    try {
+        const branchToUpdate = await prisma.branch.findUnique({ where: { id } });
+        if (!branchToUpdate) return createErrorResult(`Branch not found.`, "updateBranch");
+
+        const existing = await prisma.branch.findFirst({ where: { name: name.trim(), districtId: branchToUpdate.districtId, id: { not: id } } });
+        if (existing) return createErrorResult(`Another branch with name "${name.trim()}" already exists in this district.`, "updateBranch");
+        
+        await prisma.branch.update({ where: { id }, data: { name: name.trim() } });
+        return { success: true };
+    } catch (e: any) {
+        if ((e as any).code === 'P2025') return createErrorResult(`Branch not found.`, "updateBranch", e);
+        return createErrorResult("Failed to update branch.", "updateBranch", e);
+    }
+}
+
 
 export async function deleteBranch(id: string): Promise<{ success?: boolean; error?: string }> {
   if (!await hasPermission()) return createErrorResult("Unauthorized access.", "deleteBranch");

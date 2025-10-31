@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { getDistricts, addDistrict, deleteDistrict, getBranches, addBranch, deleteBranch } from '@/services/branch-service';
-import { Loader2, PlusCircle, Trash2, AlertTriangle, Building, ArrowLeft, ShieldAlert, Map } from 'lucide-react';
+import { getDistricts, addDistrict, deleteDistrict, getBranches, addBranch, deleteBranch, updateDistrict, updateBranch } from '@/services/branch-service';
+import { Loader2, PlusCircle, Trash2, Edit, Save, AlertTriangle, Building, ArrowLeft, ShieldAlert, Map } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +21,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
@@ -29,6 +38,7 @@ import { Label } from '@/components/ui/label';
 
 interface DistrictItem { id: string; name: string; }
 interface BranchItem { id: string; name: string; districtName: string; }
+type EditableItem = { id: string; name: string; type: 'district' | 'branch' };
 
 export default function ManageBranchesPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -41,6 +51,10 @@ export default function ManageBranchesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<EditableItem | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const canManageBranches = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES);
 
@@ -49,7 +63,7 @@ export default function ManageBranchesPage() {
         setIsLoading(false);
         return;
     };
-    setIsLoading(true);
+    if (!isInitialLoad) setIsLoading(true); // Don't show main loader on subsequent fetches
     setError(null);
     try {
       const [districtsResult, branchesResult] = await Promise.all([getDistricts(), getBranches()]);
@@ -72,8 +86,33 @@ export default function ManageBranchesPage() {
 
   useEffect(() => {
     fetchData(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageBranches]);
+
+  const handleOpenEditDialog = (item: EditableItem) => {
+    setEditingItem(item);
+    setEditingName(item.name);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateItem = async () => {
+    if (!editingItem || !editingName.trim()) {
+      toast({ title: "Validation Error", description: "Name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    const updateAction = editingItem.type === 'district' ? updateDistrict : updateBranch;
+    const result = await updateAction(editingItem.id, editingName.trim());
+
+    if (result.error) {
+      toast({ title: `Error Updating ${editingItem.type}`, description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: `${editingItem.type.charAt(0).toUpperCase() + editingItem.type.slice(1)} updated.` });
+      setIsEditDialogOpen(false);
+      setEditingItem(null);
+      await fetchData();
+    }
+    setIsSaving(false);
+  };
 
   const handleAddDistrict = async () => {
     if (!newDistrictName.trim()) return toast({ title: "Validation Error", description: "District name cannot be empty.", variant: "destructive" });
@@ -162,6 +201,7 @@ export default function ManageBranchesPage() {
             <TableBody>
               {districts.map((d) => (
                 <TableRow key={d.id}><TableCell>{d.name}</TableCell><TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: d.id, name: d.name, type: 'district'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSaving}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
                     <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete District "{d.name}"?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will also delete all branches within this district.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete('district', d.id, d.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
@@ -191,6 +231,7 @@ export default function ManageBranchesPage() {
             <TableBody>
                 {branches.map((b) => (
                     <TableRow key={b.id}><TableCell>{b.name}</TableCell><TableCell>{b.districtName}</TableCell><TableCell className="text-right">
+                         <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: b.id, name: b.name, type: 'branch'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
                         <AlertDialog>
                             <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSaving}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Branch "{b.name}"?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete('branch', b.id, b.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
@@ -201,6 +242,34 @@ export default function ManageBranchesPage() {
           </Table></CardContent>
         </Card>
       </div>
+
+       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit {editingItem?.type}</DialogTitle>
+            <DialogDescription>
+              Update the name for &quot;{editingItem?.name}&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Label htmlFor="editing-name">New Name</Label>
+            <Input
+              id="editing-name"
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              disabled={isSaving}
+            />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
+            <Button type="button" onClick={handleUpdateItem} disabled={isSaving || !editingName.trim()}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
