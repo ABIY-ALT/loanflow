@@ -58,7 +58,7 @@ export default function LoanProcessPage() {
     const totalCount = allLoans.length;
     const activeLoans = allLoans.filter(l => !l.isTerminalStage);
     const activeCount = activeLoans.length;
-    const overdueCount = activeLoans.filter(l => l.isOverdue).length; // Overdue can be active
+    const overdueCount = activeLoans.filter(l => l.isOverdue && !l.isTerminalStage).length;
     const terminatedCount = totalCount - activeCount;
     return { totalCount, activeCount, overdueCount, terminatedCount };
   }, [allLoans]);
@@ -99,16 +99,16 @@ export default function LoanProcessPage() {
     let loansToDisplay: LoanRequest[];
 
     switch (statusFilter) {
-      case 'overdue':
-        loansToDisplay = allLoans.filter(l => l.isOverdue);
-        break;
-      case 'terminated':
-        loansToDisplay = allLoans.filter(l => l.isTerminalStage);
-        break;
-      case 'all':
-      default:
-        loansToDisplay = allLoans.filter(l => !l.isTerminalStage);
-        break;
+        case 'overdue':
+            loansToDisplay = allLoans.filter(l => l.isOverdue && !l.isTerminalStage);
+            break;
+        case 'terminated':
+            loansToDisplay = allLoans.filter(l => l.isTerminalStage);
+            break;
+        case 'all':
+        default:
+            loansToDisplay = allLoans.filter(l => !l.isTerminalStage);
+            break;
     }
     
     let filteredLoans = loansToDisplay;
@@ -142,6 +142,7 @@ export default function LoanProcessPage() {
     
     const loanTypesMap: Record<string, { loanTypeName: string, workflows: PipelineWorkflow[] }> = {};
 
+    // First, initialize all loan types from definitions
     fetchedWorkflowDefinitions.forEach(wfDef => {
         if (!loanTypesMap[wfDef.loanTypeId]) {
             loanTypesMap[wfDef.loanTypeId] = {
@@ -151,20 +152,30 @@ export default function LoanProcessPage() {
         }
     });
 
-    fetchedWorkflowDefinitions.forEach(wfDef => {
-        const activeVersion = wfDef.versions.find(v => v.isActive);
-        if (!activeVersion) return;
+    // Then, populate workflows for each loan type
+    for (const loanTypeId in loanTypesMap) {
+        const workflowsForType = fetchedWorkflowDefinitions
+            .filter(wf => wf.loanTypeId === loanTypeId)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-        const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
-            ...stage,
-            loans: loansByStage[stage.id] || [],
-        }));
+        workflowsForType.forEach(wfDef => {
+            const activeVersion = wfDef.versions.find(v => v.isActive);
+            if (!activeVersion) return; // Skip if no active version
 
-        loanTypesMap[wfDef.loanTypeId].workflows.push({
-            ...wfDef,
-            stages: stagesWithLoans,
+            const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
+                ...stage,
+                loans: loansByStage[stage.id] || [],
+            }));
+
+            // Only add the workflow to the map if it has stages.
+            if (stagesWithLoans.length > 0) {
+                 loanTypesMap[loanTypeId].workflows.push({
+                    ...wfDef,
+                    stages: stagesWithLoans,
+                });
+            }
         });
-    });
+    }
 
     return Object.values(loanTypesMap);
 
@@ -288,40 +299,47 @@ export default function LoanProcessPage() {
                            </AccordionTrigger>
                            <AccordionContent className="p-3">
                               <div className="space-y-3">
-                                {workflow.stages.map(stage => (
-                                  stage.loans.length > 0 && (
+                                {workflow.stages.map(stage => {
+                                  const stageHasVisibleLoans = stage.loans.length > 0;
+                                  if (!stageHasVisibleLoans && statusFilter !== 'all' && !searchTerm) {
+                                      // If filtering, don't show empty stages
+                                      return null;
+                                  }
+                                  return (
                                     <div key={stage.id} className="p-3 border rounded-md bg-background">
                                       <h5 className="font-medium text-sm mb-2 flex items-center justify-between">
                                         <span>{stage.order + 1}. {stage.name}</span>
                                         <span className="text-xs text-muted-foreground">({stage.loans.length} loans)</span>
                                       </h5>
-                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                          {stage.loans.map(loan => (
-                                            <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
-                                              <CardContent className="p-3 space-y-2">
-                                                <div className="flex justify-between items-start">
-                                                  <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
-                                                  {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
-                                                <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
-                                                  <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
-                                                    <Clock className="h-3 w-3"/>
-                                                    {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
-                                                  </span>
-                                                  <Link href={`/loan-requests/${loan.id}`} passHref>
-                                                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-                                                      View <ExternalLink className="ml-1 h-3 w-3" />
-                                                    </Button>
-                                                  </Link>
-                                                </div>
-                                              </CardContent>
-                                            </Card>
-                                          ))}
-                                      </div>
+                                       {stage.loans.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                            {stage.loans.map(loan => (
+                                              <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
+                                                <CardContent className="p-3 space-y-2">
+                                                  <div className="flex justify-between items-start">
+                                                    <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
+                                                    {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
+                                                  </div>
+                                                  <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
+                                                  <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
+                                                    <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
+                                                      <Clock className="h-3 w-3"/>
+                                                      {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
+                                                    </span>
+                                                    <Link href={`/loan-requests/${loan.id}`} passHref>
+                                                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                                                        View <ExternalLink className="ml-1 h-3 w-3" />
+                                                      </Button>
+                                                    </Link>
+                                                  </div>
+                                                </CardContent>
+                                              </Card>
+                                            ))}
+                                        </div>
+                                       )}
                                     </div>
-                                  )
-                                ))}
+                                  );
+                                })}
                               </div>
                            </AccordionContent>
                          </Card>
