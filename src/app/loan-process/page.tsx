@@ -139,35 +139,35 @@ export default function LoanProcessPage() {
         loanType: loan.loanType,
       });
     });
+    
+    const loanTypesMap: Record<string, { loanTypeName: string, workflows: PipelineWorkflow[] }> = {};
 
-    const workflowsByLoanType = fetchedWorkflowDefinitions.reduce((acc, wfDef) => {
-      // Consider all versions to find stages for terminated loans
-      const allStagesFromAllVersions = wfDef.versions.flatMap(v => v.stages);
-      if (allStagesFromAllVersions.length === 0) return acc;
-      
-      if (!acc[wfDef.loanTypeName]) {
-        acc[wfDef.loanTypeName] = [];
-      }
+    fetchedWorkflowDefinitions.forEach(wfDef => {
+        if (!loanTypesMap[wfDef.loanTypeId]) {
+            loanTypesMap[wfDef.loanTypeId] = {
+                loanTypeName: wfDef.loanTypeName,
+                workflows: []
+            };
+        }
+    });
 
-      const stagesWithLoans: PipelineStage[] = allStagesFromAllVersions.map(stage => ({
-        ...stage,
-        loans: loansByStage[stage.id] || [],
-      })).filter(stage => stage.loans.length > 0); // Only keep stages that have loans for the current filter
+    fetchedWorkflowDefinitions.forEach(wfDef => {
+        const activeVersion = wfDef.versions.find(v => v.isActive);
+        if (!activeVersion) return;
 
-      if (stagesWithLoans.length > 0) {
-          acc[wfDef.loanTypeName].push({
+        const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
+            ...stage,
+            loans: loansByStage[stage.id] || [],
+        }));
+
+        loanTypesMap[wfDef.loanTypeId].workflows.push({
             ...wfDef,
             stages: stagesWithLoans,
-          });
-      }
+        });
+    });
 
-      return acc;
-    }, {} as Record<string, PipelineWorkflow[]>);
+    return Object.values(loanTypesMap);
 
-    return Object.entries(workflowsByLoanType).map(([loanTypeName, workflows]) => ({
-      loanTypeName,
-      workflows,
-    })).filter(loanType => loanType.workflows.length > 0); // Only include loan types that have workflows with loans
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
 
   // Effect to set all accordion items to open by default when data loads or filters change
