@@ -38,6 +38,9 @@ interface PipelineLoanType {
   workflows: PipelineWorkflow[];
 }
 
+type StatusFilter = 'all' | 'overdue' | 'terminated';
+
+
 export default function LoanProcessPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
@@ -45,6 +48,7 @@ export default function LoanProcessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
@@ -52,7 +56,7 @@ export default function LoanProcessPage() {
     const totalCount = allLoans.length;
     const activeLoans = allLoans.filter(l => !l.isTerminalStage);
     const activeCount = activeLoans.length;
-    const overdueCount = activeLoans.filter(l => l.isOverdue).length;
+    const overdueCount = activeLoans.filter(l => l.isOverdue).length; // Overdue can be active
     const terminatedCount = totalCount - activeCount;
     return { totalCount, activeCount, overdueCount, terminatedCount };
   }, [allLoans]);
@@ -90,11 +94,25 @@ export default function LoanProcessPage() {
   const pipelineData = useMemo(() => {
     if (!fetchedWorkflowDefinitions.length) return [];
 
-    const activeLoans = allLoans.filter(l => !l.isTerminalStage);
-    let filteredLoans = activeLoans;
+    let loansToDisplay: LoanRequest[];
+
+    switch (statusFilter) {
+      case 'overdue':
+        loansToDisplay = allLoans.filter(l => l.isOverdue);
+        break;
+      case 'terminated':
+        loansToDisplay = allLoans.filter(l => l.isTerminalStage);
+        break;
+      case 'all':
+      default:
+        loansToDisplay = allLoans.filter(l => !l.isTerminalStage);
+        break;
+    }
+    
+    let filteredLoans = loansToDisplay;
     if (searchTerm) {
       const lowercasedFilter = searchTerm.toLowerCase();
-      filteredLoans = activeLoans.filter(loan =>
+      filteredLoans = loansToDisplay.filter(loan =>
         loan.customerName.toLowerCase().includes(lowercasedFilter) ||
         loan.loanNumber.toLowerCase().includes(lowercasedFilter) ||
         loan.loanType.toLowerCase().includes(lowercasedFilter)
@@ -103,39 +121,38 @@ export default function LoanProcessPage() {
 
     const loansByStage: Record<string, PipelineLoan[]> = {};
     filteredLoans.forEach(loan => {
-      if (loan.currentStageId) {
-        if (!loansByStage[loan.currentStageId]) {
-          loansByStage[loan.currentStageId] = [];
-        }
-        loansByStage[loan.currentStageId].push({
-          id: loan.id,
-          loanNumber: loan.loanNumber,
-          customerName: loan.customerName,
-          loanAmount: loan.loanAmount,
-          isUrgent: loan.isUrgent,
-          isOverdue: !!loan.isOverdue,
-          lastUpdatedDate: loan.lastUpdatedDate,
-          assignedToUsers: loan.assignedToUsers,
-          loanType: loan.loanType,
-        });
+      const stageId = loan.currentStageId || 'unclassified';
+      if (!loansByStage[stageId]) {
+          loansByStage[stageId] = [];
       }
+      loansByStage[stageId].push({
+        id: loan.id,
+        loanNumber: loan.loanNumber,
+        customerName: loan.customerName,
+        loanAmount: loan.loanAmount,
+        isUrgent: loan.isUrgent,
+        isOverdue: !!loan.isOverdue,
+        lastUpdatedDate: loan.lastUpdatedDate,
+        assignedToUsers: loan.assignedToUsers,
+        loanType: loan.loanType,
+      });
     });
 
     const workflowsByLoanType = fetchedWorkflowDefinitions.reduce((acc, wfDef) => {
-      const activeVersion = wfDef.versions.find(v => v.isActive);
-      if (!activeVersion || activeVersion.stages.length === 0) return acc;
+      // Consider all versions to find stages for terminated loans
+      const allStagesFromAllVersions = wfDef.versions.flatMap(v => v.stages);
+      if (allStagesFromAllVersions.length === 0) return acc;
       
       if (!acc[wfDef.loanTypeName]) {
         acc[wfDef.loanTypeName] = [];
       }
 
-      const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
+      const stagesWithLoans: PipelineStage[] = allStagesFromAllVersions.map(stage => ({
         ...stage,
         loans: loansByStage[stage.id] || [],
-      }));
+      })).filter(stage => stage.loans.length > 0); // Only keep stages that have loans for the current filter
 
-      // Only include workflows that have loans after filtering
-      if (stagesWithLoans.some(s => s.loans.length > 0)) {
+      if (stagesWithLoans.length > 0) {
           acc[wfDef.loanTypeName].push({
             ...wfDef,
             stages: stagesWithLoans,
@@ -149,7 +166,7 @@ export default function LoanProcessPage() {
       loanTypeName,
       workflows,
     })).filter(loanType => loanType.workflows.length > 0); // Only include loan types that have workflows with loans
-  }, [allLoans, fetchedWorkflowDefinitions, searchTerm]);
+  }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
@@ -157,6 +174,14 @@ export default function LoanProcessPage() {
         wfTotal + wf.stages.reduce((stageTotal, stage) => 
           stageTotal + stage.loans.length, 0), 0), 0);
   }, [pipelineData]);
+
+  const getActiveFilterLabel = () => {
+    switch (statusFilter) {
+      case 'overdue': return `Overdue Loans (${loanStats.overdueCount})`;
+      case 'terminated': return `Terminated Loans (${loanStats.terminatedCount})`;
+      case 'all': default: return `Active Loans (${loanStats.activeCount})`;
+    }
+  };
 
 
   if (authLoading || isLoading) {
@@ -170,20 +195,20 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
             <KanbanSquare className="mr-3 h-8 w-8 text-primary" />
-            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{loanStats.activeCount})
+            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{getActiveFilterLabel()})
           </h1>
-          <p className="text-muted-foreground flex items-center gap-4 text-sm mt-1">
-             <span>Hierarchical view of all active loans by type, workflow, and stage.</span>
-             <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                <CheckCircle className="h-4 w-4"/> {loanStats.activeCount - loanStats.overdueCount} Active
-             </span>
-             <span className={cn("flex items-center gap-2", loanStats.overdueCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
+          <div className="text-muted-foreground flex items-center gap-4 text-sm mt-1">
+             <span>Click to filter by status:</span>
+             <Button variant={statusFilter === 'all' ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusFilter('all')} className={cn("h-auto px-2 py-1 flex items-center gap-1.5", statusFilter === 'all' && 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200')}>
+                <CheckCircle className="h-4 w-4"/> {loanStats.activeCount} Active
+             </Button>
+             <Button variant={statusFilter === 'overdue' ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusFilter('overdue')} className={cn("h-auto px-2 py-1 flex items-center gap-1.5", statusFilter === 'overdue' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' : 'text-amber-600 dark:text-amber-400')}>
                 <AlertCircleIcon className="h-4 w-4"/> {loanStats.overdueCount} Overdue
-             </span>
-             <span className={cn("flex items-center gap-2", loanStats.terminatedCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+             </Button>
+             <Button variant={statusFilter === 'terminated' ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusFilter('terminated')} className={cn("h-auto px-2 py-1 flex items-center gap-1.5", statusFilter === 'terminated' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'text-red-600 dark:text-red-400')}>
                 <XCircle className="h-4 w-4"/> {loanStats.terminatedCount} Terminated
-             </span>
-          </p>
+             </Button>
+          </div>
         </div>
          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <Combobox
@@ -211,10 +236,10 @@ export default function LoanProcessPage() {
         <Card className="text-center py-10">
           <CardContent>
               <h3 className="text-xl font-semibold text-muted-foreground">
-                {searchTerm ? 'No Loans Match Your Filter' : 'No Active Loans or Workflows'}
+                {searchTerm ? 'No Loans Match Your Filter' : `No ${statusFilter} Loans`}
               </h3>
               <p className="text-muted-foreground">
-                {searchTerm ? 'Try a different search term.' : 'There are no active loans, or no workflows with active versions are configured.'}
+                {searchTerm ? 'Try a different search term.' : `There are no loans matching the selected status.`}
               </p>
                {currentUser && !searchTerm && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
                   <Link href="/loan-requests/new" passHref><Button className="mt-4"><PlusCircle className="mr-2 h-4 w-4" /> Start a New Loan Request</Button></Link>
@@ -229,7 +254,7 @@ export default function LoanProcessPage() {
                 <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
                    <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <CardTitle className="text-xl font-semibold text-primary">{loanTypeName}</CardTitle>
-                     <Badge variant="secondary">{workflows.reduce((sum, wf) => sum + wf.stages.reduce((s, st) => s + st.loans.length, 0), 0)} Active Loans</Badge>
+                     <Badge variant="secondary">{workflows.reduce((sum, wf) => sum + wf.stages.reduce((s, st) => s + st.loans.length, 0), 0)} Matching Loans</Badge>
                   </CardHeader>
                 </AccordionTrigger>
                 <AccordionContent className="p-4 space-y-4">
