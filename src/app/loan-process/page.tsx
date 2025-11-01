@@ -279,42 +279,32 @@ export default function LoanProcessPage() {
                                     <div key={stage.id} className="p-3 border rounded-md bg-background">
                                       <h5 className="font-medium text-sm mb-2 flex items-center justify-between">
                                         <span>{stage.order + 1}. {stage.name}</span>
+                                        <span className="text-xs text-muted-foreground">({stage.loans.length} loans)</span>
                                       </h5>
-                                       <Accordion type="single" collapsible>
-                                        <AccordionItem value={`stage-loans-${stage.id}`} className="border-none">
-                                          <AccordionTrigger asChild>
-                                            <Button variant="outline" size="sm" className="w-full justify-start">
-                                              View {stage.loans.length} Loan(s) in this Stage
-                                            </Button>
-                                          </AccordionTrigger>
-                                          <AccordionContent className="pt-3">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                              {stage.loans.map(loan => (
-                                                <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
-                                                  <CardContent className="p-3 space-y-2">
-                                                    <div className="flex justify-between items-start">
-                                                      <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
-                                                      {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
-                                                    <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
-                                                      <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
-                                                        <Clock className="h-3 w-3"/>
-                                                        {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
-                                                      </span>
-                                                      <Link href={`/loan-requests/${loan.id}`} passHref>
-                                                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-                                                          View <ExternalLink className="ml-1 h-3 w-3" />
-                                                        </Button>
-                                                      </Link>
-                                                    </div>
-                                                  </CardContent>
-                                                </Card>
-                                              ))}
-                                            </div>
-                                          </AccordionContent>
-                                        </AccordionItem>
-                                      </Accordion>
+                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                          {stage.loans.map(loan => (
+                                            <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
+                                              <CardContent className="p-3 space-y-2">
+                                                <div className="flex justify-between items-start">
+                                                  <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
+                                                  {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
+                                                <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
+                                                  <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
+                                                    <Clock className="h-3 w-3"/>
+                                                    {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
+                                                  </span>
+                                                  <Link href={`/loan-requests/${loan.id}`} passHref>
+                                                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                                                      View <ExternalLink className="ml-1 h-3 w-3" />
+                                                    </Button>
+                                                  </Link>
+                                                </div>
+                                              </CardContent>
+                                            </Card>
+                                          ))}
+                                      </div>
                                     </div>
                                   )
                                 ))}
