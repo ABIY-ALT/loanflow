@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
+
 
 type SortKey = 'customerName' | 'lastUpdatedDate' | 'loanAmount' | 'submittedDate';
 type SortDirection = 'asc' | 'desc';
@@ -80,6 +82,17 @@ export default function ReportsPage() {
       fetchPageData();
     }
   }, [canViewReport, fetchPageData]);
+  
+  const departmentOptions = useMemo(() => [
+    { value: 'all', label: 'All Departments' },
+    ...departments.map(dept => ({ value: dept.name, label: dept.name }))
+  ], [departments]);
+
+  const userOptions = useMemo(() => [
+    { value: 'all', label: 'All Users' },
+    ...users.map(user => ({ value: user.id, label: user.fullName }))
+  ], [users]);
+
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
     if (!workflowVersionId || !stageId || !workflowDefs.length) return "Unknown Stage";
@@ -296,27 +309,27 @@ export default function ReportsPage() {
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
           <div className="w-full">
             <label htmlFor="dept-filter" className="text-sm font-medium">Department</label>
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger id="dept-filter" className="mt-1">
-                <SelectValue placeholder="Filter by Department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                {departments.map(dept => <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={departmentOptions}
+              value={departmentFilter === 'all' ? '' : departmentFilter}
+              onSelect={(value) => setDepartmentFilter(value || 'all')}
+              placeholder="All Departments"
+              searchPlaceholder="Search departments..."
+              notFoundText="No department found."
+              className="mt-1"
+            />
           </div>
           <div className="w-full">
             <label htmlFor="user-filter" className="text-sm font-medium">Assigned Person</label>
-            <Select value={assignedUserFilter} onValueChange={setAssignedUserFilter}>
-              <SelectTrigger id="user-filter" className="mt-1">
-                <SelectValue placeholder="Filter by Assigned User" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Users</SelectItem>
-                {users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={userOptions}
+              value={assignedUserFilter === 'all' ? '' : assignedUserFilter}
+              onSelect={(value) => setAssignedUserFilter(value || 'all')}
+              placeholder="All Users"
+              searchPlaceholder="Search users..."
+              notFoundText="No user found."
+              className="mt-1"
+            />
           </div>
           <div className="w-full">
             <label htmlFor="date-range-filter" className="text-sm font-medium">Date Range (Submitted)</label>
