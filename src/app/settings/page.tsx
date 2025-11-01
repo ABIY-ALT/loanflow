@@ -902,7 +902,18 @@ export default function SettingsPage() {
     );
   }
 
-  const sortedWorkflowDefinitions = workflowDefinitions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const workflowsByLoanType = workflowDefinitions.reduce((acc, wf) => {
+    const loanTypeId = wf.loanTypeId;
+    if (!acc[loanTypeId]) {
+      acc[loanTypeId] = {
+        loanTypeName: wf.loanTypeName,
+        workflows: []
+      };
+    }
+    acc[loanTypeId].workflows.push(wf);
+    acc[loanTypeId].workflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return acc;
+  }, {} as Record<string, { loanTypeName: string; workflows: WorkflowDefinition[] }>);
 
   return (
     <div className="space-y-8">
@@ -1054,26 +1065,34 @@ export default function SettingsPage() {
           <Separator/>
           
           <h4 className="font-medium text-lg">Current Workflow Order</h4>
-          <div className="p-4 border rounded-lg overflow-x-auto">
-            <div className="flex items-center space-x-4 min-w-max">
-                {sortedWorkflowDefinitions.map((def, index) => (
-                    <React.Fragment key={def.id}>
-                        <div className="flex flex-col items-center text-center">
-                            <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg">
-                                {def.order + 1}
-                            </div>
-                            <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
-                            <div className="text-xs text-muted-foreground">{def.loanTypeName} / {def.departmentName}</div>
-                        </div>
-                        {index < sortedWorkflowDefinitions.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0"/>}
-                    </React.Fragment>
+          <div className="space-y-4">
+          {Object.values(workflowsByLoanType).map(({ loanTypeName, workflows }) => (
+            <div key={loanTypeName} className="p-4 border rounded-lg">
+              <h5 className="font-medium mb-3 text-primary">{loanTypeName} Workflow Path</h5>
+              <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
+                {workflows.map((def, index) => (
+                  <React.Fragment key={def.id}>
+                    <div className="flex flex-col items-center text-center w-36">
+                      <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">
+                        {def.order + 1}
+                      </div>
+                      <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
+                      <div className="text-xs text-muted-foreground">{def.departmentName}</div>
+                    </div>
+                    {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
+                  </React.Fragment>
                 ))}
-                {sortedWorkflowDefinitions.length === 0 && <p className="text-muted-foreground">No workflows defined yet. Add one above to start.</p>}
+                {workflows.length === 0 && <p className="text-muted-foreground">No workflows defined for this loan type.</p>}
+              </div>
             </div>
-          </div>
+          ))}
+          {Object.keys(workflowsByLoanType).length === 0 && (
+             <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet. Add one above to start.</div>
+          )}
+        </div>
             
           <Accordion type="multiple" className="w-full space-y-4">
-          {sortedWorkflowDefinitions.map(def => (
+          {workflowDefinitions.map(def => (
             <AccordionItem value={def.id} key={def.id}>
               <Card className="shadow-sm">
                 <AccordionTrigger className="hover:no-underline p-0">
@@ -1205,3 +1224,4 @@ export default function SettingsPage() {
     
 
     
+
