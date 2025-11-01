@@ -50,6 +50,7 @@ export default function LoanProcessPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
@@ -169,6 +170,17 @@ export default function LoanProcessPage() {
     })).filter(loanType => loanType.workflows.length > 0); // Only include loan types that have workflows with loans
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
 
+  // Effect to set all accordion items to open by default when data loads
+  useEffect(() => {
+    if (pipelineData.length > 0) {
+        const allItems = pipelineData.flatMap(p => [
+            `loantype-${p.loanTypeName}`,
+            ...p.workflows.map(w => `workflow-${w.id}`)
+        ]);
+        setOpenAccordionItems(allItems);
+    }
+  }, [pipelineData, searchTerm, statusFilter]); // Re-evaluate when filters change
+
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
       total + loanType.workflows.reduce((wfTotal, wf) => 
@@ -248,7 +260,7 @@ export default function LoanProcessPage() {
           </CardContent>
         </Card>
       ) : (
-        <Accordion type="multiple" className="w-full space-y-4" defaultValue={pipelineData.map(p => `loantype-${p.loanTypeName}`)}>
+        <Accordion type="multiple" className="w-full space-y-4" value={openAccordionItems} onValueChange={setOpenAccordionItems}>
           {pipelineData.map(({ loanTypeName, workflows }) => (
             <AccordionItem value={`loantype-${loanTypeName}`} key={`loantype-${loanTypeName}`} className="border-none">
               <Card className="shadow-sm">
@@ -259,7 +271,7 @@ export default function LoanProcessPage() {
                   </CardHeader>
                 </AccordionTrigger>
                 <AccordionContent className="p-4 space-y-4">
-                  <Accordion type="multiple" className="w-full space-y-3" defaultValue={workflows.map(w => `workflow-${w.id}`)}>
+                  <Accordion type="multiple" className="w-full space-y-3" value={openAccordionItems} onValueChange={setOpenAccordionItems}>
                     {workflows.map(workflow => (
                       <AccordionItem value={`workflow-${workflow.id}`} key={`workflow-${workflow.id}`} className="border-b-0">
                          <Card className="bg-muted/30">
