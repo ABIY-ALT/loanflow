@@ -170,7 +170,7 @@ export default function LoanProcessPage() {
     })).filter(loanType => loanType.workflows.length > 0); // Only include loan types that have workflows with loans
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
 
-  // Effect to set all accordion items to open by default when data loads
+  // Effect to set all accordion items to open by default when data loads or filters change
   useEffect(() => {
     if (pipelineData.length > 0) {
         const allItems = pipelineData.flatMap(p => [
@@ -178,8 +178,10 @@ export default function LoanProcessPage() {
             ...p.workflows.map(w => `workflow-${w.id}`)
         ]);
         setOpenAccordionItems(allItems);
+    } else {
+        setOpenAccordionItems([]); // Clear open items if there's no data to display
     }
-  }, [pipelineData, searchTerm, statusFilter]); // Re-evaluate when filters change
+  }, [pipelineData, searchTerm, statusFilter]); // Re-evaluate when pipelineData is recalculated due to filter changes
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
