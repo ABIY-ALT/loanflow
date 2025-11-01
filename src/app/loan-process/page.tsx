@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import type { LoanRequest, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
@@ -48,8 +48,13 @@ export default function LoanProcessPage() {
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
-  const totalActiveLoans = useMemo(() => {
-    return allLoans.filter(l => !l.isTerminalStage).length;
+  const loanStats = useMemo(() => {
+    const totalCount = allLoans.length;
+    const activeLoans = allLoans.filter(l => !l.isTerminalStage);
+    const activeCount = activeLoans.length;
+    const overdueCount = activeLoans.filter(l => l.isOverdue).length;
+    const terminatedCount = totalCount - activeCount;
+    return { totalCount, activeCount, overdueCount, terminatedCount };
   }, [allLoans]);
   
   const loanOptions = useMemo(() => allLoans.map(loan => ({
@@ -68,7 +73,7 @@ export default function LoanProcessPage() {
 
       if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); }
       else if (loansResult.loans) {
-        setAllLoans(loansResult.loans.filter(l => !l.isTerminalStage));
+        setAllLoans(loansResult.loans); // Store all loans now
       }
 
       if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); }
@@ -85,10 +90,11 @@ export default function LoanProcessPage() {
   const pipelineData = useMemo(() => {
     if (!fetchedWorkflowDefinitions.length) return [];
 
-    let filteredLoans = allLoans;
+    const activeLoans = allLoans.filter(l => !l.isTerminalStage);
+    let filteredLoans = activeLoans;
     if (searchTerm) {
       const lowercasedFilter = searchTerm.toLowerCase();
-      filteredLoans = allLoans.filter(loan =>
+      filteredLoans = activeLoans.filter(loan =>
         loan.customerName.toLowerCase().includes(lowercasedFilter) ||
         loan.loanNumber.toLowerCase().includes(lowercasedFilter) ||
         loan.loanType.toLowerCase().includes(lowercasedFilter)
@@ -164,9 +170,20 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
             <KanbanSquare className="mr-3 h-8 w-8 text-primary" />
-            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{totalActiveLoans})
+            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{loanStats.activeCount})
           </h1>
-          <p className="text-muted-foreground">Hierarchical view of all active loans by type, workflow, and stage.</p>
+          <p className="text-muted-foreground flex items-center gap-4 text-sm mt-1">
+             <span>Hierarchical view of all active loans by type, workflow, and stage.</span>
+             <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                <CheckCircle className="h-4 w-4"/> {loanStats.activeCount - loanStats.overdueCount} Active
+             </span>
+             <span className={cn("flex items-center gap-2", loanStats.overdueCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
+                <AlertCircleIcon className="h-4 w-4"/> {loanStats.overdueCount} Overdue
+             </span>
+             <span className={cn("flex items-center gap-2", loanStats.terminatedCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+                <XCircle className="h-4 w-4"/> {loanStats.terminatedCount} Terminated
+             </span>
+          </p>
         </div>
          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <Combobox
