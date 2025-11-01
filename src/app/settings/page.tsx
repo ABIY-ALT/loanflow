@@ -49,7 +49,7 @@ import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Depa
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
-import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService } from '@/services/loan-type-service';
+import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService, updateLoanType } from '@/services/loan-type-service';
 import type { LoanType } from '@/types/loan';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -535,8 +535,11 @@ export default function SettingsPage() {
   const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
-
   const [newLoanTypeName, setNewLoanTypeName] = useState('');
+  const [editingLoanType, setEditingLoanType] = useState<LoanTypeObject | null>(null);
+  const [editingLoanTypeName, setEditingLoanTypeName] = useState('');
+  const [isEditLoanTypeDialogOpen, setIsEditLoanTypeDialogOpen] = useState(false);
+
 
   const [enableNotifications, setEnableNotifications] = useState(true);
   const [overdueThreshold, setOverdueThreshold] = useState(2);
@@ -780,6 +783,30 @@ export default function SettingsPage() {
     }
   };
 
+  const handleUpdateLoanType = async () => {
+    if (!canManageWorkflows || !editingLoanType) return;
+    if (!editingLoanTypeName.trim()) {
+        toast({ title: "Validation Error", description: "Loan type name cannot be empty.", variant: "destructive" });
+        return;
+    }
+    setIsSavingData(true);
+    try {
+        const result = await updateLoanType(editingLoanType.id, editingLoanTypeName);
+        if (result.error) {
+            toast({ title: "Error Updating Loan Type", description: result.error, variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: "Loan type updated." });
+            setIsEditLoanTypeDialogOpen(false);
+            setEditingLoanType(null);
+            await fetchInitialData();
+        }
+    } catch (error: any) {
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+        setIsSavingData(false);
+    }
+  };
+
   const handleDeleteLoanType = async (loanTypeId: string, loanTypeName: string) => {
     if (!canManageWorkflows) return;
     setIsSavingData(true);
@@ -931,6 +958,9 @@ export default function SettingsPage() {
                     <TableRow key={lt.id}>
                       <TableCell className="font-medium">{lt.name}</TableCell>
                       <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingLoanType(lt); setEditingLoanTypeName(lt.name); setIsEditLoanTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
+                            <Edit className="mr-1 h-4 w-4" /> Edit
+                          </Button>
                           <AlertDialog>
                               <AlertDialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}>
@@ -1118,6 +1148,32 @@ export default function SettingsPage() {
         onSaveVersion={handleSaveVersion}
         departmentName={currentWorkflowDefForEdit?.departmentName || ''}
       />
+      
+      <Dialog open={isEditLoanTypeDialogOpen} onOpenChange={setIsEditLoanTypeDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Loan Type</DialogTitle>
+                <DialogDescription>Update the name for &quot;{editingLoanType?.name}&quot;.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <Label htmlFor="editing-loan-type-name">New Name</Label>
+                <Input
+                    id="editing-loan-type-name"
+                    value={editingLoanTypeName}
+                    onChange={(e) => setEditingLoanTypeName(e.target.value)}
+                    disabled={isSavingData}
+                />
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleUpdateLoanType} disabled={isSavingData || !editingLoanTypeName.trim()}>
+                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Save
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       <Card>
         <CardHeader><CardTitle>Notification Settings (Conceptual)</CardTitle><CardDescription>Manage how and when notifications are sent for overdue tasks. (Currently UI only).</CardDescription></CardHeader>

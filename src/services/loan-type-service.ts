@@ -56,6 +56,35 @@ export async function addLoanType(name: string): Promise<{ id?: string; error?: 
   }
 }
 
+export async function updateLoanType(id: string, name: string): Promise<LoanTypeServiceResult<LoanType>> {
+    if (!name.trim()) {
+        return { error: "Loan type name cannot be empty." };
+    }
+    try {
+        const existing = await prisma.loanType.findFirst({
+            where: {
+                name: name.trim(),
+                id: { not: id },
+            },
+        });
+        if (existing) {
+            return { error: `Another loan type with name "${name.trim()}" already exists.` };
+        }
+
+        const updatedLoanType = await prisma.loanType.update({
+            where: { id },
+            data: { name: name.trim(), updatedAt: new Date() },
+        });
+        return { data: mapPrismaLoanTypeToApp(updatedLoanType) };
+    } catch (e: any) {
+        console.error(`Error updating loan type ${id}:`, e);
+        if ((e as any).code === 'P2025') {
+            return { error: `Loan type with ID "${id}" not found for update.` };
+        }
+        return { error: e.message || `Failed to update loan type ${id}.` };
+    }
+}
+
 export async function deleteLoanType(id: string): Promise<{ success?: boolean; error?: string }> {
   try {
     const relatedWorkflows = await prisma.workflowDefinition.count({ where: { loanTypeId: id } });
