@@ -141,10 +141,16 @@ export default function LoanProcessPage() {
     });
     
     const loanTypesMap: Record<string, { loanTypeName: string, workflows: PipelineWorkflow[] }> = {};
+    const includedWorkflowIds = new Set(filteredLoans.map(l => l.workflowVersionId?.split('_').slice(0, -1).join('_')));
 
     // First, initialize all loan types from definitions
     fetchedWorkflowDefinitions.forEach(wfDef => {
         const loanTypeName = wfDef.loanTypeName;
+        // If searching, only include loan types that have matching loans
+        if (searchTerm && !filteredLoans.some(l => l.loanType === loanTypeName)) {
+            return;
+        }
+
         if (!loanTypesMap[loanTypeName]) {
             loanTypesMap[loanTypeName] = {
                 loanTypeName: loanTypeName,
@@ -167,8 +173,15 @@ export default function LoanProcessPage() {
                 ...stage,
                 loans: loansByStage[stage.id] || [],
             }));
+            
+            const workflowHasMatchingLoans = stagesWithLoans.some(s => s.loans.length > 0);
+            
+            // If searching, only show workflows that have matching loans
+            if (searchTerm && !workflowHasMatchingLoans) {
+                return;
+            }
 
-            // Add the workflow to the map regardless of whether it has loans
+            // Add the workflow to the map
             loanTypesMap[loanTypeName].workflows.push({
                 ...wfDef,
                 stages: stagesWithLoans,
