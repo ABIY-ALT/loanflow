@@ -28,7 +28,6 @@ import { AddNoteToLoanDialog } from '@/components/loan/dialogs/AddNoteToLoanDial
 import { LogInfoRequestForLoanDialog } from '@/components/loan/dialogs/LogInfoRequestForLoanDialog';
 import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanForReworkDialog';
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
-import { PromoteToNewWorkflowDialog } from '@/components/loan/dialogs/PromoteToNewWorkflowDialog';
 import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
 import { Switch } from '@/components/ui/switch';
@@ -55,7 +54,6 @@ export default function LoanDetailPage() {
   const [isUploadDocDialogOpen, setIsUploadDocDialogOpen] = useState(false);
   const [currentDocumentRequirementToUpload, setCurrentDocumentRequirementToUpload] = useState<DocumentRequirement | null>(null);
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
-  const [isPromoteToNewWorkflowDialogOpen, setIsPromoteToNewWorkflowDialogOpen] = useState(false);
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
   
@@ -72,6 +70,11 @@ export default function LoanDetailPage() {
     if (!loan || !currentWorkflowVersion || !loan.currentStageId) return null;
     return currentWorkflowVersion.stages.find(s => s.id === loan.currentStageId) || null;
   }, [loan, currentWorkflowVersion]);
+
+  const currentWorkflowDef = useMemo(() => {
+    if (!currentWorkflowVersion) return null;
+    return workflowDefinitions.find(def => def.id === currentWorkflowVersion.workflowDefinitionId) || null;
+  }, [currentWorkflowVersion, workflowDefinitions]);
   
   const terminationReason = useMemo(() => {
     if (!loan?.isTerminalStage) return null;
@@ -387,7 +390,7 @@ export default function LoanDetailPage() {
   };
 
   const handleManagerPromoteLoan = async () => {
-    if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef) return;
+    if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !currentWorkflowDef) return;
 
     // Strict check: Manager cannot promote unless all assignees have completed their part.
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
@@ -413,37 +416,76 @@ export default function LoanDetailPage() {
       return;
     }
 
+    const currentUserName = currentUser.fullName || 'System Process';
     // Check if it's the last stage
     if (currentStageIndex === currentWorkflowVersion.stages.length - 1) {
-        // Open the dialog to select a new workflow
-        setIsPromoteToNewWorkflowDialogOpen(true);
-        return;
+        // --- AUTOMATIC WORKFLOW TRANSITION LOGIC ---
+        const loanWorkflows = workflowDefinitions
+            .filter(def => def.loanTypeId === currentWorkflowDef.loanTypeId)
+            .sort((a, b) => a.order - b.order);
+
+        const currentWorkflowIndexInPath = loanWorkflows.findIndex(def => def.id === currentWorkflowDef.id);
+
+        if (currentWorkflowIndexInPath === -1 || currentWorkflowIndexInPath === loanWorkflows.length - 1) {
+            toast({ title: "Process Complete", description: "This is the final workflow in the loan path. No further automatic promotion.", variant: "default" });
+            return;
+        }
+
+        const nextWorkflowDef = loanWorkflows[currentWorkflowIndexInPath + 1];
+        const nextActiveVersion = nextWorkflowDef.versions.find(v => v.isActive);
+
+        if (!nextActiveVersion || nextActiveVersion.stages.length === 0) {
+            toast({ title: "Promotion Error", description: `Next workflow "${nextWorkflowDef.name}" has no active version or stages. Cannot promote.`, variant: "destructive" });
+            return;
+        }
+
+        const firstStageOfNextWorkflow = nextActiveVersion.stages[0];
+
+        const newHistoryEntry: LoanHistoryEntry = {
+            id: `hist-workflow-change-${Date.now()}`,
+            stageName: firstStageOfNextWorkflow.name,
+            timestamp: formatISO(new Date()),
+            userId: currentUser.id,
+            userName: currentUserName,
+            notes: `Workflow '${currentWorkflowDef.name}' complete. Automatically promoted to new workflow: '${nextWorkflowDef.name}', Stage: '${firstStageOfNextWorkflow.name}'.`,
+        };
+
+        await handleLocalAndUpdateService({
+            workflowVersionId: nextActiveVersion.id,
+            currentStageId: firstStageOfNextWorkflow.id,
+            assignedDepartmentId: nextWorkflowDef.departmentId, // Use initial dept of the new workflow def
+            assignedToUsers: [], // Un-assign staff
+            stageCompletedBy: [],
+            isReadyForManagerReview: false,
+            history: [...loan.history, newHistoryEntry],
+            stageDeadline: formatISO(addDays(new Date(), firstStageOfNextWorkflow.defaultTimelineDays)),
+        }, `Loan automatically promoted to new workflow: ${firstStageOfNextWorkflow.name}.`);
+
+    } else {
+        // --- STANDARD STAGE PROMOTION ---
+        const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
+        const newHistoryEntry: LoanHistoryEntry = {
+          id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
+          userId: currentUser.id,
+          userName: currentUserName,
+          notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
+        };
+        
+        const statusForNextDept = nextStageDef.availableStatuses?.[nextStageDef.responsibleDepartment] || [];
+        const initialStatusForNextStage = statusForNextDept.length > 0 ? statusForNextDept[0] : 'Initiated';
+
+        await handleLocalAndUpdateService({
+          currentStageId: nextStageDef.id,
+          currentStageStatus: initialStatusForNextStage,
+          assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This needs fixing
+          assignedToUsers: [],
+          stageCompletedBy: [], // Reset completions for new stage
+          history: [...loan.history, newHistoryEntry],
+          isReadyForManagerReview: false,
+          stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
+          workflowVersionId: loan.workflowVersionId,
+        }, `${loan.customerName} moved to ${nextStageDef.name}.`);
     }
-
-
-    const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
-    const currentUserName = currentUser.fullName || 'System Process';
-    const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
-      userId: currentUser.id,
-      userName: currentUserName,
-      notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
-    };
-    
-    const statusForNextDept = nextStageDef.availableStatuses?.[nextStageDef.responsibleDepartment] || [];
-    const initialStatusForNextStage = statusForNextDept.length > 0 ? statusForNextDept[0] : 'Initiated';
-
-    await handleLocalAndUpdateService({
-      currentStageId: nextStageDef.id,
-      currentStageStatus: initialStatusForNextStage,
-      assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This needs fixing
-      assignedToUsers: [],
-      stageCompletedBy: [], // Reset completions for new stage
-      history: [...loan.history, newHistoryEntry],
-      isReadyForManagerReview: false,
-      stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
-      workflowVersionId: loan.workflowVersionId,
-    }, `${loan.customerName} moved to ${nextStageDef.name}.`);
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeIds: string[]) => {
@@ -648,44 +690,6 @@ export default function LoanDetailPage() {
       currentStageStatus: newStatus,
       history: [...loan.history, newHistoryEntry] 
     }, `Status updated to "${newStatus}".`);
-  };
-
-  const onPromoteToNewWorkflowSubmit = async (newWorkflowVersionId: string) => {
-    if (!currentUser || !loan || !currentStageDef) return;
-
-    const allVersions = workflowDefinitions.flatMap(def => def.versions);
-    const newVersion = allVersions.find(v => v.id === newWorkflowVersionId);
-
-    if (!newVersion || newVersion.stages.length === 0) {
-      toast({ title: "Error", description: "Selected workflow version is invalid or has no stages.", variant: "destructive" });
-      return;
-    }
-    const firstStageOfNewWorkflow = newVersion.stages[0];
-
-    const currentUserName = currentUser.fullName || 'System Process';
-    const newHistoryEntry: LoanHistoryEntry = {
-      id: `hist-workflow-change-${Date.now()}`,
-      stageName: firstStageOfNewWorkflow.name,
-      timestamp: formatISO(new Date()),
-      userId: currentUser.id,
-      userName: currentUserName,
-      notes: `Workflow complete. Promoted from '${currentStageDef.name}' to new workflow: '${newVersion.workflowDefinitionId}' (Version ${newVersion.versionNumber}), Stage: '${firstStageOfNewWorkflow.name}'.`,
-    };
-
-    const success = await handleLocalAndUpdateService({
-      workflowVersionId: newVersion.id,
-      currentStageId: firstStageOfNewWorkflow.id,
-      assignedDepartmentId: users.find(u => u.department === firstStageOfNewWorkflow.responsibleDepartment)?.departmentId,
-      assignedToUsers: [], // Un-assign staff on workflow change
-      stageCompletedBy: [],
-      isReadyForManagerReview: false,
-      history: [...loan.history, newHistoryEntry],
-      stageDeadline: formatISO(addDays(new Date(), firstStageOfNewWorkflow.defaultTimelineDays)),
-    }, `Loan promoted to new workflow: ${firstStageOfNewWorkflow.name}.`);
-
-    if (success) {
-      setIsPromoteToNewWorkflowDialogOpen(false);
-    }
   };
 
   const handleUrgencyChange = async (isUrgent: boolean) => {
@@ -893,17 +897,6 @@ export default function LoanDetailPage() {
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && <TerminateLoanDialog isOpen={isTerminateLoanDialogOpen} onOpenChange={setIsTerminateLoanDialogOpen} loan={loan} onSubmit={onTerminateLoanSubmit} isSaving={isSaving} />}
       
-      {userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && (
-        <PromoteToNewWorkflowDialog
-          isOpen={isPromoteToNewWorkflowDialogOpen}
-          onOpenChange={setIsPromoteToNewWorkflowDialogOpen}
-          currentLoan={loan}
-          workflowDefinitions={workflowDefinitions}
-          onSubmit={onPromoteToNewWorkflowSubmit}
-          isSaving={isSaving}
-        />
-      )}
-
       {userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
         <ManualTransitionDialog
           isOpen={isManualTransitionDialogOpen}
