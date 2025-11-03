@@ -43,7 +43,7 @@ export function ManualTransitionDialog({
   const allActiveVersions = useMemo(() => {
     return workflowDefinitions.flatMap(def =>
       def.versions
-        .filter(v => v.isActive)
+        .filter(v => v.isActive) // Correctly filter for active versions
         .map(v => ({
           definitionName: def.name,
           versionId: v.id,

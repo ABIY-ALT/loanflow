@@ -422,7 +422,7 @@ export default function LoanDetailPage() {
         // --- AUTOMATIC WORKFLOW TRANSITION LOGIC ---
         const loanWorkflows = workflowDefinitions
             .filter(def => def.loanTypeId === currentWorkflowDef.loanTypeId)
-            .sort((a, b) => a.order - b.order);
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const currentWorkflowIndexInPath = loanWorkflows.findIndex(def => def.id === currentWorkflowDef.id);
 
