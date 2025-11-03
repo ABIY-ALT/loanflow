@@ -40,34 +40,35 @@ export function ManualTransitionDialog({
   const [selectedStageId, setSelectedStageId] = useState<string>('');
   const [reason, setReason] = useState('');
 
-  const allActiveVersions = useMemo(() => {
-    return workflowDefinitions.flatMap(def =>
-      def.versions
-        .filter(v => v.isActive) // Correctly filter for active versions
-        .map(v => ({
-          definitionName: def.name,
-          versionId: v.id,
-          versionNumber: v.versionNumber,
-          loanType: def.loanTypeName,
-          department: def.departmentName,
-          stages: v.stages,
-        }))
-    );
-  }, [workflowDefinitions]);
+  const allActiveVersionsForLoanType = useMemo(() => {
+    if (!currentLoan) return [];
+    return workflowDefinitions
+      .filter(def => def.loanTypeName === currentLoan.loanType) // Filter by current loan's type
+      .flatMap(def =>
+        def.versions
+          .filter(v => v.isActive)
+          .map(v => ({
+            definitionName: def.name,
+            versionId: v.id,
+            versionNumber: v.versionNumber,
+            loanType: def.loanTypeName,
+            department: def.departmentName,
+            stages: v.stages,
+          }))
+      );
+  }, [workflowDefinitions, currentLoan]);
 
   const selectedVersionStages = useMemo(() => {
     if (!selectedWorkflowVersionId) return [];
-    const version = allActiveVersions.find(v => v.versionId === selectedWorkflowVersionId);
+    const version = allActiveVersionsForLoanType.find(v => v.versionId === selectedWorkflowVersionId);
     return version?.stages || [];
-  }, [selectedWorkflowVersionId, allActiveVersions]);
+  }, [selectedWorkflowVersionId, allActiveVersionsForLoanType]);
 
   useEffect(() => {
     if (isOpen && currentLoan) {
-      // Pre-select the current workflow/stage if possible
       setSelectedWorkflowVersionId(currentLoan.workflowVersionId || '');
       setSelectedStageId(currentLoan.currentStageId || '');
     } else if (!isOpen) {
-      // Reset on close
       setSelectedWorkflowVersionId('');
       setSelectedStageId('');
       setReason('');
@@ -75,7 +76,6 @@ export function ManualTransitionDialog({
   }, [isOpen, currentLoan]);
 
   useEffect(() => {
-    // When workflow version changes, reset selected stage if it's not in the new list
     if (!selectedVersionStages.some(s => s.id === selectedStageId)) {
       setSelectedStageId('');
     }
@@ -100,7 +100,7 @@ export function ManualTransitionDialog({
             </span>
           </DialogTitle>
           <DialogDescription>
-            Force transition for loan <span className="font-semibold">{currentLoan.loanNumber}</span> to any active stage. This action is for authorized users only and will be logged.
+            Force transition for loan <span className="font-semibold">{currentLoan.loanNumber}</span> to any active stage for the <span className="font-semibold">{currentLoan.loanType}</span> loan type.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto pr-2">
@@ -121,8 +121,8 @@ export function ManualTransitionDialog({
                     <SelectValue placeholder="Choose a workflow..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {allActiveVersions.length === 0 && <SelectItem value="no-workflows" disabled>No active workflows found</SelectItem>}
-                    {allActiveVersions.map(wf => (
+                    {allActiveVersionsForLoanType.length === 0 && <SelectItem value="no-workflows" disabled>No active workflows for this loan type</SelectItem>}
+                    {allActiveVersionsForLoanType.map(wf => (
                       <SelectItem key={wf.versionId} value={wf.versionId}>
                         {wf.definitionName} (v{wf.versionNumber})
                       </SelectItem>
