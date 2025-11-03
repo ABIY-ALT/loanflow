@@ -65,7 +65,7 @@ export default function LoanProcessPage() {
   
   const loanOptions = useMemo(() => allLoans.map(loan => ({
     value: loan.loanNumber.toLowerCase(),
-    label: `${loan.loanNumber} - ${loan.customerName}`,
+    label: `${loan.customerName} - ${loan.loanType}`,
   })), [allLoans]);
 
   const fetchPageData = useCallback(async () => {
@@ -144,18 +144,19 @@ export default function LoanProcessPage() {
 
     // First, initialize all loan types from definitions
     fetchedWorkflowDefinitions.forEach(wfDef => {
-        if (!loanTypesMap[wfDef.loanTypeId]) {
-            loanTypesMap[wfDef.loanTypeId] = {
-                loanTypeName: wfDef.loanTypeName,
+        const loanTypeName = wfDef.loanTypeName;
+        if (!loanTypesMap[loanTypeName]) {
+            loanTypesMap[loanTypeName] = {
+                loanTypeName: loanTypeName,
                 workflows: []
             };
         }
     });
 
-    // Then, populate workflows for each loan type
-    for (const loanTypeId in loanTypesMap) {
+    // Then, populate workflows for each loan type, ensuring all defined workflows appear
+    for (const loanTypeName in loanTypesMap) {
         const workflowsForType = fetchedWorkflowDefinitions
-            .filter(wf => wf.loanTypeId === loanTypeId)
+            .filter(wf => wf.loanTypeName === loanTypeName)
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
         workflowsForType.forEach(wfDef => {
@@ -167,15 +168,15 @@ export default function LoanProcessPage() {
                 loans: loansByStage[stage.id] || [],
             }));
 
-            // Only add the workflow to the map if it has stages.
-             loanTypesMap[loanTypeId].workflows.push({
+            // Add the workflow to the map regardless of whether it has loans
+            loanTypesMap[loanTypeName].workflows.push({
                 ...wfDef,
                 stages: stagesWithLoans,
             });
         });
     }
 
-    return Object.values(loanTypesMap);
+    return Object.values(loanTypesMap).filter(lt => lt.workflows.length > 0);
 
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
 
@@ -285,7 +286,6 @@ export default function LoanProcessPage() {
                            <AccordionContent className="p-3">
                               <div className="space-y-3">
                                 {workflow.stages.map(stage => {
-                                  const stageHasVisibleLoans = stage.loans.length > 0;
                                   return (
                                     <div key={stage.id} className="p-3 border rounded-md bg-background">
                                       <h5 className="font-medium text-sm mb-2 flex items-center justify-between">
