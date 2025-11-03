@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -110,7 +109,7 @@ export function ManualTransitionDialog({
               Warning: This overrides the standard workflow. Ensure you have proper authorization and reason for this action.
             </AlertDescription>
           </Alert>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div>
                 <Label htmlFor="manual-workflow-select">Target Workflow</Label>
                 <Select
@@ -152,7 +151,7 @@ export function ManualTransitionDialog({
                 </Select>
             </div>
           </div>
-          <div>
+          <div className="col-span-1 sm:col-span-2">
             <Label htmlFor="manual-transition-reason">Reason for Manual Transition (Required)</Label>
             <Textarea
               id="manual-transition-reason"
