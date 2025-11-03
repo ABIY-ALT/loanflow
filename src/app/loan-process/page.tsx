@@ -168,31 +168,16 @@ export default function LoanProcessPage() {
             }));
 
             // Only add the workflow to the map if it has stages.
-            if (stagesWithLoans.length > 0) {
-                 loanTypesMap[loanTypeId].workflows.push({
-                    ...wfDef,
-                    stages: stagesWithLoans,
-                });
-            }
+             loanTypesMap[loanTypeId].workflows.push({
+                ...wfDef,
+                stages: stagesWithLoans,
+            });
         });
     }
 
     return Object.values(loanTypesMap);
 
   }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
-
-  // Effect to set all accordion items to open by default when data loads or filters change
-  useEffect(() => {
-    if (pipelineData.length > 0) {
-        const allItems = pipelineData.flatMap(p => [
-            `loantype-${p.loanTypeName}`,
-            ...p.workflows.map(w => `workflow-${w.id}`)
-        ]);
-        setOpenAccordionItems(allItems);
-    } else {
-        setOpenAccordionItems([]); // Clear open items if there's no data to display
-    }
-  }, [pipelineData, searchTerm, statusFilter]); // Re-evaluate when pipelineData is recalculated due to filter changes
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
@@ -301,10 +286,6 @@ export default function LoanProcessPage() {
                               <div className="space-y-3">
                                 {workflow.stages.map(stage => {
                                   const stageHasVisibleLoans = stage.loans.length > 0;
-                                  if (!stageHasVisibleLoans && statusFilter !== 'all' && !searchTerm) {
-                                      // If filtering, don't show empty stages
-                                      return null;
-                                  }
                                   return (
                                     <div key={stage.id} className="p-3 border rounded-md bg-background">
                                       <h5 className="font-medium text-sm mb-2 flex items-center justify-between">
