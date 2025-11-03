@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,14 +18,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { DollarSign, User as UserIcon, Mail, Phone, Type, Info, Loader2, Building } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Info, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
-import type { LoanRequest, ActiveWorkflow, Branch } from '@/types/loan';
+import type { ActiveWorkflow, Branch } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
-
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -56,9 +54,9 @@ export default function NewLoanRequestPage() {
       try {
         const [workflowsResult, branchesResult] = await Promise.all([
           getActiveWorkflowsForCreate(),
-          getBranches()
+          getBranches(),
         ]);
-        
+
         if (workflowsResult.error) {
           setError(prev => (prev ? `${prev}\n` : '') + `Workflows: ${workflowsResult.error}`);
           setAvailableWorkflows([]);
@@ -67,12 +65,11 @@ export default function NewLoanRequestPage() {
         }
 
         if (branchesResult.error) {
-           setError(prev => (prev ? `${prev}\n` : '') + `Branches: ${branchesResult.error}`);
-           setBranches([]);
+          setError(prev => (prev ? `${prev}\n` : '') + `Branches: ${branchesResult.error}`);
+          setBranches([]);
         } else {
-           setBranches(branchesResult.branches || []);
+          setBranches(branchesResult.branches || []);
         }
-        
       } catch (err: any) {
         setError(err.message || "Failed to fetch required data.");
       } finally {
@@ -81,12 +78,15 @@ export default function NewLoanRequestPage() {
     }
     fetchPageData();
   }, []);
-  
-  const branchOptions = useMemo(() => 
-    branches.map(branch => ({
-      value: branch.name,
-      label: `${branch.name} (${branch.districtName})`,
-    })), [branches]);
+
+  const branchOptions = useMemo(
+    () =>
+      branches.map(branch => ({
+        value: branch.name,
+        label: `${branch.name} (${branch.districtName})`,
+      })),
+    [branches]
+  );
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -105,7 +105,6 @@ export default function NewLoanRequestPage() {
     setIsSubmitting(true);
     try {
       const payload = { ...data, loanType: '' };
-      
       const result = await addLoanRequest(payload);
 
       if (result.error) {
@@ -115,7 +114,7 @@ export default function NewLoanRequestPage() {
         form.reset();
         router.push('/loan-process');
       } else {
-         toast({ title: "Submission Error", description: "An unexpected issue occurred.", variant: "destructive" });
+        toast({ title: "Submission Error", description: "An unexpected issue occurred.", variant: "destructive" });
       }
     } catch (error: any) {
       toast({ title: "Submission Failed", description: `Error: ${error.message || 'Unexpected error'}`, variant: "destructive" });
@@ -132,19 +131,74 @@ export default function NewLoanRequestPage() {
           Fill in the details below to submit a new loan application. A customer profile will be created if the email is new.
         </p>
       </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Applicant & Loan Information</CardTitle>
           <CardDescription>All fields are required unless marked otherwise.</CardDescription>
         </CardHeader>
+
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
               <div className="grid md:grid-cols-2 gap-8">
-                <FormField control={form.control} name="customerName" render={({ field }) => ( <FormItem> <FormLabel>Customer Full Name</FormLabel> <div className="relative"> <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
-                <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <div className="relative"> <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormDescription>A new customer profile will be created if this email is not found.</FormDescription> <FormMessage /> </FormItem> )} />
-                <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <div className="relative"> <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /> <FormControl> <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} /> </FormControl> </div> <FormMessage /> </FormItem> )} />
-                
+
+                {/* ✅ Customer Name */}
+                <FormField
+                  control={form.control}
+                  name="customerName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Customer Full Name</FormLabel>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <FormControl>
+                          <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} />
+                        </FormControl>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* ✅ Email */}
+                <FormField
+                  control={form.control}
+                  name="customerEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Customer Email</FormLabel>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <FormControl>
+                          <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} />
+                        </FormControl>
+                      </div>
+                      <FormDescription>A new customer profile will be created if this email is not found.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* ✅ Phone */}
+                <FormField
+                  control={form.control}
+                  name="customerPhone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Customer Phone</FormLabel>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <FormControl>
+                          <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} />
+                        </FormControl>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* ✅ Branch Selection */}
                 <FormField
                   control={form.control}
                   name="customerBranch"
@@ -167,6 +221,7 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
+                {/* ✅ Loan Amount */}
                 <FormField
                   control={form.control}
                   name="loanAmount"
@@ -182,23 +237,22 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                <div className="md:col-span-1">
-                  <FormField
-                    control={form.control}
-                    name="workflowVersionId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Workflow</FormLabel>
+                {/* ✅ Workflow Selector — FIXED */}
+                <FormField
+                  control={form.control}
+                  name="workflowVersionId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Workflow</FormLabel>
+                      <FormControl>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                           disabled={isLoading || isSubmitting || availableWorkflows.length === 0}
                         >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
-                            </SelectTrigger>
-                          </FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
+                          </SelectTrigger>
                           <SelectContent>
                             {availableWorkflows.map(wf => (
                               <SelectItem key={wf.id} value={wf.id}>
@@ -212,17 +266,38 @@ export default function NewLoanRequestPage() {
                             )}
                           </SelectContent>
                         </Select>
-                        {error?.includes('Workflows') && <p className="text-sm text-destructive mt-2">{error}</p>}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                      </FormControl>
+                      {error?.includes('Workflows') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              <FormField control={form.control} name="loanPurpose" render={({ field }) => ( <FormItem> <FormLabel>Loan Purpose</FormLabel> <div className="relative"> <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /> <FormControl> <Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} /> </FormControl> </div> <FormDescription> Provide a clear and concise reason for the loan application. </FormDescription> <FormMessage /> </FormItem> )} />
-              
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoading || availableWorkflows.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}>
+              {/* ✅ Loan Purpose */}
+              <FormField
+                control={form.control}
+                name="loanPurpose"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Loan Purpose</FormLabel>
+                    <div className="relative">
+                      <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <FormControl>
+                        <Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} />
+                      </FormControl>
+                    </div>
+                    <FormDescription>Provide a clear and concise reason for the loan application.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                type="submit"
+                className="w-full sm:w-auto"
+                disabled={isSubmitting || isLoading || availableWorkflows.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
