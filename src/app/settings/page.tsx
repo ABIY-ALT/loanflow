@@ -1074,7 +1074,7 @@ export default function SettingsPage() {
                   <React.Fragment key={def.id}>
                     <div className="flex flex-col items-center text-center w-36">
                       <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">
-                        {def.order + 1}
+                        {index + 1}
                       </div>
                       <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
                       <div className="text-xs text-muted-foreground">{def.departmentName}</div>
@@ -1224,4 +1224,5 @@ export default function SettingsPage() {
     
 
     
+
 
