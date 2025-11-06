@@ -12,8 +12,13 @@ const registerUserFormSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   phoneNumber: z.string().min(1, 'Phone number is required').optional().or(z.literal('')),
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/\d/, 'Password must contain at least one number')
+    .regex(/[@$!%*?&]/, 'Password must contain at least one special character'),
 });
+
 
 export async function registerUserAction(formData: FormData): Promise<{ success: boolean; message: string; errors?: any }> {
   const adminAuth = await getAdminPerformingAction();
@@ -57,6 +62,7 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
         name: `${userData.firstName} ${userData.lastName}`,
         phoneNumber: userData.phoneNumber || null,
         passwordHash: passwordHash,
+        isPasswordChanged: false, // Force password change on first login
         departmentId: null,
         customRoleId: null,
       },

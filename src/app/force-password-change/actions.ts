@@ -5,6 +5,8 @@ import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/app/auth/actions';
 import bcrypt from 'bcryptjs';
 
+const passwordSchema = new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$');
+
 export async function changePasswordAction(
   formData: FormData
 ): Promise<{ success: boolean; message: string }> {
@@ -20,8 +22,8 @@ export async function changePasswordAction(
   if (!oldPassword || !newPassword) {
     return { success: false, message: 'Old and new passwords are required.' };
   }
-   if (newPassword.length < 6) {
-    return { success: false, message: 'New password must be at least 6 characters long.' };
+   if (!passwordSchema.test(newPassword)) {
+    return { success: false, message: 'New password does not meet the security requirements. It must be at least 8 characters and include uppercase, lowercase, number, and special characters.' };
   }
 
   try {

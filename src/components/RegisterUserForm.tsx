@@ -20,8 +20,13 @@ const userSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   phoneNumber: z.string().optional(), // Making phone number optional for form validation
   email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters long"),
+  password: z.string().min(8, "Password must be at least 8 characters")
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/\d/, 'Password must contain at least one number')
+    .regex(/[@$!%*?&]/, 'Password must contain at least one special character'),
 });
+
 
 export default function RegisterUserForm({ registerUserAction }: RegisterUserFormProps) {
   const { toast } = useToast();
@@ -126,7 +131,12 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="password">Password</Label>
               <Input id="password" name="password" type="password" value={formDataState.password} onChange={handleChange} disabled={isSubmitting} />
-              {formErrors.password && <p className="text-xs text-destructive mt-1">{formErrors.password.join(', ')}</p>}
+              {formErrors.password && <div className="text-xs text-destructive mt-1 space-y-1">
+                {formErrors.password.map((err, i) => <p key={i}>{err}</p>)}
+                </div>}
+               <p className="text-[0.8rem] text-muted-foreground">
+                Must be at least 8 characters and include one uppercase, one lowercase, one number, and one special character (@$!%*?&).
+               </p>
             </div>
           </div>
           <Button type="submit" className="mt-6 w-full" disabled={isSubmitting}>

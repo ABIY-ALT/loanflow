@@ -8,9 +8,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, KeyRound, LogOut } from 'lucide-react';
+import { Loader2, KeyRound, LogOut, XCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { changePasswordAction } from './actions';
+import { cn } from '@/lib/utils';
+
+
+const passwordSchema = new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$');
+const passwordRequirements = [
+    { id: 'length', text: 'At least 8 characters long', regex: /.{8,}/ },
+    { id: 'lowercase', text: 'At least one lowercase letter', regex: /[a-z]/ },
+    { id: 'uppercase', text: 'At least one uppercase letter', regex: /[A-Z]/ },
+    { id: 'number', text: 'At least one number', regex: /\d/ },
+    { id: 'special', text: 'At least one special character (@$!%*?&)', regex: /[@$!%*?&]/ },
+];
 
 export default function ForcePasswordChangePage() {
   const router = useRouter();
@@ -39,9 +50,10 @@ export default function ForcePasswordChangePage() {
       setError("New passwords do not match.");
       return;
     }
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters long.");
-      return;
+    
+    if (!passwordSchema.test(newPassword)) {
+        setError("Password does not meet the strength requirements.");
+        return;
     }
 
     setIsSubmitting(true);
@@ -103,6 +115,22 @@ export default function ForcePasswordChangePage() {
                 disabled={isSubmitting}
               />
             </div>
+
+            {newPassword && (
+                <div className="space-y-2 text-xs p-3 bg-muted rounded-lg">
+                    <p className="font-medium text-sm">Password must contain:</p>
+                    {passwordRequirements.map(req => {
+                        const isValid = req.regex.test(newPassword);
+                        return (
+                            <div key={req.id} className={cn("flex items-center gap-2", isValid ? "text-green-600" : "text-destructive")}>
+                                {isValid ? <CheckCircle className="h-4 w-4"/> : <XCircle className="h-4 w-4"/>}
+                                <span>{req.text}</span>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
              <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm New Password</Label>
               <Input
@@ -115,6 +143,7 @@ export default function ForcePasswordChangePage() {
                 disabled={isSubmitting}
               />
             </div>
+
             {error && (
               <p className="text-sm text-destructive text-center">{error}</p>
             )}
