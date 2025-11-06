@@ -1,7 +1,5 @@
-
 // src/app/api/auth/refresh-token/route.ts
 import { NextResponse } from 'next/server';
-import { refreshAccessToken } from '@/app/auth/actions';
 
 export async function POST() {
     // This entire route is now obsolete with the self-contained JWT session model.
