@@ -35,6 +35,7 @@ export interface User {
   email: string;
   phoneNumber?: string;
   imageUrl?: string;
+  isPasswordChanged: boolean; // Flag for forced password change
 
   departmentId?: string;
   department?: Department; // Name of the department

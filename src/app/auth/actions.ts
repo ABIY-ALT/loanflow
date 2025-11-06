@@ -52,6 +52,7 @@ function mapPrismaUserToAppUser(
     customRoleId: prismaUser.customRoleId || undefined,
     customRoleName: prismaUser.customRole?.name || undefined,
     permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
+    isPasswordChanged: prismaUser.isPasswordChanged,
   };
 }
 

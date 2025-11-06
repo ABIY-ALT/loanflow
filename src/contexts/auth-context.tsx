@@ -67,16 +67,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isInitialLoadingUser || isProcessingAuthAction) {
       return;
     }
-    if (user && pathname === '/login') {
-      router.replace('/');
-    } else if (!user && pathname !== '/login') {
-      router.replace('/login');
+
+    const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+
+    if (user) {
+        if (!user.isPasswordChanged) {
+            if (pathname !== '/force-password-change') {
+                router.replace('/force-password-change');
+            }
+        } else if (isAuthPage) {
+            router.replace('/');
+        }
+    } else {
+        if (!isAuthPage) {
+            router.replace('/login');
+        }
     }
-  }, [user, pathname, router, isInitialLoadingUser, isProcessingAuthAction]);
+}, [user, pathname, router, isInitialLoadingUser, isProcessingAuthAction]);
+
 
   const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
 
-  if (isLoadingOverall && pathname !== '/login') {
+  if (isLoadingOverall && pathname !== '/login' && pathname !== '/force-password-change') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -85,9 +97,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </p>
       </div>
     );
-  } else if (!isInitialLoadingUser && !isProcessingAuthAction && !user && pathname !== '/login') {
+  } else if (!isInitialLoadingUser && !isProcessingAuthAction && !user && pathname !== '/login' && pathname !== '/force-password-change') {
     // This prevents a flash of the "Redirecting" message on initial load
-    // It will only show if, after loading, the user is confirmed to be null and not on the login page.
+    // It will only show if, after loading, the user is confirmed to be null and not on an auth page.
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
