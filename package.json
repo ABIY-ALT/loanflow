@@ -13,9 +13,6 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package && prisma generate",
-    "seed": "prisma db seed"
-  },
-  "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
