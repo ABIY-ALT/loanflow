@@ -94,7 +94,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     const passwordMatch = await bcrypt.compare(passwordInput, user.passwordHash);
 
     if (!passwordMatch) {
-      const newAttemptCount = user.failedLoginAttempts + 1;
+      const newAttemptCount = (user.failedLoginAttempts || 0) + 1;
       let updateData: any = { failedLoginAttempts: newAttemptCount };
 
       if (newAttemptCount >= MAX_LOGIN_ATTEMPTS) {
