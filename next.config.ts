@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -23,6 +24,10 @@ const nextConfig: NextConfig = {
             key: 'X-XSS-Protection',
             value: '1; mode=block', // legacy but harmless
           },
+          {
+            key: 'x-middleware-subrequest',
+            value: '' // Strip this header
+          }
         ],
       },
     ];
