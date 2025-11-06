@@ -59,74 +59,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsProcessingAuthAction(true);
     await serverLogoutUser();
     setUser(null);
+    // After state is cleared, force redirect to login
+    router.replace('/login');
     setIsProcessingAuthAction(false);
-  }, []);
+  }, [router]);
+
 
   useEffect(() => {
-    if (isInitialLoadingUser || isProcessingAuthAction) {
+    if (isInitialLoadingUser) {
       return;
     }
-
-    const isLoginPage = pathname === '/login';
-    const isForcePasswordChangePage = pathname === '/force-password-change';
-
-    if (user) {
-        if (!user.isPasswordChanged) {
-            if (!isForcePasswordChangePage) {
-                router.replace('/force-password-change');
-            }
-        } else if (isLoginPage || isForcePasswordChangePage) {
-            router.replace('/');
-        }
-    } else {
-        if (!isLoginPage) {
-            router.replace('/login');
-        }
+  
+    const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+  
+    if (!user && !isAuthPage) {
+      router.replace('/login');
+    } else if (user) {
+      if (!user.isPasswordChanged && pathname !== '/force-password-change') {
+        router.replace('/force-password-change');
+      } else if (user.isPasswordChanged && isAuthPage) {
+        router.replace('/');
+      }
     }
-}, [user, pathname, router, isInitialLoadingUser, isProcessingAuthAction]);
+  }, [user, pathname, router, isInitialLoadingUser]);
 
 
   const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
   
-  const shouldRenderApp = user && user.isPasswordChanged;
-  const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+  // These pages have their own layout and loading states.
+  if (pathname === '/login' || pathname === '/force-password-change') {
+      return (
+        <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
+            {children}
+        </AuthContext.Provider>
+    );
+  }
 
-  // If loading, show a global spinner unless we are on an auth page that has its own.
-  if (isLoadingOverall && !isAuthPage) {
+  // If still loading, or if user is null and we are not on an auth page, show a global loading screen.
+  // This prevents the main app layout from flashing before a redirect.
+  if (isLoadingOverall || !user) {
      return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-lg text-muted-foreground">
-          {isInitialLoadingUser ? "Loading user session..." : "Processing authentication..."}
+          {isInitialLoadingUser ? "Loading user session..." : (isProcessingAuthAction ? "Processing authentication..." : "Redirecting...")}
         </p>
       </div>
     );
   }
-
-  // After loading, if the user is not authenticated and not on an auth page, show a redirecting state.
-  if (!isLoadingOverall && !user && !isAuthPage) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Redirecting to login...</p>
-      </div>
-    );
-  }
   
-  // After loading, if user needs to change password and is NOT on the change password page, block rendering.
-  if (!isLoadingOverall && user && !user.isPasswordChanged && !isAuthPage) {
+  // If user needs to change password but is trying to access other pages, keep showing loading screen until redirect happens.
+  if (!user.isPasswordChanged) {
      return (
-      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Redirecting to password change...</p>
-      </div>
-    );
+        <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Redirecting to password change...</p>
+        </div>
+      );
   }
-
 
   return (
     <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
-      { (shouldRenderApp || isAuthPage) ? children : null }
+      {children}
     </AuthContext.Provider>
   );
 };
