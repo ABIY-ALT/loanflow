@@ -10,7 +10,9 @@ import bcrypt from 'bcryptjs';
 const registerUserFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
-  phoneNumber: z.string().min(1, 'Phone number is required').optional().or(z.literal('')),
+  phoneNumber: z.string()
+    .length(10, 'Phone number must be exactly 10 digits.')
+    .regex(/^(09|07)\d{8}$/, 'Phone number must start with 09 or 07.'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters')
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
@@ -60,7 +62,7 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
         firstName: userData.firstName,
         lastName: userData.lastName,
         name: `${userData.firstName} ${userData.lastName}`,
-        phoneNumber: userData.phoneNumber || null,
+        phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
         isPasswordChanged: false, // Force password change on first login
         departmentId: null,
