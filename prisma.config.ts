@@ -1,4 +1,8 @@
 import type { Prisma } from '@prisma/client';
+import dotenv from 'dotenv';
+
+// Explicitly load environment variables from .env file
+dotenv.config();
 
 const config: Prisma.Subset<Prisma.PrismaClientOptions, Prisma.PrismaClientOptions> = {
   // Prisma's seeder config is very minimal in a config file
