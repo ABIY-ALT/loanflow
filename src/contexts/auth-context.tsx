@@ -60,7 +60,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await serverLogoutUser();
     setUser(null);
     setIsProcessingAuthAction(false);
-    // Toast is now handled by the component calling logout, not automatically here
   }, []);
 
   useEffect(() => {
@@ -68,18 +67,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+    const isLoginPage = pathname === '/login';
+    const isForcePasswordChangePage = pathname === '/force-password-change';
 
     if (user) {
         if (!user.isPasswordChanged) {
-            if (pathname !== '/force-password-change') {
+            if (!isForcePasswordChangePage) {
                 router.replace('/force-password-change');
             }
-        } else if (isAuthPage) {
+        } else if (isLoginPage || isForcePasswordChangePage) {
             router.replace('/');
         }
     } else {
-        if (!isAuthPage) {
+        if (!isLoginPage) {
             router.replace('/login');
         }
     }
@@ -87,9 +87,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
   const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
+  
+  const shouldRenderApp = user && user.isPasswordChanged;
+  const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
 
-  if (isLoadingOverall && pathname !== '/login' && pathname !== '/force-password-change') {
-    return (
+  // If loading, show a global spinner unless we are on an auth page that has its own.
+  if (isLoadingOverall && !isAuthPage) {
+     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-lg text-muted-foreground">
@@ -97,9 +101,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         </p>
       </div>
     );
-  } else if (!isInitialLoadingUser && !isProcessingAuthAction && !user && pathname !== '/login' && pathname !== '/force-password-change') {
-    // This prevents a flash of the "Redirecting" message on initial load
-    // It will only show if, after loading, the user is confirmed to be null and not on an auth page.
+  }
+
+  // After loading, if the user is not authenticated and not on an auth page, show a redirecting state.
+  if (!isLoadingOverall && !user && !isAuthPage) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -107,11 +112,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       </div>
     );
   }
+  
+  // After loading, if user needs to change password and is NOT on the change password page, block rendering.
+  if (!isLoadingOverall && user && !user.isPasswordChanged && !isAuthPage) {
+     return (
+      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-lg text-muted-foreground">Redirecting to password change...</p>
+      </div>
+    );
+  }
 
 
   return (
     <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
-      {children}
+      { (shouldRenderApp || isAuthPage) ? children : null }
     </AuthContext.Provider>
   );
 };

@@ -24,7 +24,7 @@ export default async function RootLayout({
       <head>
       </head>
       <body className="antialiased">
-        <AuthProvider> {/* Ensure AuthProvider wraps AppLayout and children */}
+        <AuthProvider>
           <AppLayout>
             {children}
           </AppLayout>

@@ -38,17 +38,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Navigation to /login is handled by AuthContext's useEffect
   };
   
-  if (pathname === '/login') {
+  // Do not render the main layout for login or password change pages
+  if (pathname === '/login' || pathname === '/force-password-change') {
     return <>{children}</>;
   }
 
-  if (authIsLoadingGlobal && pathname !== '/login') {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background z-50">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Loading session...</p>
-      </div>
-    );
+  // This prevents rendering the layout while auth state is resolving or if user is not authenticated.
+  // AuthProvider already handles showing a loading screen.
+  if (authIsLoadingGlobal || !user) {
+    return null; 
   }
 
   return (
