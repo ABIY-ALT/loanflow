@@ -15,7 +15,7 @@ const secretKey = process.env.SESSION_SECRET;
 const key = new TextEncoder().encode(secretKey);
 
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
+const LOCKOUT_DURATION_MINUTES = 1;
 
 async function encrypt(payload: any) {
   return await new SignJWT(payload)
