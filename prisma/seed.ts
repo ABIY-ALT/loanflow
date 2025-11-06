@@ -116,7 +116,9 @@ async function main() {
         customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
-    const passwordHash = userData.password ? await bcrypt.hash(userData.password, 10) : null;
+    const defaultPassword = "password123";
+    const passwordToHash = userData.password || defaultPassword;
+    const passwordHash = await bcrypt.hash(passwordToHash, 10);
     const finalUserId = userData.userId || userData.id;
 
     const user = await prisma.user.upsert({

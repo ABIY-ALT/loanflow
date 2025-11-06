@@ -24,16 +24,16 @@ interface MockAppUser {
 
 
 export const mockUsers: MockAppUser[] = [
-  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
-  { id: 'user-john-smith', userId: 'identity-john-smith', name: 'John Smith', email: 'john@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
-  { id: 'user-manager-mike', userId: 'identity-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', customRoleName: "Administrator", department: "Origination", password: 'password' }, // Example admin
-  { id: 'user-admin-alice', userId: 'identity-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', customRoleName: "Administrator", password: 'password' },
-  { id: 'user-underwriter-bob', userId: 'identity-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', customRoleName: "Loan Officer", department: "Underwriting", password: 'password' }, // Example role
-  { id: 'user-uw-manager-sara', userId: 'identity-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', customRoleName: "Administrator", department: "Underwriting", password: 'password' },
-  { id: 'user-staff-carol', userId: 'identity-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
-  { id: 'user-closing-manager-dave', userId: 'identity-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
-  { id: 'user-credit-analyst', userId: 'identity-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', customRoleName: "Loan Officer", department: "Credit Analysis", password: 'password' },
-  { id: 'user-victor-viewer', userId: 'identity-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', customRoleName: "Viewer", password: 'password' },
+  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination" },
+  { id: 'user-john-smith', userId: 'identity-john-smith', name: 'John Smith', email: 'john@example.com', customRoleName: "Loan Officer", department: "Origination" },
+  { id: 'user-manager-mike', userId: 'identity-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', customRoleName: "Administrator", department: "Origination" }, // Example admin
+  { id: 'user-admin-alice', userId: 'identity-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', customRoleName: "Administrator" },
+  { id: 'user-underwriter-bob', userId: 'identity-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', customRoleName: "Loan Officer", department: "Underwriting" }, // Example role
+  { id: 'user-uw-manager-sara', userId: 'identity-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', customRoleName: "Administrator", department: "Underwriting" },
+  { id: 'user-staff-carol', userId: 'identity-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', customRoleName: "Loan Officer", department: "Closing" },
+  { id: 'user-closing-manager-dave', userId: 'identity-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', customRoleName: "Loan Officer", department: "Closing" },
+  { id: 'user-credit-analyst', userId: 'identity-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', customRoleName: "Loan Officer", department: "Credit Analysis" },
+  { id: 'user-victor-viewer', userId: 'identity-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', customRoleName: "Viewer" },
   {
     id: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Prisma User ID
     userId: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Identity Server User ID (using same for consistency)
@@ -44,7 +44,6 @@ export const mockUsers: MockAppUser[] = [
     phoneNumber: '0912345678',
     customRoleName: "Administrator", // This role should grant all permissions
     department: undefined, // Or assign a default department if needed
-    password: 'password' // Default password for mock identity server
   },
   // System user for Prisma seeding (already handled in seed.ts)
   // { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', customRoleName: "Administrator", password: 'systempassword' },
