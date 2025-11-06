@@ -43,6 +43,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Permissions-Policy', 'geolocation=(self), microphone=(self), camera=(self)');
+  response.headers.set('Content-Security-Policy', cspHeader);
 
   return response;
 }
