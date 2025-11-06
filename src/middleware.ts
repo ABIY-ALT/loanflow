@@ -1,6 +1,5 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { decrypt } from '@/lib/session';
 
 // 1. Specify public routes that do not require authentication
 const publicRoutes = ['/login', '/force-password-change'];
@@ -28,30 +27,11 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', cspHeader);
   
-  // No special handling for public routes in this middleware; AuthProvider handles it.
-  // This middleware's primary job is now session validation for protected routes.
+  // NOTE: Authentication and redirection logic has been moved to AuthProvider
+  // to resolve race conditions between server-side middleware and client-side routing.
+  // The provider now handles all auth-based redirects.
 
-  // 4. Decrypt the session cookie
-  const sessionCookie = request.cookies.get('session')?.value;
-  const session = sessionCookie ? await decrypt(sessionCookie) : null;
-
-  // 5. If there's no valid session and the route is protected, redirect to login
-  if (!session && !publicRoutes.some(route => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-  
-  // 6. If there is a session, but password change is needed and not on the right page, redirect
-  if (session && !session.isPasswordChanged && pathname !== '/force-password-change' && pathname !== '/login') {
-    return NextResponse.redirect(new URL('/force-password-change', request.url));
-  }
-  
-  // 7. If user is logged in and tries to access login page, redirect to home
-  if (session && session.isPasswordChanged && pathname.startsWith('/login')) {
-      return NextResponse.redirect(new URL('/', request.url));
-  }
-
-
-  // 8. Create the response with the updated headers
+  // 4. Create the response with the updated headers
   const response = NextResponse.next({
     request: {
       headers: requestHeaders,
@@ -67,7 +47,7 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-// 9. Apply middleware to ALL routes except Next.js internals and static files
+// 5. Apply middleware to ALL routes except Next.js internals and static files
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|uploads)).*)',

@@ -19,89 +19,105 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const { user: currentUser } = await serverGetCurrentUser();
-        setUser(currentUser);
-      } catch (e) {
-        console.error("Failed to fetch current user", e);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    checkUser();
+  const fetchAndSetCurrentUser = useCallback(async () => {
+    setIsInitialLoading(true);
+    try {
+      const { user: currentUserData } = await serverGetCurrentUser();
+      setUser(currentUserData);
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+      setUser(null);
+    } finally {
+      setIsInitialLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchAndSetCurrentUser();
+  }, [fetchAndSetCurrentUser]);
 
   const loginContext = async (phoneNumberInput: string, passwordInput: string = ''): Promise<{ success: boolean; error?: string; user?: User }> => {
-    setIsLoading(true);
+    setIsProcessingAuth(true);
     const result = await serverLoginUser(phoneNumberInput, passwordInput);
-    
     if (result.success && result.user) {
       setUser(result.user);
-      // The middleware will handle the redirect after the state is set and page reloads
-      if (!result.user.isPasswordChanged) {
-        router.push('/force-password-change');
-      } else {
-        router.push('/');
-      }
     } else {
       setUser(null);
     }
-    
-    setIsLoading(false);
+    setIsProcessingAuth(false);
     return result;
   };
-  
+
   const logoutContext = useCallback(async () => {
-    setIsLoading(true);
+    setIsProcessingAuth(true);
     await serverLogoutUser();
     setUser(null);
-    router.push('/login');
-    setIsLoading(false);
+    router.replace('/login');
+    setIsProcessingAuth(false);
   }, [router]);
 
-  const isPublicPage = pathname === '/login' || pathname === '/force-password-change';
+  useEffect(() => {
+    if (isInitialLoading) {
+      return;
+    }
 
-  // While checking the session, show a loader on all pages
-  if (isLoading) {
+    const isAuthPage = pathname === '/login';
+    const isPasswordChangePage = pathname === '/force-password-change';
+
+    if (!user && !isAuthPage && !isPasswordChangePage) {
+      router.replace('/login');
+    } else if (user) {
+      if (!user.isPasswordChanged && !isPasswordChangePage) {
+        router.replace('/force-password-change');
+      } else if (user.isPasswordChanged && (isAuthPage || isPasswordChangePage)) {
+        router.replace('/');
+      }
+    }
+  }, [user, pathname, router, isInitialLoading]);
+
+  const isLoadingOverall = isInitialLoading || isProcessingAuth;
+  const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+
+  // While initially loading, or if we are processing a login/logout, show a full-page loader.
+  if (isLoadingOverall) {
      return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Loading session...</p>
+        <p className="text-lg text-muted-foreground">
+          {isInitialLoading ? "Loading user session..." : "Processing authentication..."}
+        </p>
       </div>
     );
   }
   
-  // If loading is finished and we're on a public page, it's safe to render (middleware handles redirects away from here if logged in)
-  if (isPublicPage) {
-     return (
-        <AuthContext.Provider value={{ user, isLoading, login: loginContext, logout: logoutContext }}>
-            {children}
-        </AuthContext.Provider>
-    );
-  }
-
-  // If loading is finished, not a public page, and no user, show nothing/loader until middleware redirects
-  if (!user && !isPublicPage) {
-     return (
-       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+  // If we have finished loading but there's no user, and we are not on an auth page, show a redirecting state until the useEffect kicks in.
+  if (!user && !isAuthPage) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Verifying session...</p>
+        <p className="text-lg text-muted-foreground">Redirecting to login...</p>
       </div>
     );
   }
+  
+  // If we have a user, but they need to change their password and are not on that page, show redirecting state.
+  if (user && !user.isPasswordChanged && pathname !== '/force-password-change') {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Redirecting to password change...</p>
+        </div>
+      );
+  }
 
-
-  // Otherwise, we have a user on a protected page, so render the app
+  // Render children if all checks pass
   return (
-    <AuthContext.Provider value={{ user, isLoading, login: loginContext, logout: logoutContext }}>
+    <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
       {children}
     </AuthContext.Provider>
   );
