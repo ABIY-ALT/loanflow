@@ -3,6 +3,7 @@
   "name": "nextn",
   "version": "0.1.2",
   "private": true,
+  "description": "This is a NextJS starter in Firebase Studio.",
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
@@ -11,7 +12,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package && prisma generate"
+    "postinstall": "patch-package && prisma generate",
+    "seed": "prisma db seed"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
