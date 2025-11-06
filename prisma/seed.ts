@@ -84,7 +84,6 @@ async function main() {
       firstName: 'System',
       lastName: 'Process',
       phoneNumber: '0000000000',
-      password: 'system_password', // Add a password for the system user if needed for any reason
     },
   ];
 
@@ -112,13 +111,12 @@ async function main() {
         } else {
             console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}".`);
         }
-    } else if (userData.email === 'alice.admin@example.com' || userData.id === 'system-prisma') {
+    } else if (userData.id === 'system-prisma') {
         customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
     const defaultPassword = "password123";
-    const passwordToHash = userData.password || defaultPassword;
-    const passwordHash = await bcrypt.hash(passwordToHash, 10);
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
     const finalUserId = userData.userId || userData.id;
 
     const user = await prisma.user.upsert({
@@ -161,3 +159,5 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+
+    
