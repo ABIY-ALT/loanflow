@@ -1,8 +1,11 @@
+
 'use server';
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { revalidatePath } from 'next/cache';
+
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 // Helper to ensure directory exists
 async function ensureDir(dirPath: string) {
@@ -32,6 +35,11 @@ export async function uploadDocumentAction(
   if (!file) {
     return { success: false, error: 'No file selected for upload.' };
   }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return { success: false, error: `File size exceeds the 5MB limit. Please upload a smaller file.` };
+  }
+
 
   try {
     const bytes = await file.arrayBuffer();

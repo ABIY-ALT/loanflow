@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, type FormEvent } from 'react';
@@ -19,6 +18,8 @@ import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { uploadDocumentAction } from '@/app/loan-requests/[id]/actions';
 import type { DocumentRequirement } from '@/types/loan';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface UploadLoanDocumentDialogProps {
   isOpen: boolean;
@@ -43,7 +44,19 @@ export function UploadLoanDocumentDialog({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      setSelectedFile(event.target.files[0]);
+      const file = event.target.files[0];
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "File Too Large",
+          description: `The selected file exceeds the 5MB size limit. Please choose a smaller file.`,
+          variant: "destructive",
+          duration: 7000,
+        });
+        event.target.value = ''; // Reset file input
+        setSelectedFile(null);
+      } else {
+        setSelectedFile(file);
+      }
     } else {
       setSelectedFile(null);
     }
@@ -73,7 +86,7 @@ export function UploadLoanDocumentDialog({
         onOpenChange(false);
         setSelectedFile(null);
       } else {
-        toast({ title: "Upload Failed", description: result.error || "Could not upload file to server.", variant: "destructive" });
+        toast({ title: "Upload Failed", description: result.error || "Could not upload file to server.", variant: "destructive", duration: 7000 });
       }
     } catch (error: any) {
       toast({ title: "Upload Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
@@ -90,7 +103,7 @@ export function UploadLoanDocumentDialog({
             <DialogTitle>Upload Document: {documentRequirement?.name || "General Upload"}</DialogTitle>
             <DialogDescription>
               {documentRequirement ? `Select the file for "${documentRequirement.name}".` : "Select a file to upload."}
-              The file will be saved to the server.
+              The maximum file size is 5MB.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -103,7 +116,7 @@ export function UploadLoanDocumentDialog({
               disabled={isUploading || isParentSaving}
               required
             />
-            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
+            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name} ({(selectedFile.size / (1024*1024)).toFixed(2)} MB)</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild>
