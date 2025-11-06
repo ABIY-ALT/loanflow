@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
 import type { Department as AppDepartment } from '../src/types/loan';
 import { ALL_PERMISSIONS } from '../src/lib/permissions'; // Import all permissions
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -56,13 +57,13 @@ async function main() {
 
   const adminRole = await prisma.role.upsert({
     where: { name: 'Administrator' },
-    update: { // Ensure admin role always has all permissions
+    update: {
       permissions: ALL_PERMISSIONS,
     },
     create: {
       name: 'Administrator',
       description: 'Full access to all system features and settings.',
-      permissions: ALL_PERMISSIONS, // Assign all permissions from the AppPermission type
+      permissions: ALL_PERMISSIONS,
     },
   });
   console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
@@ -71,7 +72,6 @@ async function main() {
 
   // Seed Users
   console.log('Seeding Users...');
-  // Add the system user directly to the list of users to be seeded
   const allUsersToSeed = [
     ...appMockUsers,
     {
@@ -84,15 +84,13 @@ async function main() {
       firstName: 'System',
       lastName: 'Process',
       phoneNumber: '0000000000',
+      password: 'system_password', // Add a password for the system user if needed for any reason
     },
   ];
-
 
   for (const userData of allUsersToSeed) {
     let departmentDataConnect = {};
     if (userData.department) {
-      // Type assertion needed as userData.department might be string | undefined,
-      // but we check for its existence.
       const deptName = (userData.department as AppDepartment).toLowerCase();
       const deptRecord = await prisma.department.findUnique({
         where: { nameLowercase: deptName },
@@ -100,7 +98,7 @@ async function main() {
       if (deptRecord) {
         departmentDataConnect = { department: { connect: { id: deptRecord.id } } };
       } else {
-        console.warn(`Department "${userData.department}" not found for user "${userData.name}". User will be created without department linkage.`);
+        console.warn(`Department "${userData.department}" not found for user "${userData.name}".`);
       }
     }
     
@@ -112,34 +110,36 @@ async function main() {
         if (roleRecord) {
             customRoleDataConnect = { customRole: { connect: { id: roleRecord.id }}};
         } else {
-            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}". User will be created without this role.`);
+            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}".`);
         }
     } else if (userData.email === 'alice.admin@example.com' || userData.id === 'system-prisma') {
-        // Default Alice Admin and system-prisma to Administrator role if not specified
-        // This assumes adminRole is already fetched or created
         customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
+    const passwordHash = userData.password ? await bcrypt.hash(userData.password, 10) : null;
+    const finalUserId = userData.userId || userData.id;
 
     const user = await prisma.user.upsert({
       where: { email: userData.email },
-      update: { // Fields to update if user exists
+      update: {
         name: userData.name,
         firstName: userData.firstName,
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
-        userId: userData.userId || userData.id, // Update userId if provided
+        userId: finalUserId,
+        passwordHash: passwordHash,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
-      create: { // Fields to set when creating a new user
+      create: {
         id: userData.id, 
-        userId: userData.userId || userData.id, // Use Identity Server ID or local ID if not available
+        userId: finalUserId,
         name: userData.name,
         email: userData.email,
         firstName: userData.firstName,
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
+        passwordHash: passwordHash,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },

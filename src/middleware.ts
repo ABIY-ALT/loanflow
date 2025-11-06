@@ -4,12 +4,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Generate a nonce
+  // 1. Generate a nonce for CSP
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
 
-  // 2. Session check using cookies
-  const accessToken = request.cookies.get('accessToken')?.value;
-  const isAuthenticated = !!accessToken;
+  // 2. Session check using the 'session' cookie
+  const sessionCookie = request.cookies.get('session')?.value;
+  const isAuthenticated = !!sessionCookie;
 
   // 3. Auth/Protected routes logic
   const isLoginPage = pathname === '/login';
