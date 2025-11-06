@@ -26,13 +26,9 @@ import type { AppPermission } from '@/lib/permissions';
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  let detailedMessage = `Prisma Loan Service Error (Context: ${context || 'Unknown'}): ${message}.`;
-  if (originalError) {
-    const errorDetails = (typeof originalError === 'object' && originalError !== null && typeof originalError.message === 'string') ? originalError.message : String(originalError);
-    detailedMessage += ` Raw: ${errorDetails}`;
-  }
-  console.error(`[PrismaService:${context || 'Unknown'}] Error:`, detailedMessage, originalError);
-  return { error: detailedMessage };
+  const genericMessage = 'An unexpected error occurred. Please try again later.';
+  console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  return { error: genericMessage };
 };
 
 const mapPrismaUserToAppUser = (
@@ -53,6 +49,7 @@ const mapPrismaUserToAppUser = (
     customRoleId: prismaUser.customRoleId || undefined,
     customRoleName: prismaUser.customRole?.name || undefined,
     permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
+    isPasswordChanged: prismaUser.isPasswordChanged,
   };
 };
 
@@ -154,7 +151,7 @@ export async function addLoanRequest(
     });
 
     if (!activeVersion || !activeVersion.workflowDefinition.department || activeVersion.stages.length === 0) {
-        return createErrorResult(`The selected workflow (ID: ${loanData.workflowVersionId}) is not active, has no stages, or is not linked to an initial department.`, "addLoanRequest");
+        return createErrorResult(`The selected workflow is not active or properly configured.`, "addLoanRequest");
     }
 
     const firstStage = activeVersion.stages[0];
@@ -162,7 +159,7 @@ export async function addLoanRequest(
     const loanTypeName = activeVersion.workflowDefinition.loanType.name;
 
     if (typeof firstStage.defaultTimelineDays !== 'number' || isNaN(firstStage.defaultTimelineDays) || firstStage.defaultTimelineDays < 0) {
-      return createErrorResult(`Invalid defaultTimelineDays (${firstStage.defaultTimelineDays}) for stage "${firstStage.name}".`, "addLoanRequest");
+      return createErrorResult(`Invalid timeline configuration for the first stage.`, "addLoanRequest");
     }
     const currentDate = new Date();
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
@@ -173,7 +170,6 @@ export async function addLoanRequest(
     const availableStatusesForDept = firstStage.availableStatuses && typeof firstStage.availableStatuses === 'object' && !Array.isArray(firstStage.availableStatuses) ? (firstStage.availableStatuses as Record<string, string[]>)[firstStage.responsibleDepartment.name] : [];
     const initialStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
-    // Find or create customer
     const customer = await prisma.customer.upsert({
       where: { email: loanData.customerEmail },
       update: {
@@ -216,9 +212,6 @@ export async function addLoanRequest(
     });
     return { id: newLoan.id };
   } catch (e: any) {
-     if (e.code === 'P2025' && e.message.includes("'User' record(s)")) {
-        return createErrorResult("Failed to add loan request: The 'system-prisma' user was not found. Please ensure this user exists in the database (check seed script).", "addLoanRequest_systemUserMissing", e);
-    }
     return createErrorResult("Failed to add loan request.", "addLoanRequest", e);
   }
 }
@@ -283,7 +276,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
 
     return { loan: appLoan, users: appUsers, workflowDefinitions: wfDefsResult.workflows };
   } catch (e: any) {
-    return createErrorResult(`Failed to fetch loan request by ID: ${id}.`, "getLoanRequestById", e);
+    return createErrorResult(`Failed to fetch loan request.`, "getLoanRequestById", e);
   }
 }
 
@@ -297,7 +290,7 @@ export async function updateLoanRequest(
       const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true, assignedToUsers: true, stageCompletedBy: true } });
 
       if (!existingLoan) {
-        throw new Error(`Loan with ID "${id}" not found for update.`);
+        throw new Error(`Loan with ID "${id}" not found.`);
       }
 
       const updatePayload: any = { lastUpdatedDate: new Date() };
@@ -312,7 +305,6 @@ export async function updateLoanRequest(
 
       if (dataToUpdate.loanAmount !== undefined) updatePayload.loanAmount = dataToUpdate.loanAmount;
       
-      // Handle customer data update
       if (dataToUpdate.customerName !== undefined && dataToUpdate.customerName !== existingLoan.customer.name) customerUpdatePayload.name = dataToUpdate.customerName;
       if (dataToUpdate.customerEmail !== undefined && dataToUpdate.customerEmail !== existingLoan.customer.email) customerUpdatePayload.email = dataToUpdate.customerEmail;
       if (dataToUpdate.customerPhone !== undefined && dataToUpdate.customerPhone !== existingLoan.customer.phone) customerUpdatePayload.phone = dataToUpdate.customerPhone;
@@ -328,7 +320,6 @@ export async function updateLoanRequest(
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
         
-        // If assignment changes, reset completions and review status
         updatePayload.stageCompletedBy = { set: [] };
         updatePayload.isReadyForManagerReview = false;
       }
@@ -344,21 +335,21 @@ export async function updateLoanRequest(
 
       if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
         const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionIdMirror;
-        if (!wfVerId) throw new Error("Workflow version context missing for stage transition.");
+        if (!wfVerId) throw new Error("Workflow version context missing.");
 
         const newStageDef = await tx.workflowStageDefinition.findUnique({
           where: { id: dataToUpdate.currentStageId },
           include: { responsibleDepartment: true }
         });
-        if (!newStageDef) throw new Error(`New stage definition not found for ID "${dataToUpdate.currentStageId}".`);
+        if (!newStageDef) throw new Error(`Stage definition not found.`);
         
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
-        updatePayload.workflowVersion = { connect: { id: wfVerId } }; // Ensure version is connected
+        updatePayload.workflowVersion = { connect: { id: wfVerId } }; 
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
         updatePayload.isReadyForManagerReview = false;
-        updatePayload.stageCompletedBy = { set: [] }; // Reset completions for new stage
+        updatePayload.stageCompletedBy = { set: [] }; 
         
         const availableStatusesForDept = newStageDef.availableStatuses && typeof newStageDef.availableStatuses === 'object' && !Array.isArray(newStageDef.availableStatuses) ? (newStageDef.availableStatuses as Record<string, string[]>)[newStageDef.responsibleDepartment.name] : [];
         updatePayload.currentStageStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -366,7 +357,7 @@ export async function updateLoanRequest(
         const isTerminal = newStageDef.name.toLowerCase().includes("closed") || newStageDef.name.toLowerCase().includes("rejected") || newStageDef.name.toLowerCase().includes("funded") || dataToUpdate.isTerminalStage === true;
         updatePayload.isTerminalStage = isTerminal;
 
-        if (!dataToUpdate.hasOwnProperty('assignedToUsers')) updatePayload.assignedToUsers = { set: [] }; // Unassign on stage change
+        if (!dataToUpdate.hasOwnProperty('assignedToUsers')) updatePayload.assignedToUsers = { set: [] };
         if (!dataToUpdate.hasOwnProperty('assignedDepartmentId')) updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
       }
 
@@ -375,10 +366,7 @@ export async function updateLoanRequest(
         const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
         
         for (const entry of newHistoryEntries) {
-            if (!entry.userId) { // Safety check
-                console.warn("Skipping history entry creation due to missing userId", entry);
-                continue;
-            }
+            if (!entry.userId) continue;
             await tx.loanHistoryEntry.create({
                 data: {
                     loan: { connect: { id } },
@@ -447,7 +435,7 @@ export async function updateLoanRequest(
     return { success: true, updatedLoan: appLoan };
 
   } catch (e: any) {
-    return createErrorResult(`Failed to update loan request ID: ${id}.`, "updateLoanRequest", e);
+    return createErrorResult("Failed to update loan request.", "updateLoanRequest", e);
   }
 }
 
@@ -638,7 +626,6 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
               },
             });
 
-            // Handle document requirements
             const existingReqs = await tx.documentRequirement.findMany({ where: { workflowStageId: upsertedStage.id }});
             const uiReqIds = new Set(documentRequirements.map(dr => dr.id));
             const reqsToDelete = existingReqs.filter(er => !uiReqIds.has(er.id));
@@ -709,20 +696,17 @@ export async function deleteDepartment(departmentId: string): Promise<{ success?
   try {
     const stagesUsingDept = await prisma.workflowStageDefinition.count({ where: { responsibleDepartmentId: departmentId } });
     if (stagesUsingDept > 0) {
-        return createErrorResult(`Cannot delete department. It is assigned to ${stagesUsingDept} workflow stage(s).`, "deleteDepartment_inUseStages");
+        return createErrorResult(`Cannot delete: Department is in use by workflow stages.`, "deleteDepartment_inUseStages");
     }
      const usersInDept = await prisma.user.count({ where: { departmentId: departmentId } });
      if (usersInDept > 0) {
-        return createErrorResult(`Cannot delete department. It is assigned to ${usersInDept} user(s).`, "deleteDepartment_inUseUsers");
+        return createErrorResult(`Cannot delete: Department is assigned to users.`, "deleteDepartment_inUseUsers");
     }
 
     await prisma.department.delete({ where: { id: departmentId } });
     return { success: true };
   } catch (e: any) {
-    if ((e as any).code === 'P2003' || (e as any).message?.includes("foreign key constraint")) {
-      return createErrorResult(`Cannot delete department due to existing references.`, "deleteDepartment_constraint", e);
-    }
-    return createErrorResult(`Failed to delete department ID: ${departmentId}.`, "deleteDepartment", e);
+    return createErrorResult(`Failed to delete department.`, "deleteDepartment", e);
   }
 }
 
@@ -749,7 +733,7 @@ export async function getAvailableLoanTypesForWorkflow(): Promise<{ loanTypes?: 
 
     return { loanTypes: sortedLoanTypes };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch available loan types with active workflows.", "getAvailableLoanTypesForWorkflow", e);
+    return createErrorResult("Failed to fetch available loan types.", "getAvailableLoanTypesForWorkflow", e);
   }
 }
 
@@ -758,11 +742,8 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
     const activeVersions = await prisma.workflowVersion.findMany({
       where: {
         isActive: true,
-        workflowDefinition: {
-          //departmentId: { not: null }, // Ensure it has a starting department
-        },
         stages: {
-          some: {} // Ensure it has at least one stage
+          some: {} 
         }
       },
       include: {
@@ -788,7 +769,7 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
 
     return { activeWorkflows: mappedWorkflows };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch active workflows for creation.", "getActiveWorkflowsForCreate", e);
+    return createErrorResult("Failed to fetch active workflows.", "getActiveWorkflowsForCreate", e);
   }
 }
 
@@ -876,7 +857,7 @@ export async function getCustomerById(id: string): Promise<{ customer?: Customer
 
     return { customer: appCustomer };
   } catch (e: any) {
-    return createErrorResult(`Failed to fetch customer by ID: ${id}.`, 'getCustomerById', e);
+    return createErrorResult(`Failed to fetch customer.`, 'getCustomerById', e);
   }
 }
 
@@ -895,8 +876,6 @@ export async function searchLoanRequests(
         whereClause = { customer: { name: { contains: searchTerm, mode: 'insensitive' } } };
         break;
       case 'customerNumber':
-        // Assuming customerNumber is a field on LoanRequest. If it's on Customer, adjust accordingly.
-        // For this schema, `customerNumber` is a field on `LoanRequest`.
         whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } };
         break;
     }
@@ -907,12 +886,10 @@ export async function searchLoanRequests(
       include: {
         customer: true,
         currentWorkflowStage: { select: { name: true } },
-        // Include other relations if needed for the result display
       },
-      take: 50, // Limit results to prevent overwhelming the UI
+      take: 50,
     });
 
-    // Map to a simplified AppLoan for the search result view
     const appLoans = prismaLoans.map(pl => ({
         id: pl.id,
         loanNumber: pl.loanNumber,
@@ -920,7 +897,6 @@ export async function searchLoanRequests(
         loanAmount: pl.loanAmount.toNumber(),
         submittedDate: formatISO(pl.submittedDate),
         currentStageName: pl.currentWorkflowStage?.name || 'Unknown Stage',
-        // Omitting other complex fields for search results
         customerId: pl.customerId,
         customerEmail: pl.customer.email,
         loanType: pl.loanType,
@@ -935,6 +911,6 @@ export async function searchLoanRequests(
 
     return { loans: appLoans as LoanRequest[] };
   } catch (e: any) {
-    return createErrorResult(`Search failed for type "${searchType}".`, "searchLoanRequests", e);
+    return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }

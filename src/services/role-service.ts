@@ -28,6 +28,12 @@ interface RoleServiceResult<T> {
   error?: string;
 }
 
+const createErrorResult = <T>(message: string, context?: string, originalError?: any): RoleServiceResult<T> => {
+  const genericMessage = 'An unexpected error occurred in the role service.';
+  console.error(`[RoleService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  return { error: genericMessage };
+};
+
 export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
   try {
     const roles = await prisma.role.findMany({
@@ -35,8 +41,7 @@ export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
     });
     return { data: roles.map(mapPrismaRoleToAppRole) };
   } catch (e: any) {
-    console.error("Error fetching roles:", e);
-    return { error: e.message || "Failed to fetch roles." };
+    return createErrorResult("Failed to fetch roles.", "getRoles", e);
   }
 }
 
@@ -65,8 +70,7 @@ export async function addRole(
     });
     return { data: mapPrismaRoleToAppRole(newRole) };
   } catch (e: any) {
-    console.error("Error adding role:", e);
-    return { error: e.message || "Failed to add role." };
+    return createErrorResult("Failed to add role.", "addRole", e);
   }
 }
 
@@ -80,7 +84,6 @@ export async function updateRole(
     return { error: "Role name cannot be empty." };
   }
   try {
-    // Check if another role with the new name already exists (if name is being changed)
     const existingRoleWithNewName = await prisma.role.findFirst({
       where: {
         name: name.trim(),
@@ -102,21 +105,19 @@ export async function updateRole(
     });
     return { data: mapPrismaRoleToAppRole(updatedRole) };
   } catch (e: any) {
-    console.error(`Error updating role ${id}:`, e);
     if ((e as any).code === 'P2025') {
-        return { error: `Role with ID "${id}" not found for update.`};
+        return createErrorResult(`Role not found.`, "updateRole", e);
     }
-    return { error: e.message || `Failed to update role ${id}.` };
+    return createErrorResult(`Failed to update role.`, "updateRole", e);
   }
 }
 
 
 export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>> {
   try {
-    // Check if any users are assigned to this role
     const usersWithRole = await prisma.user.count({ where: { customRoleId: id } });
     if (usersWithRole > 0) {
-      return { error: `Cannot delete role. It is currently assigned to ${usersWithRole} user(s). Please reassign users before deleting.` };
+      return { error: `Cannot delete: Role is assigned to ${usersWithRole} user(s).` };
     }
 
     await prisma.role.delete({
@@ -125,10 +126,9 @@ export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>
     return { data: true };
   } catch (e: any)
    {
-    console.error("Error deleting role:", e);
     if ((e as any).code === 'P2025') {
         return { data: true }; 
     }
-    return { error: e.message || `Failed to delete role with ID ${id}.` };
+    return createErrorResult(`Failed to delete role.`, "deleteRole", e);
   }
 }

@@ -101,28 +101,26 @@ export default function LoanDetailPage() {
       ]);
 
       if (loanResult.error) {
-        setError(prev => prev ? `${prev}\nLoan: ${loanResult.error}` : `Loan: ${loanResult.error}`);
+        setError(loanResult.error);
         setLoan(null);
       } else if (loanResult.loan) {
         setLoan(loanResult.loan);
         setUsers(loanResult.users || []);
       } else {
-        setError(prev => prev ? `${prev}\nLoan: Loan request with ID "${loanId}" not found.` : `Loan: Loan request with ID "${loanId}" not found.`);
+        setError(`Loan request with ID "${loanId}" not found.`);
         setLoan(null);
       }
 
       if (wfResult.error) {
-        setError(prev => prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`);
+         setError(prev => prev ? `${prev}\n${wfResult.error}` : wfResult.error);
       } else if (wfResult.workflows) {
         setWorkflowDefinitions(wfResult.workflows);
       } else {
-         setError(prev => prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`);
+         setError(prev => prev ? `${prev}\nAn issue occurred loading workflow data.` : `An issue occurred loading workflow data.`);
       }
 
     } catch (err: any) {
-      const errorMessage = err.message || "An unexpected error occurred while fetching page data.";
-      setError(errorMessage);
-      setLoan(null);
+      setError("An unexpected error occurred while fetching page data.");
     } finally {
       setIsLoading(false);
     }
@@ -139,34 +137,29 @@ export default function LoanDetailPage() {
     if (!loan) return false;
     setIsSaving(true);
 
-    // Create a new state object for optimistic UI update
     const optimisticLoanState: LoanRequest = {
         ...loan,
         ...updatedFields,
-        // Make sure to handle deep objects correctly for optimistic update
         history: updatedFields.history ? [...updatedFields.history] : [...loan.history],
         documents: updatedFields.documents !== undefined ? [...updatedFields.documents] : [...loan.documents],
         lastUpdatedDate: formatISO(new Date()),
     };
 
-    setLoan(optimisticLoanState); // Optimistically update the UI
+    setLoan(optimisticLoanState); 
 
     try {
-      // The payload for the backend should match what the backend expects
       const servicePayload = { ...updatedFields, lastUpdatedDate: formatISO(new Date()) };
       
       const serviceResult = await updateLoanRequest(loan.id, servicePayload); 
       
       if (serviceResult.error || !serviceResult.success) {
-        toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan in service.", variant: "destructive" });
-        await fetchLoanData(); // Re-fetch to revert optimistic update and show true state
+        toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan. The data has been refreshed.", variant: "destructive" });
+        await fetchLoanData(); 
         return false;
       }
       
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
       
-      // If the service returns the updated loan object, use it to ensure UI is in sync.
-      // Otherwise, re-fetch. Re-fetching is safer.
       if(serviceResult.updatedLoan) {
         setLoan(serviceResult.updatedLoan);
       } else {
@@ -174,7 +167,7 @@ export default function LoanDetailPage() {
       }
       return true;
     } catch (err: any) {
-      toast({ title: "System Error", description: err.message || "A critical error occurred.", variant: "destructive" });
+      toast({ title: "System Error", description: "A critical error occurred. Reverting changes.", variant: "destructive" });
       await fetchLoanData(); // Revert on critical failure
       return false;
     } finally {
@@ -191,7 +184,6 @@ export default function LoanDetailPage() {
 
     if (!canEditDetails && !canAssignStaff) return;
 
-    // `data.assignedTo` will be an array of user IDs from the multi-select
     const newAssignedUserIds = new Set(data.assignedTo || []);
     const currentAssignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
 
@@ -227,7 +219,6 @@ export default function LoanDetailPage() {
     }
     if (canAssignStaff) {
         payload.assignedToUsers = Array.from(newAssignedUserIds).map(id => users.find(u => u.id === id)).filter(Boolean) as UserType[];
-        // When assignment changes, reset completions
         payload.stageCompletedBy = [];
         payload.isReadyForManagerReview = false;
     }
@@ -295,8 +286,7 @@ export default function LoanDetailPage() {
         title: 'Workflow Info Missing',
         description:
           'Cannot validate requirements as current stage definition is missing.',
-        variant: 'warning',
-        duration: 5000,
+        variant: 'destructive',
       });
       return false;
     }
@@ -313,7 +303,6 @@ export default function LoanDetailPage() {
         title: 'Action Pending',
         description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`,
         variant: 'destructive',
-        duration: 7000,
       });
       return false;
     }
@@ -336,7 +325,6 @@ export default function LoanDetailPage() {
             .map((p) => p.name)
             .join(', ')}.`,
           variant: 'destructive',
-          duration: 7000,
         });
         return false;
       }
@@ -349,20 +337,17 @@ export default function LoanDetailPage() {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
 
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
-    // If no one is assigned, no one can complete it.
     if (assignedUserIds.size === 0) {
-      toast({ title: "Action Not Allowed", description: "Cannot complete stage: No staff assigned.", variant: "warning" });
+      toast({ title: "Action Not Allowed", description: "Cannot complete stage: No staff assigned.", variant: "destructive" });
       return;
     }
 
     const completedUserIds = new Set(loan.stageCompletedBy?.map(u => u.id) || []);
     
-    // Add current user to completed list if they haven't already completed it.
     if (!completedUserIds.has(currentUser.id)) {
         completedUserIds.add(currentUser.id);
     }
     
-    // Check if all assigned users have now completed the stage
     const allAssignedHaveCompleted = Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
     const officerName = currentUser.fullName || 'Officer';
@@ -392,7 +377,6 @@ export default function LoanDetailPage() {
   const handleManagerPromoteLoan = async () => {
     if (!userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || !currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !currentWorkflowDef) return;
 
-    // Strict check: Manager cannot promote unless all assignees have completed their part.
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
     if (assignedUserIds.size > 0) {
       const completedUserIds = new Set(loan.stageCompletedBy.map(u => u.id));
@@ -401,7 +385,6 @@ export default function LoanDetailPage() {
               title: "Promotion Blocked",
               description: "Cannot promote stage. Not all assigned staff have marked their work as complete.",
               variant: "destructive",
-              duration: 7000
           });
           return;
       }
@@ -417,9 +400,7 @@ export default function LoanDetailPage() {
     }
 
     const currentUserName = currentUser.fullName || 'System Process';
-    // Check if it's the last stage
     if (currentStageIndex === currentWorkflowVersion.stages.length - 1) {
-        // --- AUTOMATIC WORKFLOW TRANSITION LOGIC ---
         const loanWorkflows = workflowDefinitions
             .filter(def => def.loanTypeId === currentWorkflowDef.loanTypeId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -453,8 +434,8 @@ export default function LoanDetailPage() {
         await handleLocalAndUpdateService({
             workflowVersionId: nextActiveVersion.id,
             currentStageId: firstStageOfNextWorkflow.id,
-            assignedDepartmentId: nextWorkflowDef.departmentId, // Use initial dept of the new workflow def
-            assignedToUsers: [], // Un-assign staff
+            assignedDepartmentId: nextWorkflowDef.departmentId, 
+            assignedToUsers: [], 
             stageCompletedBy: [],
             isReadyForManagerReview: false,
             history: [...loan.history, newHistoryEntry],
@@ -462,7 +443,6 @@ export default function LoanDetailPage() {
         }, `Loan automatically promoted to new workflow: ${firstStageOfNextWorkflow.name}.`);
 
     } else {
-        // --- STANDARD STAGE PROMOTION ---
         const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
         const newHistoryEntry: LoanHistoryEntry = {
           id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
@@ -477,9 +457,9 @@ export default function LoanDetailPage() {
         await handleLocalAndUpdateService({
           currentStageId: nextStageDef.id,
           currentStageStatus: initialStatusForNextStage,
-          assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId, // This needs fixing
+          assignedDepartmentId: users.find(u => u.department === nextStageDef.responsibleDepartment)?.departmentId,
           assignedToUsers: [],
-          stageCompletedBy: [], // Reset completions for new stage
+          stageCompletedBy: [], 
           history: [...loan.history, newHistoryEntry],
           isReadyForManagerReview: false,
           stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
@@ -508,7 +488,7 @@ export default function LoanDetailPage() {
     };
     const success = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
-      stageCompletedBy: [], // Reset completions on rework
+      stageCompletedBy: [], 
       assignedToUsers: users.filter(u => reworkAssigneeIds.includes(u.id)),
       history: [...loan.history, newHistoryEntry],
     }, "Loan case returned for rework.");
@@ -710,12 +690,12 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (!loan && !isLoading && !error?.toLowerCase().includes("loan")) {
+  if (!loan && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Loan Not Found</h1>
-        <p className="text-muted-foreground mb-6">The loan request with ID "{loanId}" could not be found or loaded.</p>
+        <p className="text-muted-foreground mb-6">{error || `The loan request with ID "${loanId}" could not be found or loaded.`}</p>
         <button onClick={() => router.push('/loan-process')} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90">
           Go Back to Loan Pipeline
         </button>
@@ -723,18 +703,6 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (error && error.toLowerCase().includes("loan") && !loan) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-4">
-        <AlertCircle className="w-16 h-16 text-destructive mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">Error Loading Loan</h1>
-        <p className="text-muted-foreground mb-6 break-words whitespace-pre-wrap">{error}</p>
-        <button onClick={() => router.push('/loan-process')} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90">
-          Go Back to Loan Pipeline
-        </button>
-      </div>
-    );
-  }
 
   if (!loan) { 
     return (
@@ -846,11 +814,11 @@ export default function LoanDetailPage() {
             )}
         </CardHeader>
         <CardContent className="p-6">
-          {error && error.toLowerCase().includes("workflows") && !isLoading && (
+          {error && error.toLowerCase().includes("workflow") && !isLoading && (
             <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitleShadCN>Workflow Configuration Issue</AlertTitleShadCN>
-                <AlertDescriptionShadCN>{error.replace("Workflows:", "").trim()}</AlertDescriptionShadCN>
+                <AlertDescriptionShadCN>{error}</AlertDescriptionShadCN>
             </Alert>
           )}
 

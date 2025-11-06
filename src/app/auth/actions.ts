@@ -37,6 +37,7 @@ function mapPrismaUserToAppUser(
 }
 
 export async function loginUser(phoneNumberInput: string, passwordInput: string): Promise<{ success: boolean; user?: User; error?: string }> {
+  const genericError = "Invalid phone number or password.";
   if (!phoneNumberInput || !passwordInput) {
     return { success: false, error: "Phone number and password are required." };
   }
@@ -51,16 +52,19 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     });
 
     if (!user) {
-      return { success: false, error: "Invalid phone number or password." };
+      // Avoid revealing that the user does not exist
+      return { success: false, error: genericError };
     }
     
     // Check for lockout
     if (user.lockoutUntil && isAfter(user.lockoutUntil, new Date())) {
-      return { success: false, error: `Account is temporarily locked. Please try again later.` };
+       console.log(`Login attempt for locked account: ${user.email}`);
+       return { success: false, error: `Your account is temporarily locked. Please try again in a few minutes.` };
     }
 
     if (!user.passwordHash) {
-       return { success: false, error: "Account not configured for password login." };
+       console.error(`Login attempt for user without password hash: ${user.email}`);
+       return { success: false, error: genericError };
     }
 
     const passwordMatch = await bcrypt.compare(passwordInput, user.passwordHash);
@@ -80,10 +84,11 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       });
       
       if (updateData.lockoutUntil) {
-          return { success: false, error: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minutes.` };
+          console.warn(`Account locked due to too many failed login attempts: ${user.email}`);
+          return { success: false, error: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minute.` };
       }
 
-      return { success: false, error: "Invalid phone number or password." };
+      return { success: false, error: genericError };
     }
     
     // On successful login, reset failed attempts
@@ -97,7 +102,6 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
         });
     }
 
-
     const appUser = mapPrismaUserToAppUser(user);
 
     // Create session
@@ -109,8 +113,9 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     return { success: true, user: appUser };
 
   } catch (error: any) {
-    console.error("Error during login:", error);
-    return { success: false, error: 'An unexpected error occurred during login.' };
+    console.error("Critical error during login:", error);
+    // Do not expose detailed error to the client
+    return { success: false, error: 'An unexpected server error occurred during login.' };
   }
 }
 
@@ -119,7 +124,8 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
     cookies().delete('session');
     return { success: true };
   } catch (error: any) {
-     return { success: false, error: `An unexpected error occurred during logout: ${error.message}` };
+    console.error("Critical error during logout:", error);
+     return { success: false, error: `An unexpected server error occurred during logout.` };
   }
 }
 

@@ -3,7 +3,7 @@
 
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/app/auth/actions';
-import { PERMISSIONS } from '@/lib/permissions'; // Import PERMISSIONS
+import { PERMISSIONS } from '@/lib/permissions'; 
 
 export interface UserForAssignment {
   id: string;
@@ -25,17 +25,22 @@ export interface UserAssignmentUpdatePayload {
   customRoleId?: string | null;
 }
 
-// Helper to create consistent error responses
-const createErrorReturn = (message: string, statusCode = 500) => {
-  console.error(`[UserAssignmentsActions] Error: ${message}`);
-  return { success: false, error: message, statusCode };
+const createErrorReturn = (message: string, context?: string, originalError?: any): { success: boolean; error: string; statusCode: number } => {
+  const genericMessage = 'An unexpected server error occurred. Please try again later.';
+  console.error(`[UserAssignmentsActions:${context || 'Unknown'}] Error: ${message}`, originalError);
+  return { success: false, error: genericMessage, statusCode: 500 };
 };
+
+const createClientErrorReturn = (message: string, statusCode = 400): { success: boolean; error: string; statusCode: number } => {
+    return { success: false, error: message, statusCode: statusCode };
+}
+
 
 export async function getUsersForAssignment(): Promise<{ users?: UserForAssignment[]; error?: string }> {
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return { error: "Unauthorized: Admin access required (MANAGE_USERS permission)." };
+      return { error: "Unauthorized: Admin access required." };
     }
 
     const users = await prisma.user.findMany({
@@ -58,7 +63,8 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
 
     return { users: mappedUsers };
   } catch (e: any) {
-    return { error: `Failed to fetch users: ${e.message}` };
+    const { error } = createErrorReturn("Failed to fetch users.", "getUsersForAssignment", e);
+    return { error };
   }
 }
 
@@ -66,7 +72,7 @@ export async function getAssignableData(): Promise<{ data?: AssignableData; erro
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return { error: "Unauthorized: Admin access required (MANAGE_USERS permission)." };
+      return { error: "Unauthorized: Admin access required." };
     }
 
     const departments = await prisma.department.findMany({
@@ -81,7 +87,8 @@ export async function getAssignableData(): Promise<{ data?: AssignableData; erro
 
     return { data: { departments, customRoles } };
   } catch (e: any) {
-    return { error: `Failed to fetch assignable data: ${e.message}` };
+    const { error } = createErrorReturn("Failed to fetch assignable data.", "getAssignableData", e);
+    return { error };
   }
 }
 
@@ -92,11 +99,11 @@ export async function updateUserAssignments(
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return createErrorReturn("Unauthorized: Admin access required (MANAGE_USERS permission).", 403);
+      return createClientErrorReturn("Unauthorized: Admin access required.", 403);
     }
 
     if (!userId) {
-      return createErrorReturn("User ID is required.", 400);
+      return createClientErrorReturn("User ID is required.", 400);
     }
 
     const updateData: any = {};
@@ -106,7 +113,7 @@ export async function updateUserAssignments(
         updateData.departmentId = null;
       } else if (data.departmentId) {
         const deptExists = await prisma.department.findUnique({ where: { id: data.departmentId } });
-        if (!deptExists) return createErrorReturn(`Department with ID ${data.departmentId} not found.`, 400);
+        if (!deptExists) return createClientErrorReturn(`Department not found.`, 400);
         updateData.departmentId = data.departmentId;
       }
     }
@@ -116,13 +123,13 @@ export async function updateUserAssignments(
         updateData.customRoleId = null;
       } else if (data.customRoleId) {
         const roleExists = await prisma.role.findUnique({ where: { id: data.customRoleId } });
-        if (!roleExists) return createErrorReturn(`Custom role with ID ${data.customRoleId} not found.`, 400);
+        if (!roleExists) return createClientErrorReturn(`Custom role not found.`, 400);
         updateData.customRoleId = data.customRoleId;
       }
     }
     
     if (Object.keys(updateData).length === 0) {
-        return createErrorReturn("No changes provided for update.", 400);
+        return createClientErrorReturn("No changes provided for update.", 400);
     }
     updateData.updatedAt = new Date();
 
@@ -148,10 +155,11 @@ export async function updateUserAssignments(
 
     return { success: true, user: mappedUser };
   } catch (e: any) {
-    if (e.code === 'P2025') { // Prisma error code for record not found
-        return createErrorReturn(`User with ID ${userId} not found for update.`, 404);
+    if (e.code === 'P2025') {
+        const { error } = createErrorReturn(`User not found.`, "updateUserAssignments_notFound", e);
+        return { success: false, error };
     }
-    return createErrorReturn(`Failed to update user assignments: ${e.message}`, 500);
+    const { error } = createErrorReturn(`Failed to update user assignments.`, "updateUserAssignments", e);
+    return { success: false, error };
   }
 }
-

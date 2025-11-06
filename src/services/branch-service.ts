@@ -9,8 +9,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getCurrentUser } from '@/app/auth/actions';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
+  const genericMessage = 'An unexpected error occurred in the branch service. Please try again later.';
   console.error(`[BranchService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: `Branch Service Error: ${message}` };
+  return { error: genericMessage };
 };
 
 const hasPermission = async (): Promise<boolean> => {
@@ -32,10 +33,14 @@ export async function getDistricts(): Promise<{ districts?: District[]; error?: 
 
 export async function addDistrict(name: string): Promise<{ id?: string; error?: string }> {
   if (!await hasPermission()) return createErrorResult("Unauthorized access.", "addDistrict");
-  if (!name.trim()) return createErrorResult("District name cannot be empty.", "addDistrict");
+  if (!name.trim()) {
+      return { error: "District name cannot be empty." };
+  }
   try {
     const existing = await prisma.district.findUnique({ where: { name: name.trim() } });
-    if (existing) return createErrorResult(`District "${name.trim()}" already exists.`, "addDistrict");
+    if (existing) {
+        return { error: `District "${name.trim()}" already exists.` };
+    }
     
     const newDistrict = await prisma.district.create({ data: { name: name.trim() } });
     return { id: newDistrict.id };
@@ -46,10 +51,14 @@ export async function addDistrict(name: string): Promise<{ id?: string; error?: 
 
 export async function updateDistrict(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
     if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateDistrict");
-    if (!name.trim()) return createErrorResult("District name cannot be empty.", "updateDistrict");
+    if (!name.trim()) {
+        return { error: "District name cannot be empty." };
+    }
     try {
         const existing = await prisma.district.findFirst({ where: { name: name.trim(), id: { not: id } } });
-        if (existing) return createErrorResult(`Another district with name "${name.trim()}" already exists.`, "updateDistrict");
+        if (existing) {
+            return { error: `Another district with name "${name.trim()}" already exists.` };
+        }
         
         await prisma.district.update({ where: { id }, data: { name: name.trim() } });
         return { success: true };
@@ -62,12 +71,11 @@ export async function updateDistrict(id: string, name: string): Promise<{ succes
 export async function deleteDistrict(id: string): Promise<{ success?: boolean; error?: string }> {
   if (!await hasPermission()) return createErrorResult("Unauthorized access.", "deleteDistrict");
   try {
-    // Prisma's cascading delete will handle deleting associated branches
     await prisma.district.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true }; // Already deleted
-    return createErrorResult(`Failed to delete district. It might be in use or already deleted.`, "deleteDistrict", e);
+    return createErrorResult(`Failed to delete district.`, "deleteDistrict", e);
   }
 }
 
@@ -75,7 +83,6 @@ export async function deleteDistrict(id: string): Promise<{ success?: boolean; e
 // --- Branch Functions ---
 
 export async function getBranches(): Promise<{ branches?: Branch[]; error?: string }> {
-   // No permission check here, as branches might be needed for forms by non-admins
   try {
     const branches = await prisma.branch.findMany({
       include: { district: true },
@@ -95,12 +102,18 @@ export async function getBranches(): Promise<{ branches?: Branch[]; error?: stri
 
 export async function addBranch(name: string, districtId: string): Promise<{ id?: string; error?: string }> {
   if (!await hasPermission()) return createErrorResult("Unauthorized access.", "addBranch");
-  if (!name.trim()) return createErrorResult("Branch name cannot be empty.", "addBranch");
-  if (!districtId) return createErrorResult("District must be selected.", "addBranch");
+  if (!name.trim()) {
+      return { error: "Branch name cannot be empty." };
+  }
+  if (!districtId) {
+      return { error: "District must be selected." };
+  }
 
   try {
     const existing = await prisma.branch.findFirst({ where: { name: name.trim(), districtId } });
-    if (existing) return createErrorResult(`Branch "${name.trim()}" already exists in this district.`, "addBranch");
+    if (existing) {
+        return { error: `Branch "${name.trim()}" already exists in this district.` };
+    }
     
     const newBranch = await prisma.branch.create({
       data: {
@@ -110,22 +123,23 @@ export async function addBranch(name: string, districtId: string): Promise<{ id?
     });
     return { id: newBranch.id };
   } catch (e: any) {
-    if ((e as any).code === 'P2025') {
-       return createErrorResult(`District with ID "${districtId}" not found.`, "addBranch", e);
-    }
     return createErrorResult("Failed to add branch.", "addBranch", e);
   }
 }
 
 export async function updateBranch(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
     if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateBranch");
-    if (!name.trim()) return createErrorResult("Branch name cannot be empty.", "updateBranch");
+    if (!name.trim()) {
+        return { error: "Branch name cannot be empty." };
+    }
     try {
         const branchToUpdate = await prisma.branch.findUnique({ where: { id } });
         if (!branchToUpdate) return createErrorResult(`Branch not found.`, "updateBranch");
 
         const existing = await prisma.branch.findFirst({ where: { name: name.trim(), districtId: branchToUpdate.districtId, id: { not: id } } });
-        if (existing) return createErrorResult(`Another branch with name "${name.trim()}" already exists in this district.`, "updateBranch");
+        if (existing) {
+            return { error: `Another branch with name "${name.trim()}" already exists in this district.` };
+        }
         
         await prisma.branch.update({ where: { id }, data: { name: name.trim() } });
         return { success: true };
@@ -143,6 +157,6 @@ export async function deleteBranch(id: string): Promise<{ success?: boolean; err
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true }; // Already deleted
-    return createErrorResult(`Failed to delete branch. It might be in use or already deleted.`, "deleteBranch", e);
+    return createErrorResult(`Failed to delete branch.`, "deleteBranch", e);
   }
 }

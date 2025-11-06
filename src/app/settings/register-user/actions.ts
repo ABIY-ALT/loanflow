@@ -23,20 +23,20 @@ const registerUserFormSchema = z.object({
 
 
 export async function registerUserAction(formData: FormData): Promise<{ success: boolean; message: string; errors?: any }> {
-  const adminAuth = await getAdminPerformingAction();
-  if (!adminAuth.user || !adminAuth.user.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-    return { success: false, message: 'Unauthorized: You do not have permission to register users.' };
-  }
-
-  const validationResult = registerUserFormSchema.safeParse(Object.fromEntries(formData.entries()));
-
-  if (!validationResult.success) {
-    return { success: false, message: 'Validation failed', errors: validationResult.error.flatten().fieldErrors };
-  }
-
-  const userData = validationResult.data;
-
   try {
+    const adminAuth = await getAdminPerformingAction();
+    if (!adminAuth.user || !adminAuth.user.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
+      return { success: false, message: 'Unauthorized: You do not have permission to register users.' };
+    }
+
+    const validationResult = registerUserFormSchema.safeParse(Object.fromEntries(formData.entries()));
+
+    if (!validationResult.success) {
+      return { success: false, message: 'Validation failed', errors: validationResult.error.flatten().fieldErrors };
+    }
+
+    const userData = validationResult.data;
+
     const existingLocalUser = await prisma.user.findFirst({
       where: {
         OR: [
@@ -52,19 +52,19 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
     }
 
     const passwordHash = await bcrypt.hash(userData.password, 10);
-    const generatedUserId = `local-${Date.now()}`; // Create a local unique ID
+    const generatedUserId = `local-${Date.now()}`; 
 
     await prisma.user.create({
       data: {
-        id: generatedUserId, // Use the generated local ID for Prisma's 'id' field
-        userId: generatedUserId, // Use the same local ID for the 'userId' field
+        id: generatedUserId,
+        userId: generatedUserId,
         email: userData.email,
         firstName: userData.firstName,
         lastName: userData.lastName,
         name: `${userData.firstName} ${userData.lastName}`,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: false, // Force password change on first login
+        isPasswordChanged: false,
         departmentId: null,
         customRoleId: null,
       },
@@ -73,6 +73,6 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
     return { success: true, message: 'User registered successfully!' };
   } catch (error: any) {
     console.error('Error creating user in local Prisma DB:', error);
-    return { success: false, message: `Failed to create user: ${error.message}` };
+    return { success: false, message: 'An unexpected server error occurred while creating the user.' };
   }
 }

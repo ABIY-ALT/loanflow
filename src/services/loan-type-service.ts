@@ -20,6 +20,12 @@ interface LoanTypeServiceResult<T> {
   error?: string;
 }
 
+const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
+  const genericMessage = 'An unexpected error occurred in the loan type service.';
+  console.error(`[LoanTypeService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  return { error: genericMessage };
+};
+
 export async function getLoanTypes(): Promise<{ loanTypes?: LoanType[]; error?: string }> {
   try {
     const loanTypes = await prisma.loanType.findMany({
@@ -27,8 +33,7 @@ export async function getLoanTypes(): Promise<{ loanTypes?: LoanType[]; error?: 
     });
     return { loanTypes: loanTypes.map(mapPrismaLoanTypeToApp) };
   } catch (e: any) {
-    console.error("Error fetching loan types:", e);
-    return { error: e.message || "Failed to fetch loan types." };
+    return createErrorResult("Failed to fetch loan types.", "getLoanTypes", e);
   }
 }
 
@@ -51,8 +56,7 @@ export async function addLoanType(name: string): Promise<{ id?: string; error?: 
     });
     return { id: newLoanType.id };
   } catch (e: any) {
-    console.error("Error adding loan type:", e);
-    return { error: e.message || "Failed to add loan type." };
+    return createErrorResult("Failed to add loan type.", "addLoanType", e);
   }
 }
 
@@ -77,11 +81,10 @@ export async function updateLoanType(id: string, name: string): Promise<LoanType
         });
         return { data: mapPrismaLoanTypeToApp(updatedLoanType) };
     } catch (e: any) {
-        console.error(`Error updating loan type ${id}:`, e);
         if ((e as any).code === 'P2025') {
-            return { error: `Loan type with ID "${id}" not found for update.` };
+            return createErrorResult(`Loan type not found.`, "updateLoanType", e);
         }
-        return { error: e.message || `Failed to update loan type ${id}.` };
+        return createErrorResult(`Failed to update loan type.`, "updateLoanType", e);
     }
 }
 
@@ -89,16 +92,15 @@ export async function deleteLoanType(id: string): Promise<{ success?: boolean; e
   try {
     const relatedWorkflows = await prisma.workflowDefinition.count({ where: { loanTypeId: id } });
     if (relatedWorkflows > 0) {
-      return { error: `Cannot delete loan type. It is linked to ${relatedWorkflows} workflow definition(s).` };
+      return { error: `Cannot delete: Loan type is linked to ${relatedWorkflows} workflow definition(s).` };
     }
 
     await prisma.loanType.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
-    console.error(`Error deleting loan type ${id}:`, e);
     if ((e as any).code === 'P2025') {
-      return { success: true }; // Already deleted
+      return { success: true };
     }
-    return { error: e.message || `Failed to delete loan type ${id}.` };
+    return createErrorResult(`Failed to delete loan type.`, "deleteLoanType", e);
   }
 }
