@@ -128,7 +128,9 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         userId: finalUserId,
         passwordHash: passwordHash,
-        isPasswordChanged: false, // Ensure seeded users must change password
+        isPasswordChanged: false,
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
@@ -141,7 +143,7 @@ async function main() {
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: false, // New users must change password
+        isPasswordChanged: false,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },

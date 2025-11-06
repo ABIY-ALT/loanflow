@@ -9,9 +9,13 @@ import prisma from '@/lib/prisma';
 import type { User as PrismaUser, Department as PrismaDepartment, Role as PrismaRole } from '@prisma/client';
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
+import { addMinutes, isAfter } from 'date-fns';
 
 const secretKey = process.env.SESSION_SECRET;
 const key = new TextEncoder().encode(secretKey);
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
 
 async function encrypt(payload: any) {
   return await new SignJWT(payload)
@@ -77,6 +81,11 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     if (!user) {
       return { success: false, error: "Invalid phone number or password." };
     }
+    
+    // Check for lockout
+    if (user.lockoutUntil && isAfter(user.lockoutUntil, new Date())) {
+      return { success: false, error: `Account is temporarily locked. Please try again later.` };
+    }
 
     if (!user.passwordHash) {
        return { success: false, error: "Account not configured for password login." };
@@ -85,8 +94,37 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     const passwordMatch = await bcrypt.compare(passwordInput, user.passwordHash);
 
     if (!passwordMatch) {
+      const newAttemptCount = user.failedLoginAttempts + 1;
+      let updateData: any = { failedLoginAttempts: newAttemptCount };
+
+      if (newAttemptCount >= MAX_LOGIN_ATTEMPTS) {
+        updateData.lockoutUntil = addMinutes(new Date(), LOCKOUT_DURATION_MINUTES);
+        updateData.failedLoginAttempts = 0; // Reset after locking
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      });
+      
+      if (updateData.lockoutUntil) {
+          return { success: false, error: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minutes.` };
+      }
+
       return { success: false, error: "Invalid phone number or password." };
     }
+    
+    // On successful login, reset failed attempts
+    if (user.failedLoginAttempts > 0 || user.lockoutUntil) {
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                failedLoginAttempts: 0,
+                lockoutUntil: null,
+            },
+        });
+    }
+
 
     const appUser = mapPrismaUserToAppUser(user);
 

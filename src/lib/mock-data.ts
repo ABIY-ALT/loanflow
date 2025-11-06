@@ -23,7 +23,7 @@ interface MockAppUser {
 
 
 export const mockUsers: MockAppUser[] = [
-  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", firstName: 'Jane', lastName: 'Doe' },
+  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", firstName: 'Jane', lastName: 'Doe', phoneNumber: '0911223344' },
 ];
 
 export const mockDepartments: Department[] = [

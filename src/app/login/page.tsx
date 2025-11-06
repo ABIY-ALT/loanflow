@@ -35,7 +35,7 @@ export default function LoginPage() {
     } else {
       const friendlyMessage = result.error || "Login failed. Please check your credentials and try again.";
       setError(friendlyMessage);
-      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive" });
+      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive", duration: 9000 });
     }
     setIsSubmitting(false);
   };
@@ -67,7 +67,7 @@ export default function LoginPage() {
               <Input
                 id="phoneNumber"
                 type="tel"
-                placeholder="e.g., +251912345678"
+                placeholder="e.g., 0912345678"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 required
