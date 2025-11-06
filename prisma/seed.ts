@@ -55,18 +55,23 @@ async function main() {
   });
   console.log(`Created/verified role: ${loanOfficerRole.name}`);
 
-  const adminRole = await prisma.role.upsert({
-    where: { name: 'Administrator' },
-    update: {
-      permissions: ALL_PERMISSIONS,
-    },
-    create: {
-      name: 'Administrator',
-      description: 'Full access to all system features and settings.',
-      permissions: ALL_PERMISSIONS,
-    },
-  });
-  console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
+  let adminRole: any;
+  if (process.env.SEED_ADMIN_ACCOUNTS === 'true') {
+    adminRole = await prisma.role.upsert({
+      where: { name: 'Administrator' },
+      update: {
+        permissions: ALL_PERMISSIONS,
+      },
+      create: {
+        name: 'Administrator',
+        description: 'Full access to all system features and settings.',
+        permissions: ALL_PERMISSIONS,
+      },
+    });
+    console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
+  } else {
+    console.log('Skipping Administrator role seeding. Set SEED_ADMIN_ACCOUNTS=true in .env to enable.');
+  }
   console.log('Custom Roles seeded.');
 
 
@@ -80,7 +85,7 @@ async function main() {
       name: 'System Process',
       email: 'system@loanflow.app',
       department: undefined, 
-      customRoleName: 'Administrator', 
+      customRoleName: (process.env.SEED_ADMIN_ACCOUNTS === 'true') ? 'Administrator' : 'Loan Officer', 
       firstName: 'System',
       lastName: 'Process',
       phoneNumber: '0000000000',
@@ -88,6 +93,12 @@ async function main() {
   ];
 
   for (const userData of allUsersToSeed) {
+    // Skip seeding admin users if the flag is not set
+    if (userData.customRoleName === 'Administrator' && process.env.SEED_ADMIN_ACCOUNTS !== 'true') {
+        console.log(`Skipping seeding of admin user "${userData.name}". Set SEED_ADMIN_ACCOUNTS=true to seed.`);
+        continue;
+    }
+
     let departmentDataConnect = {};
     if (userData.department) {
       const deptName = (userData.department as AppDepartment).toLowerCase();
@@ -109,9 +120,15 @@ async function main() {
         if (roleRecord) {
             customRoleDataConnect = { customRole: { connect: { id: roleRecord.id }}};
         } else {
-            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}".`);
+            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}". Assigning default role if available.`);
+            // Fallback to a default, non-admin role if the intended role (likely admin) wasn't seeded.
+            const defaultRole = await prisma.role.findUnique({ where: { name: 'Loan Officer' }});
+            if (defaultRole) {
+                customRoleDataConnect = { customRole: { connect: { id: defaultRole.id }}};
+            }
         }
-    } else if (userData.id === 'system-prisma') {
+    } else if (userData.id === 'system-prisma' && adminRole) {
+        // This ensures the system user gets the admin role only if it was created
         customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
@@ -163,5 +180,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-
-    
