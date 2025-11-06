@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import prisma from '@/lib/prisma';
@@ -48,7 +49,7 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
 
     if (existingLocalUser) {
       const field = existingLocalUser.email === userData.email ? 'email' : 'phone number';
-      return { success: false, message: `User with this ${field} already exists.` };
+      return { success: false, message: `A user with this ${field} already exists.` };
     }
 
     const passwordHash = await bcrypt.hash(userData.password, 10);

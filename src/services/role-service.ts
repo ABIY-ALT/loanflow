@@ -1,15 +1,17 @@
 
+
 'use server';
 
 import prisma from '@/lib/prisma';
 import type { Role as PrismaRole } from '@prisma/client';
-import type { AppPermission } from '@/lib/permissions'; // Import AppPermission
+import { PERMISSIONS, type AppPermission } from '@/lib/permissions'; 
+import { getCurrentUser } from '@/app/auth/actions';
 
 export interface AppRole {
   id: string;
   name: string;
   description?: string | null;
-  permissions: AppPermission[]; // Changed from string[] to AppPermission[]
+  permissions: AppPermission[];
   createdAt: string;
   updatedAt: string;
 }
@@ -18,7 +20,7 @@ const mapPrismaRoleToAppRole = (prismaRole: PrismaRole): AppRole => ({
   id: prismaRole.id,
   name: prismaRole.name,
   description: prismaRole.description,
-  permissions: prismaRole.permissions as AppPermission[], // Cast to AppPermission[]
+  permissions: prismaRole.permissions as AppPermission[],
   createdAt: prismaRole.createdAt.toISOString(),
   updatedAt: prismaRole.updatedAt.toISOString(),
 });
@@ -34,7 +36,13 @@ const createErrorResult = <T>(message: string, context?: string, originalError?:
   return { error: genericMessage };
 };
 
+const hasPermission = async (): Promise<boolean> => {
+    const { user } = await getCurrentUser();
+    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES);
+}
+
 export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   try {
     const roles = await prisma.role.findMany({
       orderBy: { name: 'asc' },
@@ -48,8 +56,9 @@ export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
 export async function addRole(
   name: string,
   description?: string,
-  permissions?: AppPermission[] // Changed from string[]
+  permissions?: AppPermission[]
 ): Promise<RoleServiceResult<AppRole>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   if (!name.trim()) {
     return { error: "Role name cannot be empty." };
   }
@@ -65,7 +74,7 @@ export async function addRole(
       data: {
         name: name.trim(),
         description: description?.trim() || null,
-        permissions: permissions || [], // Store permissions
+        permissions: permissions || [],
       },
     });
     return { data: mapPrismaRoleToAppRole(newRole) };
@@ -80,6 +89,7 @@ export async function updateRole(
   description?: string | null,
   permissions?: AppPermission[]
 ): Promise<RoleServiceResult<AppRole>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   if (!name.trim()) {
     return { error: "Role name cannot be empty." };
   }
@@ -98,7 +108,7 @@ export async function updateRole(
       where: { id },
       data: {
         name: name.trim(),
-        description: description === undefined ? undefined : (description?.trim() || null), // Handle undefined vs null/empty
+        description: description === undefined ? undefined : (description?.trim() || null),
         permissions: permissions || [],
         updatedAt: new Date(),
       },
@@ -114,6 +124,7 @@ export async function updateRole(
 
 
 export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   try {
     const usersWithRole = await prisma.user.count({ where: { customRoleId: id } });
     if (usersWithRole > 0) {

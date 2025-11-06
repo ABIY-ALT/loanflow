@@ -9,9 +9,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getCurrentUser } from '@/app/auth/actions';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  const genericMessage = 'An unexpected error occurred in the branch service. Please try again later.';
+  const genericMessage = 'An unexpected server error occurred in the branch service. Please try again later.';
   console.error(`[BranchService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: genericMessage };
+  return { error: message }; // Return specific error message for admin actions
 };
 
 const hasPermission = async (): Promise<boolean> => {
@@ -22,7 +22,7 @@ const hasPermission = async (): Promise<boolean> => {
 // --- District Functions ---
 
 export async function getDistricts(): Promise<{ districts?: District[]; error?: string }> {
-  if (!await hasPermission()) return createErrorResult("Unauthorized access.", "getDistricts");
+  if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to view districts." };
   try {
     const districts = await prisma.district.findMany({ orderBy: { name: 'asc' } });
     return { districts };
@@ -32,7 +32,7 @@ export async function getDistricts(): Promise<{ districts?: District[]; error?: 
 }
 
 export async function addDistrict(name: string): Promise<{ id?: string; error?: string }> {
-  if (!await hasPermission()) return createErrorResult("Unauthorized access.", "addDistrict");
+  if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to add districts." };
   if (!name.trim()) {
       return { error: "District name cannot be empty." };
   }
@@ -50,7 +50,7 @@ export async function addDistrict(name: string): Promise<{ id?: string; error?: 
 }
 
 export async function updateDistrict(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
-    if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateDistrict");
+    if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to update districts." };
     if (!name.trim()) {
         return { error: "District name cannot be empty." };
     }
@@ -69,12 +69,13 @@ export async function updateDistrict(id: string, name: string): Promise<{ succes
 }
 
 export async function deleteDistrict(id: string): Promise<{ success?: boolean; error?: string }> {
-  if (!await hasPermission()) return createErrorResult("Unauthorized access.", "deleteDistrict");
+  if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to delete districts." };
   try {
     await prisma.district.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true }; // Already deleted
+    if ((e as any).code === 'P2003') return createErrorResult(`Cannot delete: District is linked to one or more branches.`, "deleteDistrict_inUse", e);
     return createErrorResult(`Failed to delete district.`, "deleteDistrict", e);
   }
 }
@@ -83,6 +84,8 @@ export async function deleteDistrict(id: string): Promise<{ success?: boolean; e
 // --- Branch Functions ---
 
 export async function getBranches(): Promise<{ branches?: Branch[]; error?: string }> {
+   // This is often a public read, but let's secure it for consistency in this admin module.
+   if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to view branches." };
   try {
     const branches = await prisma.branch.findMany({
       include: { district: true },
@@ -101,7 +104,7 @@ export async function getBranches(): Promise<{ branches?: Branch[]; error?: stri
 }
 
 export async function addBranch(name: string, districtId: string): Promise<{ id?: string; error?: string }> {
-  if (!await hasPermission()) return createErrorResult("Unauthorized access.", "addBranch");
+  if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to add branches." };
   if (!name.trim()) {
       return { error: "Branch name cannot be empty." };
   }
@@ -128,7 +131,7 @@ export async function addBranch(name: string, districtId: string): Promise<{ id?
 }
 
 export async function updateBranch(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
-    if (!await hasPermission()) return createErrorResult("Unauthorized access.", "updateBranch");
+    if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to update branches." };
     if (!name.trim()) {
         return { error: "Branch name cannot be empty." };
     }
@@ -151,12 +154,14 @@ export async function updateBranch(id: string, name: string): Promise<{ success?
 
 
 export async function deleteBranch(id: string): Promise<{ success?: boolean; error?: string }> {
-  if (!await hasPermission()) return createErrorResult("Unauthorized access.", "deleteBranch");
+  if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to delete branches." };
   try {
     await prisma.branch.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true }; // Already deleted
+    // Add check for foreign key constraint if branches are linked to other tables
+    if ((e as any).code === 'P2003') return createErrorResult(`Cannot delete: Branch is linked to other records (e.g., customers).`, "deleteBranch_inUse", e);
     return createErrorResult(`Failed to delete branch.`, "deleteBranch", e);
   }
 }

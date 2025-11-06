@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import prisma from '@/lib/prisma';
@@ -40,7 +41,7 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return { error: "Unauthorized: Admin access required." };
+      return { error: "Unauthorized: You do not have permission to view user data." };
     }
 
     const users = await prisma.user.findMany({
@@ -72,7 +73,7 @@ export async function getAssignableData(): Promise<{ data?: AssignableData; erro
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return { error: "Unauthorized: Admin access required." };
+      return { error: "Unauthorized: You do not have permission to view assignment data." };
     }
 
     const departments = await prisma.department.findMany({
@@ -99,7 +100,7 @@ export async function updateUserAssignments(
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return createClientErrorReturn("Unauthorized: Admin access required.", 403);
+      return createClientErrorReturn("Unauthorized: You do not have permission to update users.", 403);
     }
 
     if (!userId) {
