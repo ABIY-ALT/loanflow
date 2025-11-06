@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState } from 'react';
@@ -220,14 +218,14 @@ export function LoanDocumentsManager({
                     )}
 
                   {uploadedDoc?.filePath && (
-                    <a
-                      href={uploadedDoc.filePath}
+                     <a
+                      href={`/api/downloads/${uploadedDoc.filePath}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      download
                     >
                       <Button variant="ghost" size="icon">
                         <Download className="h-4 w-4" />
+                        <span className="sr-only">Download {uploadedDoc.name}</span>
                       </Button>
                     </a>
                   )}

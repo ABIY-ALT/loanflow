@@ -1,4 +1,3 @@
-
 'use server';
 
 import fs from 'node:fs/promises';
@@ -44,19 +43,21 @@ export async function uploadDocumentAction(
     const sanitizedOriginalName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uniqueFileName = `${timestamp}-${sanitizedOriginalName}`;
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'loan_documents', loanId);
+    // Store files in a secure, non-public directory
+    const uploadDir = path.join(process.cwd(), 'storage', 'loan_documents', loanId);
     await ensureDir(uploadDir);
 
-    const filePath = path.join(uploadDir, uniqueFileName);
-    await fs.writeFile(filePath, buffer);
-
-    // Return the server-relative path for use in <img> src or links
-    const serverRelativePath = `/uploads/loan_documents/${loanId}/${uniqueFileName}`;
+    const absoluteFilePath = path.join(uploadDir, uniqueFileName);
+    await fs.writeFile(absoluteFilePath, buffer);
+    
+    // Store a relative path from the 'storage' root directory for retrieval
+    const storageRelativePath = path.join('loan_documents', loanId, uniqueFileName);
 
     // Optional: Revalidate path if you list documents on the page immediately
     revalidatePath(`/loan-requests/${loanId}`);
 
-    return { success: true, filePath: serverRelativePath, originalFileName: file.name };
+    // Return the storage-relative path. The client will use this to construct a call to the secure download API endpoint.
+    return { success: true, filePath: storageRelativePath, originalFileName: file.name };
   } catch (error: any) {
     console.error('Error uploading document:', error);
     return { success: false, error: `File upload failed: ${error.message}` };
