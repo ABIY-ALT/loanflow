@@ -224,15 +224,36 @@ export async function addLoanRequest(
 
 export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; users?: User[] }> {
   try {
-    // This is a broad read operation; fine-grained access should be handled in UI components
-    // based on user's role (e.g., manager sees all, officer sees assigned).
-    // A basic permission check is still good.
     const { user } = await getCurrentUser();
-    if (!user || user.permissions.length === 0) { // A user with no permissions shouldn't see anything.
+    if (!user) {
         return { error: "Unauthorized: You do not have permissions to view loan data.", users: [] };
     }
+    
+    const userPermissions = new Set(user.permissions || []);
+    let whereClause: any = {};
+
+    // Determine the query based on user permissions
+    const isFullAdmin = userPermissions.has(PERMISSIONS.MANAGE_USERS); // proxy for admin
+    const isManager = userPermissions.has(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
+
+    if (isFullAdmin) {
+      // Admins can see all loans. No filter needed.
+    } else if (isManager) {
+      // Managers can see all loans in their department.
+      if (!user.departmentId) {
+        // A manager with no department sees only their own assigned cases.
+        whereClause.assignedToUsers = { some: { id: user.id } };
+      } else {
+        whereClause.assignedDepartmentId = user.departmentId;
+      }
+    } else {
+      // Default: regular users (e.g., Loan Officers) only see loans assigned to them.
+      whereClause.assignedToUsers = { some: { id: user.id } };
+    }
+
 
     const prismaLoans = await prisma.loanRequest.findMany({
+      where: whereClause,
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
         customer: true,
@@ -981,3 +1002,5 @@ export async function searchLoanRequests(
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }
+
+    
