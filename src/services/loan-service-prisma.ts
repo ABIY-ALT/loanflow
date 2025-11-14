@@ -269,10 +269,9 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
 
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
 
-    const prismaUsers = await prisma.user.findMany({ include: { department: true, customRole: true } });
-    const appUsers = prismaUsers.map(mapPrismaUserToAppUser);
-
-    return { loans: appLoans, users: appUsers };
+    // The 'users' array is intentionally removed from the return to prevent data leakage.
+    // Components should fetch user lists through dedicated, secure functions.
+    return { loans: appLoans };
   } catch (e: any) {
     return createErrorResult("Failed to fetch loan requests.", "getLoanRequests", e);
   }
