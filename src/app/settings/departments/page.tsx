@@ -187,26 +187,26 @@ export default function ManageDepartmentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingData && departments.length === 0 && (
+          {isLoading && departments.length === 0 && (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-3 text-muted-foreground">Loading departments...</p>
             </div>
           )}
-          {!isLoadingData && error && (
+          {!isLoading && error && (
             <div className="text-destructive p-4 border border-destructive/50 rounded-md">
               <AlertTriangle className="inline h-5 w-5 mr-2" />
               Error loading departments: {error}
             </div>
           )}
-          {!isLoadingData && !error && departments.length === 0 && (
+          {!isLoading && !error && departments.length === 0 && (
             <div className="text-center text-muted-foreground py-10">
               <Building className="mx-auto h-12 w-12 mb-4 text-gray-400" />
               <p className="font-semibold">No departments defined yet.</p>
               <p>Add departments using the form above.</p>
             </div>
           )}
-          {!isLoadingData && !error && departments.length > 0 && (
+          {!isLoading && !error && departments.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
