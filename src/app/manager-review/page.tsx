@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import type { LoanRequest, WorkflowDefinition, User, Department } from '@/types/loan';
+import { getLoanRequests } from '@/services/loan-service-prisma';
+import type { LoanRequest, User } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
@@ -29,21 +29,8 @@ export default function ManagerReviewQueuePage() {
   const [reviewLoans, setReviewLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
 
   const canViewPage = currentUser?.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
-
-  const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string | undefined => {
-    if (!workflowVersionId || !stageId || !workflowDefs) return "Unknown Stage";
-    for (const def of workflowDefs) {
-      const version = def.versions.find(v => v.id === workflowVersionId);
-      if (version) {
-        const stage = version.stages.find(s => s.id === stageId);
-        if (stage) return stage.name;
-      }
-    }
-    return "Unknown Stage";
-  }, [workflowDefs]);
 
   useEffect(() => {
     if (authIsLoading || !canViewPage) {
@@ -64,13 +51,10 @@ export default function ManagerReviewQueuePage() {
       }
 
       try {
-        const [loansResult, wfResult] = await Promise.all([
-          getLoanRequests(),
-          getWorkflowDefinitions()
-        ]);
+        const loansResult = await getLoanRequests();
 
         if (loansResult.error) {
-          setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`));
+          setError(loansResult.error);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan => 
             (loan.isReadyForManagerReview || (loan.stageCompletedBy && loan.stageCompletedBy.length > 0)) &&
@@ -79,24 +63,13 @@ export default function ManagerReviewQueuePage() {
           );
           setReviewLoans(filteredLoans);
         } else {
-          setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`));
+          setError(`No loan data received.`);
           setReviewLoans([]);
         }
-        
-        if (wfResult.error) {
-            setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`));
-        } else if (wfResult.workflows) {
-            setWorkflowDefs(wfResult.workflows);
-        } else {
-            setError(prev => (prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`));
-            setWorkflowDefs([]);
-        }
-
       } catch (err: any) {
         const errorMessage = err.message || "An unknown error occurred fetching page data.";
         setError(errorMessage);
         setReviewLoans([]);
-        setWorkflowDefs([]);
       } finally {
         setIsLoading(false);
       }
@@ -106,7 +79,7 @@ export default function ManagerReviewQueuePage() {
 
   const getAssignedUserNames = (users: User[]): string => {
     if (users.length === 0) return "N/A";
-    return users.map(u => u.name).join(', ');
+    return users.map(u => u.fullName).join(', ');
   };
   
   const sortedLoans = useMemo(() => {
@@ -176,11 +149,11 @@ export default function ManagerReviewQueuePage() {
         <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
       </div>
       
-      {error && reviewLoans.length > 0 && (
+      {error && (
          <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap">
             <AlertCircle className="h-5 w-5" />
             <AlertTitleShadCN>Partial Data Error</AlertTitleShadCN>
-            <AlertDescriptionShadCN>There was an issue loading some data, but other parts may be available: {error}</AlertDescriptionShadCN>
+            <AlertDescriptionShadCN>There was an issue loading some data: {error}</AlertDescriptionShadCN>
         </Alert>
       )}
 
@@ -247,7 +220,7 @@ export default function ManagerReviewQueuePage() {
                     </TableCell>
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
-                    <TableCell><Badge variant="secondary">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary">{loan.currentStageName || 'Unknown Stage'}</Badge></TableCell>
                     <TableCell>
                         <div className="flex items-center gap-1.5">
                             <UsersIcon className="h-4 w-4 text-muted-foreground"/>
