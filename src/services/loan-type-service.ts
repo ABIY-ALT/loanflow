@@ -1,9 +1,10 @@
 
-
 'use server';
 
 import prisma from '@/lib/prisma';
 import type { LoanType as PrismaLoanType } from '@prisma/client';
+import { getCurrentUser } from '@/app/auth/actions';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export interface LoanType {
   id: string;
@@ -26,7 +27,20 @@ const createErrorResult = (message: string, context?: string, originalError?: an
   return { error: genericMessage };
 };
 
+const hasPermission = async (): Promise<boolean> => {
+    const { user } = await getCurrentUser();
+    // Allow viewing if user can manage workflows, but edits require specific permission
+    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
+}
+
+const hasEditPermission = async (): Promise<boolean> => {
+     const { user } = await getCurrentUser();
+    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
+}
+
+
 export async function getLoanTypes(): Promise<{ loanTypes?: LoanType[]; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
   try {
     const loanTypes = await prisma.loanType.findMany({
       orderBy: { name: 'asc' },
@@ -38,6 +52,7 @@ export async function getLoanTypes(): Promise<{ loanTypes?: LoanType[]; error?: 
 }
 
 export async function addLoanType(name: string): Promise<{ id?: string; error?: string }> {
+  if (!await hasEditPermission()) return { error: "Unauthorized" };
   if (!name.trim()) {
     return { error: "Loan type name cannot be empty." };
   }
@@ -61,6 +76,7 @@ export async function addLoanType(name: string): Promise<{ id?: string; error?: 
 }
 
 export async function updateLoanType(id: string, name: string): Promise<LoanTypeServiceResult<LoanType>> {
+    if (!await hasEditPermission()) return { error: "Unauthorized" };
     if (!name.trim()) {
         return { error: "Loan type name cannot be empty." };
     }
@@ -89,6 +105,7 @@ export async function updateLoanType(id: string, name: string): Promise<LoanType
 }
 
 export async function deleteLoanType(id: string): Promise<{ success?: boolean; error?: string }> {
+  if (!await hasEditPermission()) return { error: "Unauthorized" };
   try {
     const relatedWorkflows = await prisma.workflowDefinition.count({ where: { loanTypeId: id } });
     if (relatedWorkflows > 0) {
