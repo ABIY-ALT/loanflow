@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -13,9 +14,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle, MessageSquareWarning, Flame } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -32,6 +34,7 @@ import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDial
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
 
 
 export default function LoanDetailPage() {
@@ -39,7 +42,7 @@ export default function LoanDetailPage() {
   const params = useParams();
   const { toast } = useToast();
   const loanId = params.id as string;
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isLoading: authLoading } = useAuth();
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
   const [users, setUsers] = useState<UserType[]>([]);
@@ -57,8 +60,8 @@ export default function LoanDetailPage() {
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
   
-  // ALL HOOKS MOVED TO TOP LEVEL
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
+  const canViewPage = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS), [userPermissions]);
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -91,7 +94,10 @@ export default function LoanDetailPage() {
   }, [loan]);
 
   const fetchLoanData = useCallback(async () => {
-    if (!loanId) return;
+    if (!loanId || !canViewPage) {
+        setIsLoading(false);
+        return;
+    };
     setIsLoading(true);
     setError(null);
     try {
@@ -124,11 +130,13 @@ export default function LoanDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [loanId]);
+  }, [loanId, canViewPage]);
 
   useEffect(() => {
-    fetchLoanData();
-  }, [fetchLoanData]);
+    if (!authLoading) {
+        fetchLoanData();
+    }
+  }, [fetchLoanData, authLoading]);
   
   const handleLocalAndUpdateService = useCallback(async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
@@ -681,12 +689,25 @@ export default function LoanDetailPage() {
     );
   };
   
-  if (isLoading && !loan) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <p className="ml-3 text-lg">Loading loan details...</p>
       </div>
+    );
+  }
+
+  if (!canViewPage) {
+     return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view loan details.</p>
+            <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
     );
   }
 

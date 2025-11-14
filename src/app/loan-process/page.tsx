@@ -53,6 +53,7 @@ export default function LoanProcessPage() {
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
+  const canViewPage = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_PIPELINE), [userPermissions]);
   
   const loanStats = useMemo(() => {
     const totalCount = allLoans.length;
@@ -69,6 +70,10 @@ export default function LoanProcessPage() {
   })), [allLoans]);
 
   const fetchPageData = useCallback(async () => {
+    if (!canViewPage) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -89,9 +94,13 @@ export default function LoanProcessPage() {
       setError(prev => (prev ? `${prev}\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
     }
     finally { setIsLoading(false); }
-  }, []);
+  }, [canViewPage]);
 
-  useEffect(() => { fetchPageData(); }, [fetchPageData]);
+  useEffect(() => { 
+    if (!authLoading) {
+      fetchPageData();
+    }
+  }, [fetchPageData, authLoading]);
   
   const pipelineData = useMemo(() => {
     if (!fetchedWorkflowDefinitions.length) return [];
@@ -212,6 +221,20 @@ export default function LoanProcessPage() {
   if (authLoading || isLoading) {
     return (<div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3 text-lg">Loading loan pipeline...</p></div>);
   }
+
+  if (!canViewPage) {
+     return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircleIcon className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the loan pipeline.</p>
+            <Link href="/" passHref>
+                <Button variant="outline">Back to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
+
   if (error) { return (<Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap"><AlertTriangle className="h-5 w-5" /><AlertTitleShadCN>Error Loading Page Data</AlertTitleShadCN><AlertDescShadCN>{error}</AlertDescShadCN></Alert>); }
   
   return (

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -40,11 +41,7 @@ export default function LoginPage() {
     setIsSubmitting(false);
   };
 
-  // Handled by AuthProvider's loading screen or redirect logic
-  // if (authContext.isLoading && !isSubmitting) {
-  //    return ( /* ... loading spinner or minimal layout ... */ );
-  // }
-
+  const isProcessing = isSubmitting || authContext.isLoading;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
@@ -71,7 +68,7 @@ export default function LoginPage() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 required
-                disabled={isSubmitting || authContext.isLoading}
+                disabled={isProcessing}
                 className="text-base"
               />
             </div>
@@ -84,15 +81,15 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={isSubmitting || authContext.isLoading}
+                disabled={isProcessing}
                 className="text-base"
               />
             </div>
             {error && (
               <p className="text-sm text-destructive text-center">{error}</p>
             )}
-            <Button type="submit" className="w-full text-lg py-3" disabled={isSubmitting || authContext.isLoading}>
-              {isSubmitting ? (
+            <Button type="submit" className="w-full text-lg py-3" disabled={isProcessing}>
+              {isProcessing ? (
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               ) : (
                 <LogIn className="mr-2 h-5 w-5" />
