@@ -222,11 +222,11 @@ export async function addLoanRequest(
   }
 }
 
-export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; users?: User[] }> {
+export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; }> {
   try {
     const { user } = await getCurrentUser();
     if (!user) {
-        return { error: "Unauthorized: You do not have permissions to view loan data.", users: [] };
+        return { error: "Unauthorized: You do not have permissions to view loan data." };
     }
     
     const userPermissions = new Set(user.permissions || []);
@@ -268,9 +268,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
     });
 
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
-
-    // The 'users' array is intentionally removed from the return to prevent data leakage.
-    // Components should fetch user lists through dedicated, secure functions.
+    
     return { loans: appLoans };
   } catch (e: any) {
     return createErrorResult("Failed to fetch loan requests.", "getLoanRequests", e);
