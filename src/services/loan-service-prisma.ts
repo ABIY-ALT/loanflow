@@ -21,7 +21,8 @@ import { LoanDocumentStatus as PrismaLoanDocumentStatus, DocumentRequirementType
 
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, ActiveWorkflow, DocumentRequirement, Customer, CustomerWithDepartment } from '@/types/loan';
 import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
-import type { AppPermission } from '@/lib/permissions';
+import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
+import { getCurrentUser } from '@/app/auth/actions';
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
@@ -134,6 +135,11 @@ export async function addLoanRequest(
   & { workflowVersionId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST)) {
+        return createErrorResult("Unauthorized: You do not have permission to create loan requests.", "addLoanRequest");
+    }
+
     const activeVersion = await prisma.workflowVersion.findFirst({
         where: {
             id: loanData.workflowVersionId,
@@ -218,6 +224,14 @@ export async function addLoanRequest(
 
 export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?: string; users?: User[] }> {
   try {
+    // This is a broad read operation; fine-grained access should be handled in UI components
+    // based on user's role (e.g., manager sees all, officer sees assigned).
+    // A basic permission check is still good.
+    const { user } = await getCurrentUser();
+    if (!user || user.permissions.length === 0) { // A user with no permissions shouldn't see anything.
+        return { error: "Unauthorized: You do not have permissions to view loan data.", users: [] };
+    }
+
     const prismaLoans = await prisma.loanRequest.findMany({
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
@@ -245,6 +259,11 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[]; error?
 
 export async function getLoanRequestById(id: string): Promise<{ loan?: LoanRequest | null; users?: User[]; error?: string; workflowDefinitions?: WorkflowDefinition[] }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_DETAILS)) {
+        return { error: "Unauthorized: You do not have permission to view loan details." };
+    }
+
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { id },
       include: {
@@ -286,6 +305,12 @@ export async function updateLoanRequest(
   dataToUpdate: Partial<Omit<LoanRequest, 'id'>>
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
+    // Permission checks should be done inside for granular control based on what's being updated
+    const { user } = await getCurrentUser();
+    if (!user) {
+        return createErrorResult("Unauthorized: No user session found.", "updateLoanRequest");
+    }
+
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
       const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true, assignedToUsers: true, stageCompletedBy: true } });
 
@@ -303,37 +328,41 @@ export async function updateLoanRequest(
         if (dataToUpdate[field] !== undefined) updatePayload[field] = dataToUpdate[field];
       });
 
-      if (dataToUpdate.loanAmount !== undefined) updatePayload.loanAmount = dataToUpdate.loanAmount;
+      if (dataToUpdate.loanAmount !== undefined) {
+        if (!user.permissions.includes(PERMISSIONS.EDIT_LOAN_DETAILS)) throw new Error("Unauthorized to edit loan amount.");
+        updatePayload.loanAmount = dataToUpdate.loanAmount;
+      }
       
-      if (dataToUpdate.customerName !== undefined && dataToUpdate.customerName !== existingLoan.customer.name) customerUpdatePayload.name = dataToUpdate.customerName;
-      if (dataToUpdate.customerEmail !== undefined && dataToUpdate.customerEmail !== existingLoan.customer.email) customerUpdatePayload.email = dataToUpdate.customerEmail;
-      if (dataToUpdate.customerPhone !== undefined && dataToUpdate.customerPhone !== existingLoan.customer.phone) customerUpdatePayload.phone = dataToUpdate.customerPhone;
-      
-      if(Object.keys(customerUpdatePayload).length > 0) {
-        await tx.customer.update({
-          where: { id: existingLoan.customerId },
-          data: customerUpdatePayload
-        });
+      if ((dataToUpdate.customerName && dataToUpdate.customerName !== existingLoan.customer.name) || (dataToUpdate.customerEmail && dataToUpdate.customerEmail !== existingLoan.customer.email) || (dataToUpdate.customerPhone && dataToUpdate.customerPhone !== existingLoan.customer.phone)) {
+        if (!user.permissions.includes(PERMISSIONS.EDIT_LOAN_DETAILS)) throw new Error("Unauthorized to edit customer details.");
+        if (dataToUpdate.customerName) customerUpdatePayload.name = dataToUpdate.customerName;
+        if (dataToUpdate.customerEmail) customerUpdatePayload.email = dataToUpdate.customerEmail;
+        if (dataToUpdate.customerPhone) customerUpdatePayload.phone = dataToUpdate.customerPhone;
+        await tx.customer.update({ where: { id: existingLoan.customerId }, data: customerUpdatePayload });
       }
 
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
+        if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign staff.");
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
-        
         updatePayload.stageCompletedBy = { set: [] };
         updatePayload.isReadyForManagerReview = false;
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
+          if (!user.permissions.includes(PERMISSIONS.MARK_STAGE_COMPLETE)) throw new Error("Unauthorized to mark stage as complete.");
           const userIds = dataToUpdate.stageCompletedBy?.map(u => ({ id: u.id })) || [];
           updatePayload.stageCompletedBy = { set: userIds };
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
-        updatePayload.assignedDepartment = dataToUpdate.assignedDepartmentId ? { connect: { id: dataToUpdate.assignedDepartmentId } } : { disconnect: true };
+          if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
+          updatePayload.assignedDepartment = dataToUpdate.assignedDepartmentId ? { connect: { id: dataToUpdate.assignedDepartmentId } } : { disconnect: true };
       }
 
       if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
+        if (!user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE) && !user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) throw new Error("Unauthorized to change loan stage.");
+        
         const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionIdMirror;
         if (!wfVerId) throw new Error("Workflow version context missing.");
 
@@ -362,6 +391,7 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
+        if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES)) throw new Error("Unauthorized to add notes.");
         const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
         const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
         
@@ -381,6 +411,7 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.documents !== undefined) {
+          if (!user.permissions.includes(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) throw new Error("Unauthorized to manage documents.");
           const incomingDocIds = new Set(dataToUpdate.documents.map(d => d.id));
           const docsToDelete = existingLoan.documents.filter(d => !incomingDocIds.has(d.id));
 
@@ -435,13 +466,17 @@ export async function updateLoanRequest(
     return { success: true, updatedLoan: appLoan };
 
   } catch (e: any) {
-    return createErrorResult("Failed to update loan request.", "updateLoanRequest", e);
+    return createErrorResult(`Failed to update loan request: ${e.message}`, "updateLoanRequest", e);
   }
 }
 
 
 export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDefinition[]; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS)) {
+        return { error: "Unauthorized: You do not have permission to view workflow definitions." };
+    }
     const prismaWorkflowDefs = await prisma.workflowDefinition.findMany({
       orderBy: { order: 'asc' },
       include: {
@@ -507,6 +542,10 @@ export async function addWorkflowDefinition(
   definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'loanTypeName' | 'departmentName' | 'order'>
 ): Promise<{ id?: string; error?: string }> {
   try {
+     const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS)) {
+        return createErrorResult("Unauthorized", "addWorkflowDefinition");
+    }
     const existing = await prisma.workflowDefinition.findFirst({
         where: {
             departmentId: definitionData.departmentId,
@@ -537,6 +576,10 @@ export async function addWorkflowDefinition(
 
 export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[]): Promise<{ success?: boolean; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS)) {
+        return createErrorResult("Unauthorized", "saveWorkflowDefinitions");
+    }
     await prisma.$transaction(async (tx) => {
       for (const definition of definitions) {
         const { versions, ...defData } = definition;
@@ -662,6 +705,10 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
 
 export async function getDepartments(): Promise<{ departments?: {id: string, name: Department}[]; error?: string }> {
   try {
+     const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS)) {
+        return { error: "Unauthorized" };
+    }
     const prismaDepartments = await prisma.department.findMany({
       orderBy: { name: 'asc' },
     });
@@ -674,6 +721,10 @@ export async function getDepartments(): Promise<{ departments?: {id: string, nam
 
 export async function addDepartment(departmentName: string): Promise<{ id?: string; error?: string }> {
   try {
+     const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS)) {
+        return createErrorResult("Unauthorized", "addDepartment");
+    }
     const nameLower = departmentName.trim().toLowerCase();
     const existing = await prisma.department.findUnique({ where: { nameLowercase: nameLower } });
     if (existing) {
@@ -694,6 +745,10 @@ export async function addDepartment(departmentName: string): Promise<{ id?: stri
 
 export async function deleteDepartment(departmentId: string): Promise<{ success?: boolean; error?: string }> {
   try {
+     const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS)) {
+        return createErrorResult("Unauthorized", "deleteDepartment");
+    }
     const stagesUsingDept = await prisma.workflowStageDefinition.count({ where: { responsibleDepartmentId: departmentId } });
     if (stagesUsingDept > 0) {
         return createErrorResult(`Cannot delete: Department is in use by workflow stages.`, "deleteDepartment_inUseStages");
@@ -775,6 +830,10 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
 
 export async function getCustomers(): Promise<{ customers?: CustomerWithDepartment[]; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_CUSTOMERS)) {
+      return { error: "Unauthorized: You do not have permission to view customers." };
+    }
     const prismaCustomers = await prisma.customer.findMany({
       orderBy: { name: 'asc' },
       include: {
@@ -820,6 +879,10 @@ export async function getCustomers(): Promise<{ customers?: CustomerWithDepartme
 
 export async function getCustomerById(id: string): Promise<{ customer?: Customer | null; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_CUSTOMERS)) {
+      return { error: "Unauthorized: You do not have permission to view customer details." };
+    }
     const prismaCustomer = await prisma.customer.findUnique({
       where: { id },
       include: {
@@ -866,6 +929,10 @@ export async function searchLoanRequests(
   searchType: 'loanNumber' | 'customerName' | 'customerNumber'
 ): Promise<{ loans?: LoanRequest[]; error?: string }> {
   try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP)) {
+      return { error: "Unauthorized to search loans." };
+    }
     let whereClause: any = {};
 
     switch (searchType) {
