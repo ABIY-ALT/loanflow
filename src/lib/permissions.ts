@@ -41,7 +41,7 @@ export const PERMISSIONS = {
   MANAGE_SETTINGS_DEPARTMENTS: "MANAGE_SETTINGS_DEPARTMENTS",
   MANAGE_SETTINGS_BRANCHES: "MANAGE_SETTINGS_BRANCHES",
   MANAGE_SETTINGS_ROLES: "MANAGE_SETTINGS_ROLES", // Manage roles and their permissions
-  MANAGE_USERS: "MANAGE_USERS", // Future: For user creation, role assignment etc.
+  MANAGE_USERS: "MANAGE_USERS", // For user creation, role assignment etc.
   VIEW_SYSTEM_AUDIT_LOGS: "VIEW_SYSTEM_AUDIT_LOGS", // Future: For system logs
 } as const;
 
@@ -82,7 +82,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   MANAGE_SETTINGS_DEPARTMENTS: "Can access settings to create, edit, and delete departments.",
   MANAGE_SETTINGS_BRANCHES: "Can access settings to create, edit, and delete branches and districts.",
   MANAGE_SETTINGS_ROLES: "Can access settings to create, edit, and delete roles and assign permissions to them.",
-  MANAGE_USERS: "Future: Can manage user accounts, assign roles, and reset passwords.",
+  MANAGE_USERS: "Can manage user accounts, assign roles, and register new users.",
   VIEW_SYSTEM_AUDIT_LOGS: "Future: Can view system-wide audit logs for important actions.",
 };
 

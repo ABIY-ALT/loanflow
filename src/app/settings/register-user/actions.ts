@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import prisma from '@/lib/prisma';
@@ -65,7 +64,7 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
         name: `${userData.firstName} ${userData.lastName}`,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: false,
+        isPasswordChanged: false, // Users created this way must change their password
         departmentId: null,
         customRoleId: null,
       },

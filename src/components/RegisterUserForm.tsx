@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
-import { PERMISSIONS } from '@/lib/permissions'; // Added import
+import { PERMISSIONS } from '@/lib/permissions';
 
 interface RegisterUserFormProps {
   registerUserAction: (formData: FormData) => Promise<{ success: boolean; message: string; errors?: any }>;
