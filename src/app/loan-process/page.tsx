@@ -10,7 +10,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
+import { getLoanRequests } from '@/services/loan-service-prisma';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 import {
   Accordion,
@@ -24,13 +24,18 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 
-interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'loanType'> {}
+interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'loanType' | 'currentStageName' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' > {}
 
-interface PipelineStage extends WorkflowStageDefinition {
+interface PipelineStage extends Omit<WorkflowStageDefinition, 'documentRequirements' | 'availableStatuses'> {
   loans: PipelineLoan[];
 }
 
-interface PipelineWorkflow extends WorkflowDefinition {
+interface PipelineWorkflow {
+  id: string;
+  name: string;
+  departmentName: string;
+  loanTypeName: string;
+  order: number;
   stages: PipelineStage[];
 }
 
@@ -45,7 +50,6 @@ type StatusFilter = 'all' | 'overdue' | 'terminated';
 export default function LoanProcessPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
-  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,18 +81,13 @@ export default function LoanProcessPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [loansResult, wfResult] = await Promise.all([
-        getLoanRequests(),
-        getWorkflowDefinitions()
-      ]);
+      const loansResult = await getLoanRequests();
 
-      if (loansResult.error) { setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`)); }
-      else if (loansResult.loans) {
-        setAllLoans(loansResult.loans); // Store all loans now
+      if (loansResult.error) { 
+        setError(loansResult.error); 
+      } else if (loansResult.loans) {
+        setAllLoans(loansResult.loans);
       }
-
-      if (wfResult.error) { setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`)); }
-      else if (wfResult.workflows) { setFetchedWorkflowDefinitions(wfResult.workflows); }
 
     } catch (err: any) {
       setError(prev => (prev ? `${prev}\nFetchError: ${err.message || "Error fetching page data."}` : `FetchError: ${err.message || "Error fetching page data."}`));
@@ -102,22 +101,20 @@ export default function LoanProcessPage() {
     }
   }, [fetchPageData, authLoading]);
   
-  const pipelineData = useMemo(() => {
-    if (!fetchedWorkflowDefinitions.length) return [];
-
+  const pipelineData = useMemo((): PipelineLoanType[] => {
     let loansToDisplay: LoanRequest[];
 
     switch (statusFilter) {
-        case 'overdue':
-            loansToDisplay = allLoans.filter(l => l.isOverdue && !l.isTerminalStage);
-            break;
-        case 'terminated':
-            loansToDisplay = allLoans.filter(l => l.isTerminalStage);
-            break;
-        case 'all':
-        default:
-            loansToDisplay = allLoans.filter(l => !l.isTerminalStage);
-            break;
+      case 'overdue':
+        loansToDisplay = allLoans.filter(l => l.isOverdue && !l.isTerminalStage);
+        break;
+      case 'terminated':
+        loansToDisplay = allLoans.filter(l => l.isTerminalStage);
+        break;
+      case 'all':
+      default:
+        loansToDisplay = allLoans.filter(l => !l.isTerminalStage);
+        break;
     }
     
     let filteredLoans = loansToDisplay;
@@ -130,13 +127,43 @@ export default function LoanProcessPage() {
       );
     }
 
-    const loansByStage: Record<string, PipelineLoan[]> = {};
+    const structure: Record<string, { loanTypeName: string, workflows: Record<string, PipelineWorkflow> }> = {};
+
     filteredLoans.forEach(loan => {
-      const stageId = loan.currentStageId || 'unclassified';
-      if (!loansByStage[stageId]) {
-          loansByStage[stageId] = [];
+      const { loanType, workflowVersionId, currentStageId, currentStageName, assignedDepartment } = loan;
+      if (!loanType || !workflowVersionId || !currentStageId) return;
+
+      const workflowId = `workflow-${workflowVersionId}`;
+
+      if (!structure[loanType]) {
+        structure[loanType] = { loanTypeName: loanType, workflows: {} };
       }
-      loansByStage[stageId].push({
+      if (!structure[loanType].workflows[workflowId]) {
+        structure[loanType].workflows[workflowId] = {
+          id: workflowId,
+          name: `Workflow (ID: ...${workflowVersionId.slice(-4)})`, // Placeholder name
+          departmentName: assignedDepartment || 'N/A',
+          loanTypeName: loanType,
+          order: 0, 
+          stages: []
+        };
+      }
+      
+      let stage = structure[loanType].workflows[workflowId].stages.find(s => s.id === currentStageId);
+      if (!stage) {
+        stage = {
+          id: currentStageId,
+          name: currentStageName || 'Unknown Stage',
+          responsibleDepartment: assignedDepartment || 'N/A',
+          defaultTimelineDays: 0,
+          percentageWeight: 0,
+          order: 0, 
+          loans: []
+        };
+        structure[loanType].workflows[workflowId].stages.push(stage);
+      }
+      
+      stage.loans.push({
         id: loan.id,
         loanNumber: loan.loanNumber,
         customerName: loan.customerName,
@@ -146,61 +173,19 @@ export default function LoanProcessPage() {
         lastUpdatedDate: loan.lastUpdatedDate,
         assignedToUsers: loan.assignedToUsers,
         loanType: loan.loanType,
+        currentStageName: loan.currentStageName,
+        workflowVersionId: loan.workflowVersionId,
+        currentStageId: loan.currentStageId,
+        assignedDepartment: loan.assignedDepartment,
       });
     });
-    
-    const loanTypesMap: Record<string, { loanTypeName: string, workflows: PipelineWorkflow[] }> = {};
-    const includedWorkflowIds = new Set(filteredLoans.map(l => l.workflowVersionId?.split('_').slice(0, -1).join('_')));
 
-    // First, initialize all loan types from definitions
-    fetchedWorkflowDefinitions.forEach(wfDef => {
-        const loanTypeName = wfDef.loanTypeName;
-        // If searching, only include loan types that have matching loans
-        if (searchTerm && !filteredLoans.some(l => l.loanType === loanTypeName)) {
-            return;
-        }
+    return Object.values(structure).map(loanTypeData => ({
+      loanTypeName: loanTypeData.loanTypeName,
+      workflows: Object.values(loanTypeData.workflows)
+    }));
 
-        if (!loanTypesMap[loanTypeName]) {
-            loanTypesMap[loanTypeName] = {
-                loanTypeName: loanTypeName,
-                workflows: []
-            };
-        }
-    });
-
-    // Then, populate workflows for each loan type, ensuring all defined workflows appear
-    for (const loanTypeName in loanTypesMap) {
-        const workflowsForType = fetchedWorkflowDefinitions
-            .filter(wf => wf.loanTypeName === loanTypeName)
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-        workflowsForType.forEach(wfDef => {
-            const activeVersion = wfDef.versions.find(v => v.isActive);
-            if (!activeVersion) return; // Skip if no active version
-
-            const stagesWithLoans: PipelineStage[] = activeVersion.stages.map(stage => ({
-                ...stage,
-                loans: loansByStage[stage.id] || [],
-            }));
-            
-            const workflowHasMatchingLoans = stagesWithLoans.some(s => s.loans.length > 0);
-            
-            // If searching, only show workflows that have matching loans
-            if (searchTerm && !workflowHasMatchingLoans) {
-                return;
-            }
-
-            // Add the workflow to the map
-            loanTypesMap[loanTypeName].workflows.push({
-                ...wfDef,
-                stages: stagesWithLoans,
-            });
-        });
-    }
-
-    return Object.values(loanTypesMap).filter(lt => lt.workflows.length > 0);
-
-  }, [allLoans, fetchedWorkflowDefinitions, searchTerm, statusFilter]);
+  }, [allLoans, searchTerm, statusFilter]);
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, loanType) => 
