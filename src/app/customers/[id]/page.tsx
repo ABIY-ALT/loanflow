@@ -36,7 +36,7 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     if (authLoading || !canViewProfile) {
-        if (!authLoading) setIsLoading(false);
+        if (!authLoading && !canViewProfile) setIsLoading(false);
         return;
     }
 

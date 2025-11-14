@@ -43,6 +43,10 @@ export default function ManageUserAssignmentsPage() {
   const canManageAssignments = currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
   const fetchPageData = useCallback(async () => {
+    if (!canManageAssignments) {
+        setIsLoadingData(false);
+        return;
+    }
     setIsLoadingData(true);
     setError(null);
     try {
@@ -65,13 +69,13 @@ export default function ManageUserAssignmentsPage() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [toast]);
+  }, [toast, canManageAssignments]);
 
   useEffect(() => {
-    if (canManageAssignments) {
+    if (!authLoading) {
       fetchPageData();
     }
-  }, [currentUser, fetchPageData, canManageAssignments]);
+  }, [authLoading, fetchPageData]);
 
   const handleOpenEditDialog = (userToEdit: UserForAssignment) => {
     if (!canManageAssignments) return;
@@ -115,11 +119,11 @@ export default function ManageUserAssignmentsPage() {
     }
   };
   
-  if (authLoading) {
+  if (authLoading || isLoadingData) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="ml-3 text-lg">Verifying access...</p>
+        <p className="ml-3 text-lg">Verifying access and loading users...</p>
       </div>
     );
   }

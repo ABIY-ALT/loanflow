@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -25,7 +26,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (authLoading || !canViewCustomers) {
-        if (!authLoading) setIsLoading(false);
+        if (!authLoading && !canViewCustomers) setIsLoading(false);
         return;
     }
 
