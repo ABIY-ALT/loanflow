@@ -36,7 +36,7 @@ type LoanStatusFormValues = z.infer<typeof loanStatusSchema>;
 
 export default function LoanStatusPage() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<LoanRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +53,7 @@ export default function LoanStatusPage() {
   });
 
   async function onSubmit(data: LoanStatusFormValues) {
+    if (!canViewLookup) return;
     setIsLoading(true);
     setLookupResult(null);
     setError(null);
@@ -81,6 +82,14 @@ export default function LoanStatusPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+  
+  if (authLoading) {
+     return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
   }
 
   if (!canViewLookup) {
