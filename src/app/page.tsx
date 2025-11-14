@@ -1,7 +1,8 @@
 
+
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +36,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
-  const canViewDashboard = user?.permissions.includes(PERMISSIONS.VIEW_DASHBOARD);
+  const canViewDashboard = useMemo(() => user?.permissions.includes(PERMISSIONS.VIEW_DASHBOARD), [user]);
 
   useEffect(() => {
     if (authLoading || !canViewDashboard) {

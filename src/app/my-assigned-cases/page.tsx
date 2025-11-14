@@ -15,6 +15,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 import { cn } from '@/lib/utils';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export default function MyAssignedCasesPage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -22,6 +23,8 @@ export default function MyAssignedCasesPage() {
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const canViewPage = useMemo(() => currentUser?.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES), [currentUser]);
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
     if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
@@ -49,11 +52,12 @@ export default function MyAssignedCasesPage() {
 
 
   useEffect(() => {
-    async function fetchPageData() {
-      if (!currentUser || authIsLoading) { // Wait for user and auth to settle
-        if(!authIsLoading) setIsLoading(false); // If auth is done but no user, stop loading
+    if (authIsLoading || !canViewPage || !currentUser) {
+        if (!authIsLoading) setIsLoading(false);
         return;
-      }
+    }
+    
+    async function fetchPageData() {
       setIsLoading(true);
       setError(null);
       try {
@@ -95,7 +99,7 @@ export default function MyAssignedCasesPage() {
       }
     }
     fetchPageData();
-  }, [currentUser, authIsLoading]);
+  }, [currentUser, authIsLoading, canViewPage]);
 
   const sortedLoans = useMemo(() => {
     return [...assignedLoans].sort((a, b) => {
@@ -108,12 +112,25 @@ export default function MyAssignedCasesPage() {
   }, [assignedLoans]);
 
 
-  if (authIsLoading || (isLoading && !currentUser)) {
+  if (authIsLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <p className="ml-3 text-lg">Loading your assigned cases...</p>
       </div>
+    );
+  }
+  
+  if (!canViewPage) {
+     return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view your assigned cases.</p>
+             <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
     );
   }
   
