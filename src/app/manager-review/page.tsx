@@ -31,7 +31,7 @@ export default function ManagerReviewQueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
 
-  const canViewPage = user?.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
+  const canViewPage = currentUser?.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string | undefined => {
     if (!workflowVersionId || !stageId || !workflowDefs) return "Unknown Stage";
