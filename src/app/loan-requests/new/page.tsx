@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,13 +19,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { User as UserIcon, Mail, Phone, Info, Loader2 } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
 import type { ActiveWorkflow, Branch } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
+import Link from 'next/link';
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -41,13 +45,21 @@ type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
 export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableWorkflows, setAvailableWorkflows] = useState<ActiveWorkflow[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const canCreateRequest = user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
+
   useEffect(() => {
+    if(authLoading || !canCreateRequest) {
+      if(!authLoading && !canCreateRequest) setIsLoading(false);
+      return;
+    }
+    
     async function fetchPageData() {
       setIsLoading(true);
       setError(null);
@@ -77,7 +89,7 @@ export default function NewLoanRequestPage() {
       }
     }
     fetchPageData();
-  }, []);
+  }, [authLoading, canCreateRequest]);
 
   const branchOptions = useMemo(
     () =>
@@ -121,6 +133,28 @@ export default function NewLoanRequestPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading form...</p>
+      </div>
+    );
+  }
+
+  if (!canCreateRequest) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+        <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+        <p className="text-muted-foreground mb-6">You do not have permission to create new loan requests.</p>
+        <Link href="/" passHref>
+            <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+        </Link>
+      </div>
+    );
   }
 
   return (

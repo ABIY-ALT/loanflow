@@ -14,12 +14,17 @@ import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export default function DepartmentQueuePage() {
+  const { user, isLoading: authLoading } = useAuth();
   const [unassignedLoans, setUnassignedLoans] = useState<LoanRequest[]>([]);
   const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const canViewPage = user?.permissions.includes(PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE);
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
     if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
@@ -44,6 +49,11 @@ export default function DepartmentQueuePage() {
   }, [unassignedLoans]);
 
   useEffect(() => {
+    if (authLoading || !canViewPage) {
+      if (!authLoading && !canViewPage) setIsLoading(false);
+      return;
+    }
+
     async function fetchPageData() {
       setIsLoading(true);
       setError(null);
@@ -86,10 +96,10 @@ export default function DepartmentQueuePage() {
       }
     }
     fetchPageData();
-  }, []);
+  }, [authLoading, canViewPage]);
 
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -97,6 +107,20 @@ export default function DepartmentQueuePage() {
       </div>
     );
   }
+
+  if (!canViewPage) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the unassigned cases queue.</p>
+            <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
+
   if (error && (unassignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) {
     return (
       <div className="space-y-6">

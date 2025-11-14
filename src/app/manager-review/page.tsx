@@ -21,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PERMISSIONS } from '@/lib/permissions';
 
 
 export default function ManagerReviewQueuePage() {
@@ -28,7 +29,9 @@ export default function ManagerReviewQueuePage() {
   const [reviewLoans, setReviewLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]); // State for workflow definitions
+  const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
+
+  const canViewPage = user?.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
 
   const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string | undefined => {
     if (!workflowVersionId || !stageId || !workflowDefs) return "Unknown Stage";
@@ -43,8 +46,12 @@ export default function ManagerReviewQueuePage() {
   }, [workflowDefs]);
 
   useEffect(() => {
+    if (authIsLoading || !canViewPage) {
+      if(!authIsLoading && !canViewPage) setIsLoading(false);
+      return;
+    }
+    
     async function fetchPageData() {
-      if (authIsLoading) return; // Wait for user authentication to resolve
       
       setIsLoading(true);
       setError(null);
@@ -95,7 +102,7 @@ export default function ManagerReviewQueuePage() {
       }
     }
     fetchPageData();
-  }, [currentUser, authIsLoading]);
+  }, [currentUser, authIsLoading, canViewPage]);
 
   const getAssignedUserNames = (users: User[]): string => {
     if (users.length === 0) return "N/A";
@@ -126,6 +133,21 @@ export default function ManagerReviewQueuePage() {
       </div>
     );
   }
+
+  if (!canViewPage) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the manager review queue.</p>
+            <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
+
+
   if (error && reviewLoans.length === 0) { 
     return (
       <div className="space-y-6">

@@ -11,6 +11,8 @@ import type { LoanRequest } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
 
 interface DashboardStats {
   activeLoansCount: number;
@@ -28,11 +30,19 @@ const defaultStats: DashboardStats = {
 };
 
 export default function DashboardPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null); // Initialize to null to show loading
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
+  const canViewDashboard = user?.permissions.includes(PERMISSIONS.VIEW_DASHBOARD);
+
   useEffect(() => {
+    if (authLoading || !canViewDashboard) {
+      if(!authLoading && !canViewDashboard) setIsLoading(false);
+      return;
+    }
+
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
@@ -76,7 +86,7 @@ export default function DashboardPage() {
       }
     }
     fetchDashboardData();
-  }, []);
+  }, [authLoading, canViewDashboard]);
 
 
   const StatCard = ({ title, value, icon: Icon, description, link, isErrorSource }: { title: string, value: string | number, icon: React.ElementType, description?: string, link?: string, isErrorSource?: boolean }) => {
@@ -108,6 +118,25 @@ export default function DashboardPage() {
     }
     return content;
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  if (!canViewDashboard) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the dashboard.</p>
+        </div>
+    );
+  }
 
 
   if (error && !stats && isLoading) { 
