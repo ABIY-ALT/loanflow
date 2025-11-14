@@ -55,37 +55,32 @@ async function main() {
   });
   console.log(`Created/verified role: ${loanOfficerRole.name}`);
 
-  let adminRole: any;
-  if (process.env.SEED_ADMIN_ACCOUNTS === 'true') {
-    adminRole = await prisma.role.upsert({
-      where: { name: 'Administrator' },
-      update: {
-        permissions: ALL_PERMISSIONS,
-      },
-      create: {
-        name: 'Administrator',
-        description: 'Full access to all system features and settings.',
-        permissions: ALL_PERMISSIONS,
-      },
-    });
-    console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
-  } else {
-    console.log('Skipping Administrator role seeding. Set SEED_ADMIN_ACCOUNTS=true in .env to enable.');
-  }
+  const adminRole = await prisma.role.upsert({
+    where: { name: 'Administrator' },
+    update: {
+      permissions: ALL_PERMISSIONS,
+    },
+    create: {
+      name: 'Administrator',
+      description: 'Full access to all system features and settings.',
+      permissions: ALL_PERMISSIONS,
+    },
+  });
+  console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
   console.log('Custom Roles seeded.');
 
 
   // Seed Users
   console.log('Seeding Users...');
   const allUsersToSeed = [
-    ...appMockUsers,
+    ...appMockUsers, // This will seed the two users from mock-data.ts
     {
       id: 'system-prisma', 
       userId: 'system-prisma-identity', 
       name: 'System Process',
       email: 'system@loanflow.app',
       department: undefined, 
-      customRoleName: (process.env.SEED_ADMIN_ACCOUNTS === 'true') ? 'Administrator' : 'Loan Officer', 
+      customRoleName: 'Administrator', 
       firstName: 'System',
       lastName: 'Process',
       phoneNumber: '0000000000',
@@ -93,12 +88,6 @@ async function main() {
   ];
 
   for (const userData of allUsersToSeed) {
-    // Skip seeding admin users if the flag is not set
-    if (userData.customRoleName === 'Administrator' && process.env.SEED_ADMIN_ACCOUNTS !== 'true') {
-        console.log(`Skipping seeding of admin user "${userData.name}". Set SEED_ADMIN_ACCOUNTS=true to seed.`);
-        continue;
-    }
-
     let departmentDataConnect = {};
     if (userData.department) {
       const deptName = (userData.department as AppDepartment).toLowerCase();
@@ -120,16 +109,8 @@ async function main() {
         if (roleRecord) {
             customRoleDataConnect = { customRole: { connect: { id: roleRecord.id }}};
         } else {
-            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}". Assigning default role if available.`);
-            // Fallback to a default, non-admin role if the intended role (likely admin) wasn't seeded.
-            const defaultRole = await prisma.role.findUnique({ where: { name: 'Loan Officer' }});
-            if (defaultRole) {
-                customRoleDataConnect = { customRole: { connect: { id: defaultRole.id }}};
-            }
+            console.warn(`Custom Role "${userData.customRoleName}" not found for user "${userData.name}".`);
         }
-    } else if (userData.id === 'system-prisma' && adminRole) {
-        // This ensures the system user gets the admin role only if it was created
-        customRoleDataConnect = { customRole: { connect: { id: adminRole.id }}};
     }
 
     const defaultPassword = "password123";
@@ -145,7 +126,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         userId: finalUserId,
         passwordHash: passwordHash,
-        isPasswordChanged: false,
+        isPasswordChanged: true, // Set to true so they don't need to change password
         failedLoginAttempts: 0,
         lockoutUntil: null,
         ...departmentDataConnect,
@@ -160,7 +141,7 @@ async function main() {
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: false,
+        isPasswordChanged: true, // Set to true so they don't need to change password
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },

@@ -23,7 +23,28 @@ interface MockAppUser {
 
 
 export const mockUsers: MockAppUser[] = [
-  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", firstName: 'Jane', lastName: 'Doe', phoneNumber: '0911223344' },
+  { 
+    id: 'user-loan-officer', 
+    userId: 'identity-loan-officer', 
+    name: 'Alex Officer', 
+    email: 'alex.officer@loanflow.app', 
+    customRoleName: "Loan Officer", 
+    department: "Origination", 
+    firstName: 'Alex', 
+    lastName: 'Officer', 
+    phoneNumber: '0911111111' 
+  },
+  { 
+    id: 'user-admin', 
+    userId: 'identity-admin', 
+    name: 'Sam Admin', 
+    email: 'sam.admin@loanflow.app', 
+    customRoleName: "Administrator", 
+    department: "Compliance", 
+    firstName: 'Sam', 
+    lastName: 'Admin', 
+    phoneNumber: '0922222222' 
+  },
 ];
 
 export const mockDepartments: Department[] = [
@@ -250,7 +271,7 @@ export let mockLoanRequests: LoanRequest[] = [
     workflowVersionId: 'pl_v_1', 
     currentStageId: personalLoan_v1_stages[1].id,
     assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment,
-    assignedTo: 'user-jane-doe', // Prisma User ID for Jane
+    assignedTo: 'user-loan-officer',
     submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
     lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
     documents: [ { id: 'doc-id-card-diana', requirementId: 'pl_v1_s1_dr1', name: 'Identification Card', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/id_diana.pdf' } ],
