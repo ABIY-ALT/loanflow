@@ -13,8 +13,10 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package && prisma generate",
-    "db:setup": "prisma migrate dev && prisma db seed",
-    "seed": "npm run db:setup"
+    "db:setup": "prisma migrate dev && prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
