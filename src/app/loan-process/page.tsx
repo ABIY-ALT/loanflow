@@ -23,6 +23,9 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
+import { InfoItem } from '@/components/loan/common/InfoItem';
+import { Type } from 'lucide-react';
+
 
 interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'sectorName' | 'requestTypeName' | 'parentSectorName' | 'currentStageName' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' > {
     workflowName?: string;
@@ -36,8 +39,6 @@ interface PipelineWorkflow {
   id: string;
   name: string;
   departmentName: string;
-  sectorName: string;
-  requestTypeName: string;
   order: number;
   stages: PipelineStage[];
 }
@@ -181,8 +182,6 @@ export default function LoanProcessPage() {
           id: workflowId,
           name: workflowNameFromLoan,
           departmentName: wfDef?.departmentName || 'N/A',
-          sectorName: wfDef?.sectorName || 'N/A',
-          requestTypeName: 'N/A', // Request Type no longer a grouping property for workflows
           order: wfDef?.order ?? 0,
           stages: []
         };
@@ -358,9 +357,7 @@ export default function LoanProcessPage() {
                                 <div className="text-left">
                                   <h4 className="font-semibold flex items-center gap-1.5"><Network className="h-4 w-4 text-primary" />{workflow.name}</h4>
                                    <div className="text-xs text-muted-foreground flex items-center gap-2 ml-1">
-                                      <span><span className="font-semibold text-foreground/80">Child Sector:</span> {workflow.sectorName}</span>
-                                      <span>|</span>
-                                      <span><span className="font-semibold text-foreground/80">Dept:</span> {workflow.departmentName}</span>
+                                      <span className="flex items-center gap-1"><Building className="h-3 w-3" />Dept: {workflow.departmentName}</span>
                                     </div>
                                 </div>
                                 <Badge variant="outline">{workflow.stages.reduce((sum, st) => sum + st.loans.length, 0)} Loans</Badge>
@@ -383,12 +380,27 @@ export default function LoanProcessPage() {
                                                   <div className="flex justify-between items-start">
                                                     <div>
                                                       <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
-                                                      <p className="text-xs text-muted-foreground">{loan.requestTypeName}</p>
+                                                      <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
                                                     </div>
                                                     {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
                                                   </div>
-                                                  <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
-                                                  <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
+                                                  
+                                                  <div className="text-xs text-muted-foreground space-y-1 pt-1">
+                                                     <div className="flex items-start gap-2">
+                                                        <Briefcase className="h-3 w-3 mt-0.5 shrink-0"/>
+                                                        <span><span className="font-semibold text-foreground/80">Parent:</span> {loan.parentSectorName}</span>
+                                                      </div>
+                                                      <div className="flex items-start gap-2">
+                                                        <Briefcase className="h-3 w-3 mt-0.5 shrink-0 opacity-60"/>
+                                                        <span><span className="font-semibold text-foreground/80">Child:</span> {loan.sectorName}</span>
+                                                      </div>
+                                                       <div className="flex items-start gap-2">
+                                                        <Type className="h-3 w-3 mt-0.5 shrink-0"/>
+                                                        <span><span className="font-semibold text-foreground/80">Type:</span> {loan.requestTypeName}</span>
+                                                      </div>
+                                                  </div>
+                                                  
+                                                  <div className="text-xs text-muted-foreground flex items-center justify-between pt-2">
                                                     <span className={cn("flex items-center gap-1", loan.isOverdue && "text-destructive font-semibold")}>
                                                       <Clock className="h-3 w-3"/>
                                                       {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
