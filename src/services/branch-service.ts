@@ -84,7 +84,9 @@ export async function deleteDistrict(id: string): Promise<{ success?: boolean; e
 
 export async function getBranches(): Promise<{ branches?: Branch[]; error?: string }> {
    // This is often a public read, but let's secure it for consistency in this admin module.
-   if (!await hasPermission()) return { error: "Unauthorized: You do not have permission to view branches." };
+   const { user } = await getCurrentUser();
+   const canView = user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES) || user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
+   if (!canView) return { error: "Unauthorized: You do not have permission to view branches." };
   try {
     const branches = await prisma.branch.findMany({
       include: { district: true },

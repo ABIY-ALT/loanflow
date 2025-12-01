@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -88,7 +87,7 @@ export default function ManageBranchesPage() {
     if (!authLoading) {
       fetchData(true);
     }
-  }, [authLoading, canManageBranches]);
+  }, [authLoading, canManageBranches, fetchData]);
 
   const handleOpenEditDialog = (item: EditableItem) => {
     setEditingItem(item);
