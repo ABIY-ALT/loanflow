@@ -153,7 +153,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         userId: finalUserId,
         passwordHash: passwordHash,
-        isPasswordChanged: true, // Set to true so they don't need to change password
+        isPasswordChanged: false, // Set to true so they don't need to change password
         failedLoginAttempts: 0,
         lockoutUntil: null,
         ...departmentDataConnect,
@@ -168,7 +168,7 @@ async function main() {
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: true, // Set to true so they don't need to change password
+        isPasswordChanged: false, // Set to true so they don't need to change password
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
