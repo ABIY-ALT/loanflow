@@ -1,5 +1,4 @@
 
-
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -240,6 +239,7 @@ export async function addLoanRequest(
         currentStageStatus: initialStatus,
         history: {
           create: [{
+            loanRequest: { connect: { id: 'will-be-replaced-by-prisma' } }, // Dummy value
             user: { connect: { id: systemUserId } },
             stageName: firstStage.name,
             timestamp: currentDate,
@@ -248,6 +248,18 @@ export async function addLoanRequest(
         },
       },
     });
+    
+    // Now create the history entry with the correct loanId
+    await prisma.loanHistoryEntry.create({
+      data: {
+        loanRequest: { connect: { id: newLoan.id } },
+        user: { connect: { id: systemUserId } },
+        stageName: firstStage.name,
+        timestamp: currentDate,
+        notes: initialHistoryNote,
+      }
+    });
+
     return { id: newLoan.id };
   } catch (e: any) {
     return createErrorResult(`Failed to add loan request. ${e.message}`, "addLoanRequest", e);
@@ -1022,5 +1034,107 @@ export async function searchLoanRequests(
     return { loans: appLoans as LoanRequest[] };
   } catch (e: any) {
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
+  }
+}
+
+
+// NEW PUBLIC FUNCTION
+export interface PublicLoanStatus {
+  loanNumber: string;
+  customerName: string;
+  submittedDate: string;
+  currentStageId: string;
+  currentStageStatus: string | null;
+  isTerminalStage: boolean;
+  workflowSequence: {
+    stageId: string;
+    stageName: string;
+    stageOrder: number;
+    stageTimelineDays: number;
+    departmentName: string;
+  }[];
+}
+
+export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus | null, error?: string }> {
+  try {
+    const prismaLoan = await prisma.loanRequest.findUnique({
+      where: { loanNumber },
+      include: {
+        customer: { select: { name: true } },
+        workflowVersion: {
+          include: {
+            workflowDefinition: {
+              include: {
+                sector: {
+                  select: { parentId: true }
+                }
+              }
+            }
+          }
+        },
+      }
+    });
+
+    if (!prismaLoan) {
+      return { error: 'Loan not found.' };
+    }
+    
+    if (!prismaLoan.workflowVersion?.workflowDefinition.sector?.parentId) {
+        return { error: 'Loan is not associated with a valid workflow path.' };
+    }
+    
+    const parentSectorId = prismaLoan.workflowVersion.workflowDefinition.sector.parentId;
+
+    const allWorkflowDefinitionsInPath = await prisma.workflowDefinition.findMany({
+        where: { sector: { parentId: parentSectorId } },
+        orderBy: { order: 'asc' },
+        include: {
+            versions: {
+                where: { isActive: true },
+                include: {
+                    stages: {
+                        orderBy: { order: 'asc' },
+                        include: {
+                            responsibleDepartment: { select: { name: true }}
+                        }
+                    }
+                }
+            },
+            department: { select: { name: true } }
+        }
+    });
+
+    const workflowSequence = allWorkflowDefinitionsInPath.flatMap(def => 
+        def.versions.flatMap(v => v.stages.map(s => ({
+            stageId: s.id,
+            stageName: s.name,
+            stageOrder: s.order,
+            stageTimelineDays: s.defaultTimelineDays,
+            departmentName: s.responsibleDepartment.name,
+            workflowDefinitionName: def.name,
+            workflowOrder: def.order,
+        })))
+    ).sort((a,b) => {
+        if(a.workflowOrder !== b.workflowOrder) {
+            return a.workflowOrder - b.workflowOrder;
+        }
+        return a.stageOrder - b.stageOrder;
+    });
+
+
+    const result: PublicLoanStatus = {
+      loanNumber: prismaLoan.loanNumber,
+      customerName: prismaLoan.customer.name,
+      submittedDate: formatISO(prismaLoan.submittedDate),
+      currentStageId: prismaLoan.currentStageIdMirror,
+      currentStageStatus: prismaLoan.currentStageStatus,
+      isTerminalStage: prismaLoan.isTerminalStage,
+      workflowSequence: workflowSequence,
+    };
+
+    return { data: result };
+
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }

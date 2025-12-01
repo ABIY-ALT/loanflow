@@ -1,7 +1,8 @@
+
 import { NextResponse, type NextRequest } from 'next/server';
 
 // 1. Specify public routes that do not require authentication
-const publicRoutes = ['/login', '/force-password-change'];
+const publicRoutes = ['/login', '/force-password-change', '/track-loan'];
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;

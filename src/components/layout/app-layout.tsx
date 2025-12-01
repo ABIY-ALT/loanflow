@@ -38,8 +38,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Navigation to /login is handled by AuthContext's useEffect
   };
   
-  // Do not render the main layout for login or password change pages
-  if (pathname === '/login' || pathname === '/force-password-change') {
+  const publicPages = ['/login', '/force-password-change', '/track-loan'];
+  const isPublicPage = publicPages.some(p => pathname.startsWith(p));
+  
+  // Do not render the main layout for specified public pages
+  if (isPublicPage && !user) {
     return <>{children}</>;
   }
 

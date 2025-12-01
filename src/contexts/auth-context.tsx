@@ -17,6 +17,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const publicPaths = ['/login', '/force-password-change', '/track-loan'];
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -66,22 +68,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const isAuthPage = pathname === '/login';
+    const isPublicPage = publicPaths.some(p => pathname.startsWith(p));
+    const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
     const isPasswordChangePage = pathname === '/force-password-change';
 
-    if (!user && !isAuthPage && !isPasswordChangePage) {
+    if (!user && !isPublicPage) {
       router.replace('/login');
     } else if (user) {
       if (!user.isPasswordChanged && !isPasswordChangePage) {
         router.replace('/force-password-change');
-      } else if (user.isPasswordChanged && (isAuthPage || isPasswordChangePage)) {
+      } else if (user.isPasswordChanged && isAuthPage) {
         router.replace('/');
       }
     }
   }, [user, pathname, router, isInitialLoading]);
 
   const isLoadingOverall = isInitialLoading || isProcessingAuth;
-  const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+  const isPublicPage = publicPaths.some(p => pathname.startsWith(p));
 
   // While initially loading, or if we are processing a login/logout, show a full-page loader.
   if (isLoadingOverall) {
@@ -95,8 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
   
-  // If we have finished loading but there's no user, and we are not on an auth page, show a redirecting state until the useEffect kicks in.
-  if (!user && !isAuthPage) {
+  // If we have finished loading but there's no user, and we are not on an auth-exempt page, show a redirecting state.
+  if (!user && !isPublicPage) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -105,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
   
-  // If we have a user, but they need to change their password and are not on that page, show redirecting state.
+  // If user must change password and is not on the correct page, redirect.
   if (user && !user.isPasswordChanged && pathname !== '/force-password-change') {
       return (
         <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">

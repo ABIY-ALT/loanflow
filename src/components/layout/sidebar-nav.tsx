@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import Link from 'next/link';
@@ -20,6 +19,7 @@ import {
   BarChartBig,
   Users,
   Map,
+  FileSearch,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -83,9 +83,15 @@ const navItemsConfig: NavItemConfig[] = [
   },
   { 
     href: '/loan-status', 
-    label: 'Loan Status Lookup', 
+    label: 'Internal Status Lookup', 
     icon: SearchCheck,
     requiredPermissions: [PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP]
+  },
+   {
+    href: '/track-loan',
+    label: 'Public Loan Tracker',
+    icon: FileSearch,
+    requiredPermissions: [] // Public page, but shown to logged-in users for convenience
   },
   {
     href: '/reports',
@@ -166,14 +172,23 @@ export default function SidebarNav() {
     );
   }
 
-  if (!user) {
-    return null; 
+  // Hide nav if user is not logged in and not on a public page
+  const publicPaths = ['/track-loan'];
+  const isPublicPage = publicPaths.some(p => currentPathname.startsWith(p));
+  if (!user && !isPublicPage) {
+    return null;
+  }
+  
+  if (!user && isPublicPage) {
+     return null; // Don't show sidebar on public pages for non-logged in users
   }
 
-  const userPermissions = new Set(user.permissions || []);
+
+  const userPermissions = new Set(user?.permissions || []);
 
   const canView = (itemRequiredPermissions?: AppPermission[]): boolean => {
-    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true;
+    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public items
+    if (!user) return false; // Must be logged in for permissioned items
     return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
   
