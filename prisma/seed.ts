@@ -12,12 +12,26 @@ async function main() {
 
   // --- Seed Sectors ---
   console.log('Seeding Sectors...');
-  const parentSectors = ['Agriculture', 'Manufacturing', 'Service', 'Trade'];
+  const parentSectors = [
+    'Institutional Banking & Green Financing', 
+    'Service & Mining Sectors', 
+    'Manufacturing & Agriculture Sector'
+  ];
   const childSectors: Record<string, string[]> = {
-    'Agriculture': ['Crop Production', 'Livestock'],
-    'Manufacturing': ['Textiles', 'Food Processing'],
-    'Service': ['Tourism', 'IT Services'],
-    'Trade': ['Import', 'Export'],
+    'Institutional Banking & Green Financing': ['Financial Institution', 'Mining, Power and Water'],
+    'Service & Mining Sectors': [
+      'Domestic Trade and Service',
+      'Hotel and Tourism',
+      'Transport',
+      'International Trade – Export',
+      'International Trade – Import',
+      'Personal Loan'
+    ],
+    'Manufacturing & Agriculture Sector': [
+      'Manufacturing Industry',
+      'Agriculture',
+      'Building and Construction'
+    ],
   };
   
   for (const sectorName of parentSectors) {
