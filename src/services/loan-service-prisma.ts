@@ -160,7 +160,11 @@ export async function addLoanRequest(
             isActive: true,
             workflowDefinition: {
                 is: {
-                    parentSectorId: selectedChildSector.parentId
+                   sector: {
+                    is: {
+                        parentId: selectedChildSector.parentId
+                    }
+                   }
                 }
             }
         },
