@@ -71,3 +71,4 @@ const createDocReq = (id: string, name: string, isMandatory: boolean, type: Docu
 // The workflow and loan request mock data is kept for reference or potential future use in non-DB environments, but it is not actively used by the application which now relies on the database.
 // The primary exports used by the seeding process are mockUsers and mockDepartments.
 
+
