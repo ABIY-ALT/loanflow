@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map, Briefcase } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -45,12 +45,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
+import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector, RequestType } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
-import { getLoanTypes, addLoanType, deleteLoanType as deleteLoanTypeService, updateLoanType } from '@/services/loan-type-service';
-import type { LoanType } from '@/types/loan';
+import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType } from '@/services/sector-and-request-type-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -92,7 +91,7 @@ interface DepartmentObject {
   id: string;
   name: Department;
 }
-interface LoanTypeObject {
+interface ConfigurableItem {
   id: string;
   name: string;
 }
@@ -518,7 +517,8 @@ export default function SettingsPage() {
   
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [departments, setDepartments] = useState<DepartmentObject[]>([]);
-  const [loanTypes, setLoanTypes] = useState<LoanTypeObject[]>([]);
+  const [sectors, setSectors] = useState<ConfigurableItem[]>([]);
+  const [requestTypes, setRequestTypes] = useState<ConfigurableItem[]>([]);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -528,17 +528,23 @@ export default function SettingsPage() {
 
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
-  const [newWorkflowLoanTypeId, setNewWorkflowLoanTypeId] = useState('');
+  const [newWorkflowSectorId, setNewWorkflowSectorId] = useState('');
+  const [newWorkflowRequestTypeId, setNewWorkflowRequestTypeId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
   
   const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
   const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
-  const [newLoanTypeName, setNewLoanTypeName] = useState('');
-  const [editingLoanType, setEditingLoanType] = useState<LoanTypeObject | null>(null);
-  const [editingLoanTypeName, setEditingLoanTypeName] = useState('');
-  const [isEditLoanTypeDialogOpen, setIsEditLoanTypeDialogOpen] = useState(false);
+  const [newSectorName, setNewSectorName] = useState('');
+  const [editingSector, setEditingSector] = useState<ConfigurableItem | null>(null);
+  const [editingSectorName, setEditingSectorName] = useState('');
+  const [isEditSectorDialogOpen, setIsEditSectorDialogOpen] = useState(false);
+  
+  const [newRequestTypeName, setNewRequestTypeName] = useState('');
+  const [editingRequestType, setEditingRequestType] = useState<ConfigurableItem | null>(null);
+  const [editingRequestTypeName, setEditingRequestTypeName] = useState('');
+  const [isEditRequestTypeDialogOpen, setIsEditRequestTypeDialogOpen] = useState(false);
 
 
   const [enableNotifications, setEnableNotifications] = useState(true);
@@ -551,10 +557,11 @@ export default function SettingsPage() {
       setIsLoadingData(true);
       setError(null);
       try {
-        const [wfResult, deptResult, loanTypeResult] = await Promise.all([
+        const [wfResult, deptResult, sectorResult, requestTypeResult] = await Promise.all([
           getWorkflowDefinitions(),
           getDepartments(),
-          getLoanTypes(),
+          getSectors(),
+          getRequestTypes(),
         ]);
 
         if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
@@ -564,24 +571,30 @@ export default function SettingsPage() {
         const fetchedDepts = deptResult.departments || [];
         setDepartments(fetchedDepts);
 
-        if (loanTypeResult.error) throw new Error(`Loan Types: ${loanTypeResult.error}`);
-        const fetchedLoanTypes = loanTypeResult.loanTypes || [];
-        setLoanTypes(fetchedLoanTypes);
+        if (sectorResult.error) throw new Error(`Sectors: ${sectorResult.error}`);
+        const fetchedSectors = sectorResult.sectors || [];
+        setSectors(fetchedSectors);
+        
+        if (requestTypeResult.error) throw new Error(`Request Types: ${requestTypeResult.error}`);
+        const fetchedRequestTypes = requestTypeResult.requestTypes || [];
+        setRequestTypes(fetchedRequestTypes);
 
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
-        if(fetchedLoanTypes.length > 0 && newWorkflowLoanTypeId === '') setNewWorkflowLoanTypeId(fetchedLoanTypes[0].id);
+        if(fetchedSectors.length > 0 && newWorkflowSectorId === '') setNewWorkflowSectorId(fetchedSectors[0].id);
+        if(fetchedRequestTypes.length > 0 && newWorkflowRequestTypeId === '') setNewWorkflowRequestTypeId(fetchedRequestTypes[0].id);
         
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
         setError(errorMessage);
         setWorkflowDefinitions([]);
         setDepartments([]);
-        setLoanTypes([]);
+        setSectors([]);
+        setRequestTypes([]);
         toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive", duration: 9000});
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast]);
+    }, [toast, newWorkflowDepartmentId, newWorkflowSectorId, newWorkflowRequestTypeId]);
 
 
   useEffect(() => {
@@ -596,9 +609,9 @@ export default function SettingsPage() {
   
   const referenceWorkflowOptions = useMemo(() => {
     return workflowDefinitions
-      .filter(wf => wf.loanTypeId === newWorkflowLoanTypeId)
+      .filter(wf => wf.sectorId === newWorkflowSectorId && wf.requestTypeId === newWorkflowRequestTypeId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [workflowDefinitions, newWorkflowLoanTypeId]);
+  }, [workflowDefinitions, newWorkflowSectorId, newWorkflowRequestTypeId]);
   
   useEffect(() => {
     if (referenceWorkflowOptions.length > 0) {
@@ -618,7 +631,7 @@ export default function SettingsPage() {
     if (!targetDefToActivate) return;
     
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-        if (def.departmentId === targetDefToActivate.departmentId && def.loanTypeId === targetDefToActivate.loanTypeId) {
+        if (def.departmentId === targetDefToActivate.departmentId && def.sectorId === targetDefToActivate.sectorId && def.requestTypeId === targetDefToActivate.requestTypeId) {
             if (def.id === definitionIdToActivate) {
                 return {
                     ...def,
@@ -634,7 +647,7 @@ export default function SettingsPage() {
     }));
 
     const activatedVersion = targetDefToActivate?.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its Department/Loan Type. Click "Save All Settings" to persist.` });
+    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its combination. Click "Save All Settings" to persist.` });
   };
   
   const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
@@ -693,20 +706,20 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowLoanTypeId) {
-        toast({ title: "Validation Error", description: "Workflow name, department, and loan type are all required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowSectorId || !newWorkflowRequestTypeId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, sector, and request type are all required.", variant: "destructive", duration: 9000 });
         return;
     }
     
-    // Client-side validation for duplicate department/loan type combination
+    // Client-side validation for duplicate combination
     const alreadyExists = workflowDefinitions.some(
-        wf => wf.departmentId === newWorkflowDepartmentId && wf.loanTypeId === newWorkflowLoanTypeId
+        wf => wf.departmentId === newWorkflowDepartmentId && wf.sectorId === newWorkflowSectorId && wf.requestTypeId === newWorkflowRequestTypeId
     );
 
     if (alreadyExists) {
         toast({
             title: "Duplicate Workflow",
-            description: "A workflow for this department and loan type combination already exists. Please choose a different combination.",
+            description: "A workflow for this Department/Sector/Request Type combination already exists.",
             variant: "destructive",
             duration: 9000
         });
@@ -723,8 +736,10 @@ export default function SettingsPage() {
         description: newWorkflowDescription,
         departmentId: newWorkflowDepartmentId,
         departmentName: departments.find(d => d.id === newWorkflowDepartmentId)?.name || 'Unknown',
-        loanTypeId: newWorkflowLoanTypeId,
-        loanTypeName: loanTypes.find(lt => lt.id === newWorkflowLoanTypeId)?.name || 'Unknown',
+        sectorId: newWorkflowSectorId,
+        sectorName: sectors.find(s => s.id === newWorkflowSectorId)?.name || 'Unknown',
+        requestTypeId: newWorkflowRequestTypeId,
+        requestTypeName: requestTypes.find(rt => rt.id === newWorkflowRequestTypeId)?.name || 'Unknown',
         order: 0,
     };
     
@@ -760,20 +775,20 @@ export default function SettingsPage() {
     toast({ title: "Workflow Added Locally", description: `"${newWorkflowName}" was added. Save all settings to persist.` });
   };
 
-   const handleAddLoanType = async () => {
+   const handleAddSector = async () => {
     if (!canManageWorkflows) return;
-    if (!newLoanTypeName.trim()) {
-      toast({ title: "Validation Error", description: "Loan type name cannot be empty.", variant: "destructive" });
+    if (!newSectorName.trim()) {
+      toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
       return;
     }
     setIsSavingData(true);
     try {
-      const result = await addLoanType(newLoanTypeName.trim());
+      const result = await addSector(newSectorName.trim());
       if (result.error || !result.id) {
-        toast({ title: "Error Adding Loan Type", description: result.error || "Failed to add loan type.", variant: "destructive" });
+        toast({ title: "Error Adding Sector", description: result.error || "Failed to add sector.", variant: "destructive" });
       } else {
-        toast({ title: "Success", description: `Loan type "${newLoanTypeName.trim()}" added.` });
-        setNewLoanTypeName('');
+        toast({ title: "Success", description: `Sector "${newSectorName.trim()}" added.` });
+        setNewSectorName('');
         await fetchInitialData(); 
       }
     } catch (error: any) {
@@ -783,21 +798,21 @@ export default function SettingsPage() {
     }
   };
 
-  const handleUpdateLoanType = async () => {
-    if (!canManageWorkflows || !editingLoanType) return;
-    if (!editingLoanTypeName.trim()) {
-        toast({ title: "Validation Error", description: "Loan type name cannot be empty.", variant: "destructive" });
+  const handleUpdateSector = async () => {
+    if (!canManageWorkflows || !editingSector) return;
+    if (!editingSectorName.trim()) {
+        toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
         return;
     }
     setIsSavingData(true);
     try {
-        const result = await updateLoanType(editingLoanType.id, editingLoanTypeName);
+        const result = await updateSector(editingSector.id, editingSectorName);
         if (result.error) {
-            toast({ title: "Error Updating Loan Type", description: result.error, variant: "destructive" });
+            toast({ title: "Error Updating Sector", description: result.error, variant: "destructive" });
         } else {
-            toast({ title: "Success", description: "Loan type updated." });
-            setIsEditLoanTypeDialogOpen(false);
-            setEditingLoanType(null);
+            toast({ title: "Success", description: "Sector updated." });
+            setIsEditSectorDialogOpen(false);
+            setEditingSector(null);
             await fetchInitialData();
         }
     } catch (error: any) {
@@ -807,15 +822,80 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteLoanType = async (loanTypeId: string, loanTypeName: string) => {
+  const handleDeleteSector = async (sectorId: string, sectorName: string) => {
     if (!canManageWorkflows) return;
     setIsSavingData(true);
     try {
-      const result = await deleteLoanTypeService(loanTypeId);
+      const result = await deleteSector(sectorId);
       if (result.error) {
-        toast({ title: "Error Deleting Loan Type", description: result.error, variant: "destructive", duration: 7000 });
+        toast({ title: "Error Deleting Sector", description: result.error, variant: "destructive", duration: 7000 });
       } else {
-        toast({ title: "Success", description: `Loan type "${loanTypeName}" deleted.` });
+        toast({ title: "Success", description: `Sector "${sectorName}" deleted.` });
+        await fetchInitialData();
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+  
+    const handleAddRequestType = async () => {
+    if (!canManageWorkflows) return;
+    if (!newRequestTypeName.trim()) {
+      toast({ title: "Validation Error", description: "Request Type name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSavingData(true);
+    try {
+      const result = await addRequestType(newRequestTypeName.trim());
+      if (result.error || !result.id) {
+        toast({ title: "Error Adding Request Type", description: result.error || "Failed to add request type.", variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: `Request Type "${newRequestTypeName.trim()}" added.` });
+        setNewRequestTypeName('');
+        await fetchInitialData(); 
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
+  const handleUpdateRequestType = async () => {
+    if (!canManageWorkflows || !editingRequestType) return;
+    if (!editingRequestTypeName.trim()) {
+        toast({ title: "Validation Error", description: "Request Type name cannot be empty.", variant: "destructive" });
+        return;
+    }
+    setIsSavingData(true);
+    try {
+        const result = await updateRequestType(editingRequestType.id, editingRequestTypeName);
+        if (result.error) {
+            toast({ title: "Error Updating Request Type", description: result.error, variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: "Request Type updated." });
+            setIsEditRequestTypeDialogOpen(false);
+            setEditingRequestType(null);
+            await fetchInitialData();
+        }
+    } catch (error: any) {
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+        setIsSavingData(false);
+    }
+  };
+
+  const handleDeleteRequestType = async (requestTypeId: string, requestTypeName: string) => {
+    if (!canManageWorkflows) return;
+    setIsSavingData(true);
+    try {
+      const result = await deleteRequestType(requestTypeId);
+      if (result.error) {
+        toast({ title: "Error Deleting Request Type", description: result.error, variant: "destructive", duration: 7000 });
+      } else {
+        toast({ title: "Success", description: `Request Type "${requestTypeName}" deleted.` });
         await fetchInitialData();
       }
     } catch (error: any) {
@@ -901,19 +981,21 @@ export default function SettingsPage() {
         </div>
     );
   }
-
-  const workflowsByLoanType = workflowDefinitions.reduce((acc, wf) => {
-    const loanTypeId = wf.loanTypeId;
-    if (!acc[loanTypeId]) {
-      acc[loanTypeId] = {
-        loanTypeName: wf.loanTypeName,
+  
+  const workflowsByCombination = workflowDefinitions.reduce((acc, wf) => {
+    const key = `${wf.sectorName} | ${wf.requestTypeName}`;
+    if (!acc[key]) {
+      acc[key] = {
+        sectorName: wf.sectorName,
+        requestTypeName: wf.requestTypeName,
         workflows: []
       };
     }
-    acc[loanTypeId].workflows.push(wf);
-    acc[loanTypeId].workflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    acc[key].workflows.push(wf);
+    acc[key].workflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return acc;
-  }, {} as Record<string, { loanTypeName: string; workflows: WorkflowDefinition[] }>);
+  }, {} as Record<string, { sectorName: string; requestTypeName: string; workflows: WorkflowDefinition[] }>);
+
 
   return (
     <div className="space-y-8">
@@ -943,89 +1025,131 @@ export default function SettingsPage() {
 
     {canManageWorkflows && (
       <>
-      <Card>
-          <CardHeader>
-              <CardTitle>Manage Loan Types</CardTitle>
-              <CardDescription>Define the types of loans your organization processes, e.g., "Personal Loan", "Mortgage".</CardDescription>
-          </CardHeader>
-          <CardContent>
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                  <Input
-                      placeholder="e.g., Small Business Loan"
-                      value={newLoanTypeName}
-                      onChange={(e) => setNewLoanTypeName(e.target.value)}
-                      disabled={isSavingData || isSavingAll}
-                  />
-                  <Button onClick={handleAddLoanType} disabled={!newLoanTypeName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
-                      {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
-                      Add Loan Type
-                  </Button>
-              </div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Loan Type Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {loanTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No loan types defined yet.</TableCell></TableRow>}
-                  {loanTypes.map(lt => (
-                    <TableRow key={lt.id}>
-                      <TableCell className="font-medium">{lt.name}</TableCell>
-                      <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingLoanType(lt); setEditingLoanTypeName(lt.name); setIsEditLoanTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
-                            <Edit className="mr-1 h-4 w-4" /> Edit
-                          </Button>
-                          <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}>
-                                      <Trash2 className="mr-1 h-4 w-4" /> Delete
-                                  </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                      <AlertDialogDescription>This action cannot be undone. This will delete the loan type "{lt.name}" and may affect workflow definitions that use it.</AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteLoanType(lt.id, lt.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction>
-                                  </AlertDialogFooter>
-                              </AlertDialogContent>
-                          </AlertDialog>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-          </CardContent>
-      </Card>
-      
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+            <CardHeader>
+                <CardTitle>Manage Sectors</CardTitle>
+                <CardDescription>Define business sectors, e.g., "Agriculture", "Manufacturing".</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                    <Input
+                        placeholder="e.g., Service Industry"
+                        value={newSectorName}
+                        onChange={(e) => setNewSectorName(e.target.value)}
+                        disabled={isSavingData || isSavingAll}
+                    />
+                    <Button onClick={handleAddSector} disabled={!newSectorName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
+                        {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
+                        Add Sector
+                    </Button>
+                </div>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {sectors.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
+                    {sectors.map(item => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingSector(item); setEditingSectorName(item.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
+                              <Edit className="mr-1 h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}>
+                                        <Trash2 className="mr-1 h-4 w-4" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Delete Sector "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>Manage Request Types</CardTitle>
+                <CardDescription>Define request types, e.g., "New Loan", "Restructuring".</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                    <Input
+                        placeholder="e.g., Additional Facility"
+                        value={newRequestTypeName}
+                        onChange={(e) => setNewRequestTypeName(e.target.value)}
+                        disabled={isSavingData || isSavingAll}
+                    />
+                    <Button onClick={handleAddRequestType} disabled={!newRequestTypeName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
+                        {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
+                        Add Request Type
+                    </Button>
+                </div>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Request Type Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {requestTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No request types defined yet.</TableCell></TableRow>}
+                    {requestTypes.map(item => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingRequestType(item); setEditingRequestTypeName(item.name); setIsEditRequestTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
+                              <Edit className="mr-1 h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequestType(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows for different departments and loan types. New loans will use the active version for their specific department and loan type combination.</CardDescription>
+          <CardDescription>Manage workflows for different departments, sectors and request types. New loans will use the active version for their specific combination.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
             <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., Standard Personal Loan Process" disabled={isSavingAll || isSavingData} /></div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
               <div>
-                <Label htmlFor="new-wf-loantype">For Loan Type</Label>
-                <Select value={newWorkflowLoanTypeId} onValueChange={(value) => setNewWorkflowLoanTypeId(value)}>
-                  <SelectTrigger id="new-wf-loantype" className="mt-1"><SelectValue placeholder="Select Loan Type" /></SelectTrigger>
-                  <SelectContent>
-                    {loanTypes.map(lt => <SelectItem key={`new-wf-lt-option-${lt.id}`} value={lt.id}>{lt.name}</SelectItem>)}
-                  </SelectContent>
+                <Label htmlFor="new-wf-sector">For Sector</Label>
+                <Select value={newWorkflowSectorId} onValueChange={(value) => setNewWorkflowSectorId(value)}>
+                  <SelectTrigger id="new-wf-sector" className="mt-1"><SelectValue placeholder="Select Sector" /></SelectTrigger>
+                  <SelectContent>{sectors.map(s => <SelectItem key={`new-wf-s-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="new-wf-dept">For Department</Label>
+                <Label htmlFor="new-wf-request-type">For Request Type</Label>
+                <Select value={newWorkflowRequestTypeId} onValueChange={(value) => setNewWorkflowRequestTypeId(value)}>
+                  <SelectTrigger id="new-wf-request-type" className="mt-1"><SelectValue placeholder="Select Request Type" /></SelectTrigger>
+                  <SelectContent>{requestTypes.map(rt => <SelectItem key={`new-wf-rt-option-${rt.id}`} value={rt.id}>{rt.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="new-wf-dept">Owning Department</Label>
                 <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
                   <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
-                  <SelectContent>
-                    {departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="md:col-span-3"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
+              <div className="md:col-span-4"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
             </div>
             
             <div className="grid md:grid-cols-3 gap-4 items-end">
@@ -1040,14 +1164,12 @@ export default function SettingsPage() {
                 </Select>
               </div>
               <div>
-                <Label>Reference Workflow</Label>
+                <Label>Reference Workflow (in same category)</Label>
                 <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={referenceWorkflowOptions.length === 0}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select reference workflow"/>
-                  </SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference workflow"/></SelectTrigger>
                   <SelectContent>
                     {referenceWorkflowOptions.length === 0 ? (
-                      <SelectItem value="no-workflows-found" disabled>No existing workflows for this loan type</SelectItem>
+                      <SelectItem value="no-workflows-found" disabled>No existing workflows for this category</SelectItem>
                     ) : (
                       referenceWorkflowOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)
                     )}
@@ -1059,16 +1181,16 @@ export default function SettingsPage() {
                   Add Workflow
               </Button>
             </div>
-            {(loanTypes.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: Both a department and a loan type must be configured first.</p>}
+            {(sectors.length === 0 || requestTypes.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A sector, request type, and department must be configured first.</p>}
           </div>
 
           <Separator/>
           
-          <h4 className="font-medium text-lg">Current Workflow Order</h4>
+          <h4 className="font-medium text-lg">Current Workflow Paths (By Combination)</h4>
           <div className="space-y-4">
-          {Object.values(workflowsByLoanType).map(({ loanTypeName, workflows }) => (
-            <div key={loanTypeName} className="p-4 border rounded-lg">
-              <h5 className="font-medium mb-3 text-primary">{loanTypeName} Workflow Path</h5>
+          {Object.values(workflowsByCombination).map(({ sectorName, requestTypeName, workflows }) => (
+            <div key={`${sectorName}-${requestTypeName}`} className="p-4 border rounded-lg">
+              <h5 className="font-medium mb-3"><span className="text-primary">{sectorName}</span> / <span className="text-primary/80">{requestTypeName}</span> Path</h5>
               <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
                 {workflows.map((def, index) => (
                   <React.Fragment key={def.id}>
@@ -1082,11 +1204,11 @@ export default function SettingsPage() {
                     {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
                   </React.Fragment>
                 ))}
-                {workflows.length === 0 && <p className="text-muted-foreground">No workflows defined for this loan type.</p>}
+                {workflows.length === 0 && <p className="text-muted-foreground">No workflows defined for this combination.</p>}
               </div>
             </div>
           ))}
-          {Object.keys(workflowsByLoanType).length === 0 && (
+          {Object.keys(workflowsByCombination).length === 0 && (
              <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet. Add one above to start.</div>
           )}
         </div>
@@ -1101,7 +1223,8 @@ export default function SettingsPage() {
                       <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
-                        <Badge variant="outline">Loan Type: {def.loanTypeName || 'N/A'}</Badge>
+                        <Badge variant="outline">Sector: {def.sectorName || 'N/A'}</Badge>
+                        <Badge variant="outline">Request Type: {def.requestTypeName || 'N/A'}</Badge>
                         {def.description && (
                           <Button variant="ghost" size="sm" className="h-auto p-1 text-xs" onClick={(e) => { e.stopPropagation(); toggleDescription(def.id); }}>
                             {expandedDescriptions.has(def.id) ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
@@ -1157,7 +1280,7 @@ export default function SettingsPage() {
       </Card>
       </>
     )}
-
+      
       <EditWorkflowVersionDialog
         isOpen={isEditVersionDialogOpen}
         onOpenChange={setIsEditVersionDialogOpen}
@@ -1168,26 +1291,33 @@ export default function SettingsPage() {
         departmentName={currentWorkflowDefForEdit?.departmentName || ''}
       />
       
-      <Dialog open={isEditLoanTypeDialogOpen} onOpenChange={setIsEditLoanTypeDialogOpen}>
+      <Dialog open={isEditSectorDialogOpen} onOpenChange={setIsEditSectorDialogOpen}>
         <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Edit Loan Type</DialogTitle>
-                <DialogDescription>Update the name for &quot;{editingLoanType?.name}&quot;.</DialogDescription>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Edit Sector</DialogTitle><DialogDescription>Update the name for &quot;{editingSector?.name}&quot;.</DialogDescription></DialogHeader>
             <div className="grid gap-4 py-4">
-                <Label htmlFor="editing-loan-type-name">New Name</Label>
-                <Input
-                    id="editing-loan-type-name"
-                    value={editingLoanTypeName}
-                    onChange={(e) => setEditingLoanTypeName(e.target.value)}
-                    disabled={isSavingData}
-                />
+                <Label htmlFor="editing-sector-name">New Name</Label>
+                <Input id="editing-sector-name" value={editingSectorName} onChange={(e) => setEditingSectorName(e.target.value)} disabled={isSavingData} />
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleUpdateLoanType} disabled={isSavingData || !editingLoanTypeName.trim()}>
-                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save
+                <Button type="button" onClick={handleUpdateSector} disabled={isSavingData || !editingSectorName.trim()}>
+                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isEditRequestTypeDialogOpen} onOpenChange={setIsEditRequestTypeDialogOpen}>
+        <DialogContent>
+            <DialogHeader><DialogTitle>Edit Request Type</DialogTitle><DialogDescription>Update the name for &quot;{editingRequestType?.name}&quot;.</DialogDescription></DialogHeader>
+            <div className="grid gap-4 py-4">
+                <Label htmlFor="editing-rt-name">New Name</Label>
+                <Input id="editing-rt-name" value={editingRequestTypeName} onChange={(e) => setEditingRequestTypeName(e.target.value)} disabled={isSavingData} />
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleUpdateRequestType} disabled={isSavingData || !editingRequestTypeName.trim()}>
+                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save
                 </Button>
             </DialogFooter>
         </DialogContent>
@@ -1224,5 +1354,6 @@ export default function SettingsPage() {
     
 
     
+
 
 
