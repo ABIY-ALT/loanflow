@@ -10,6 +10,33 @@ const prisma = new PrismaClient();
 async function main() {
   console.log(`Start seeding ...`);
 
+  // --- Seed Sectors ---
+  console.log('Seeding Sectors...');
+  const sectors = ['Agriculture', 'Manufacturing', 'Service', 'Trade'];
+  for (const sectorName of sectors) {
+    await prisma.sector.upsert({
+      where: { name: sectorName },
+      update: {},
+      create: { name: sectorName },
+    });
+    console.log(`Created/verified sector: ${sectorName}`);
+  }
+  console.log('Sectors seeded.');
+
+  // --- Seed Request Types ---
+  console.log('Seeding Request Types...');
+  const requestTypes = ['New Loan', 'Restructuring', 'Additional Facility'];
+  for (const requestTypeName of requestTypes) {
+    await prisma.requestType.upsert({
+      where: { name: requestTypeName },
+      update: {},
+      create: { name: requestTypeName },
+    });
+    console.log(`Created/verified request type: ${requestTypeName}`);
+  }
+  console.log('Request Types seeded.');
+
+
   // Seed Departments
   console.log('Seeding Departments...');
   for (const deptName of mockDepartments) {
@@ -49,7 +76,7 @@ async function main() {
         'CREATE_LOAN_REQUEST', 'VIEW_OWN_ASSIGNED_CASES', 'EDIT_LOAN_DETAILS',
         'ADD_LOAN_NOTES', 'LOG_INFO_REQUEST', 'FULFILL_INFO_REQUEST',
         'UPLOAD_LOAN_DOCUMENTS', 'VERIFY_LOAN_DOCUMENTS', 'MARK_STAGE_COMPLETE',
-        'ASSIGN_LOAN_TO_STAFF', 'FLAG_URGENT_CASE'
+        'ASSIGN_LOAN_TO_STAFF', 'FLAG_URGENT_CASE', 'VIEW_LOAN_STATUS_LOOKUP'
       ],
     },
   });

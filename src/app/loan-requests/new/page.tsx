@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -116,8 +117,24 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      const payload = { ...data, loanType: '' };
-      const result = await addLoanRequest(payload);
+      const selectedWorkflow = availableWorkflows.find(wf => wf.id === data.workflowVersionId);
+      if (!selectedWorkflow) {
+        toast({ title: "Submission Error", description: "Selected workflow not found.", variant: "destructive" });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const sector = await prisma.sector.findUnique({ where: { name: selectedWorkflow.sectorName } });
+      const requestType = await prisma.requestType.findUnique({ where: { name: selectedWorkflow.requestTypeName } });
+
+      if (!sector || !requestType) {
+        toast({ title: "Configuration Error", description: "Could not find sector or request type for the selected workflow.", variant: "destructive" });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const payload = { ...data, sectorId: sector.id, requestTypeId: requestType.id };
+      const result = await addLoanRequest(payload as any);
 
       if (result.error) {
         toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
@@ -271,7 +288,7 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Workflow Selector — FIXED */}
+                {/* ✅ Workflow Selector */}
                 <FormField
                   control={form.control}
                   name="workflowVersionId"
@@ -290,7 +307,7 @@ export default function NewLoanRequestPage() {
                           <SelectContent>
                             {availableWorkflows.map(wf => (
                               <SelectItem key={wf.id} value={wf.id}>
-                                {wf.name} ({wf.loanTypeName} / Dept: {wf.departmentName})
+                                {wf.name} ({wf.sectorName} / {wf.requestTypeName})
                               </SelectItem>
                             ))}
                             {availableWorkflows.length === 0 && !isLoading && (

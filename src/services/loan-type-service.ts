@@ -1,123 +1,147 @@
 
+
 'use server';
 
 import prisma from '@/lib/prisma';
-import type { LoanType as PrismaLoanType } from '@prisma/client';
+import type { Sector as PrismaSector, RequestType as PrismaRequestType } from '@prisma/client';
 import { getCurrentUser } from '@/app/auth/actions';
 import { PERMISSIONS } from '@/lib/permissions';
 
-export interface LoanType {
+// Renamed interfaces to be more generic, can be used for both Sector and RequestType
+export interface ConfigurableListItem {
   id: string;
   name: string;
 }
 
-const mapPrismaLoanTypeToApp = (prismaLoanType: PrismaLoanType): LoanType => ({
-  id: prismaLoanType.id,
-  name: prismaLoanType.name,
+const mapPrismaToApp = (prismaItem: PrismaSector | PrismaRequestType): ConfigurableListItem => ({
+  id: prismaItem.id,
+  name: prismaItem.name,
 });
 
-interface LoanTypeServiceResult<T> {
+interface ServiceResult<T> {
   data?: T;
   error?: string;
 }
 
-const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  const genericMessage = 'An unexpected error occurred in the loan type service.';
-  console.error(`[LoanTypeService:${context || 'Unknown'}] Error: ${message}`, originalError);
+const createErrorResult = <T>(message: string, context?: string, originalError?: any): ServiceResult<T> => {
+  const genericMessage = `An unexpected error occurred in the configuration service for ${context}.`;
+  console.error(`[ConfigService:${context || 'Unknown'}] Error: ${message}`, originalError);
   return { error: genericMessage };
 };
 
 const hasPermission = async (): Promise<boolean> => {
     const { user } = await getCurrentUser();
-    // Allow viewing if user can manage workflows, but edits require specific permission
     return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 }
 
-const hasEditPermission = async (): Promise<boolean> => {
-     const { user } = await getCurrentUser();
-    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
-}
+// --- Sector Functions ---
 
-
-export async function getLoanTypes(): Promise<{ loanTypes?: LoanType[]; error?: string }> {
+export async function getSectors(): Promise<{ sectors?: ConfigurableListItem[]; error?: string }> {
   if (!await hasPermission()) return { error: "Unauthorized" };
   try {
-    const loanTypes = await prisma.loanType.findMany({
-      orderBy: { name: 'asc' },
-    });
-    return { loanTypes: loanTypes.map(mapPrismaLoanTypeToApp) };
+    const sectors = await prisma.sector.findMany({ orderBy: { name: 'asc' } });
+    return { sectors: sectors.map(mapPrismaToApp) };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch loan types.", "getLoanTypes", e);
+    return createErrorResult("Failed to fetch sectors.", "getSectors", e);
   }
 }
 
-export async function addLoanType(name: string): Promise<{ id?: string; error?: string }> {
-  if (!await hasEditPermission()) return { error: "Unauthorized" };
-  if (!name.trim()) {
-    return { error: "Loan type name cannot be empty." };
-  }
+export async function addSector(name: string): Promise<{ id?: string; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
+  if (!name.trim()) return { error: "Sector name cannot be empty." };
   try {
-    const existing = await prisma.loanType.findUnique({
-      where: { name: name.trim() },
-    });
-    if (existing) {
-      return { error: `Loan type with name "${name.trim()}" already exists.` };
-    }
+    const existing = await prisma.sector.findUnique({ where: { name: name.trim() } });
+    if (existing) return { error: `Sector with name "${name.trim()}" already exists.` };
 
-    const newLoanType = await prisma.loanType.create({
-      data: {
-        name: name.trim(),
-      },
-    });
-    return { id: newLoanType.id };
+    const newSector = await prisma.sector.create({ data: { name: name.trim() } });
+    return { id: newSector.id };
   } catch (e: any) {
-    return createErrorResult("Failed to add loan type.", "addLoanType", e);
+    return createErrorResult("Failed to add sector.", "addSector", e);
   }
 }
 
-export async function updateLoanType(id: string, name: string): Promise<LoanTypeServiceResult<LoanType>> {
-    if (!await hasEditPermission()) return { error: "Unauthorized" };
-    if (!name.trim()) {
-        return { error: "Loan type name cannot be empty." };
-    }
+export async function updateSector(id: string, name: string): Promise<ServiceResult<ConfigurableListItem>> {
+    if (!await hasPermission()) return { error: "Unauthorized" };
+    if (!name.trim()) return { error: "Sector name cannot be empty." };
     try {
-        const existing = await prisma.loanType.findFirst({
-            where: {
-                name: name.trim(),
-                id: { not: id },
-            },
-        });
-        if (existing) {
-            return { error: `Another loan type with name "${name.trim()}" already exists.` };
-        }
+        const existing = await prisma.sector.findFirst({ where: { name: name.trim(), id: { not: id } } });
+        if (existing) return { error: `Another sector with name "${name.trim()}" already exists.` };
 
-        const updatedLoanType = await prisma.loanType.update({
-            where: { id },
-            data: { name: name.trim(), updatedAt: new Date() },
-        });
-        return { data: mapPrismaLoanTypeToApp(updatedLoanType) };
+        const updatedSector = await prisma.sector.update({ where: { id }, data: { name: name.trim(), updatedAt: new Date() } });
+        return { data: mapPrismaToApp(updatedSector) };
     } catch (e: any) {
-        if ((e as any).code === 'P2025') {
-            return createErrorResult(`Loan type not found.`, "updateLoanType", e);
-        }
-        return createErrorResult(`Failed to update loan type.`, "updateLoanType", e);
+        if ((e as any).code === 'P2025') return createErrorResult(`Sector not found.`, "updateSector", e);
+        return createErrorResult(`Failed to update sector.`, "updateSector", e);
     }
 }
 
-export async function deleteLoanType(id: string): Promise<{ success?: boolean; error?: string }> {
-  if (!await hasEditPermission()) return { error: "Unauthorized" };
+export async function deleteSector(id: string): Promise<{ success?: boolean; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
   try {
-    const relatedWorkflows = await prisma.workflowDefinition.count({ where: { loanTypeId: id } });
+    const relatedWorkflows = await prisma.workflowDefinition.count({ where: { sectorId: id } });
     if (relatedWorkflows > 0) {
-      return { error: `Cannot delete: Loan type is linked to ${relatedWorkflows} workflow definition(s).` };
+      return { error: `Cannot delete: Sector is linked to ${relatedWorkflows} workflow definition(s).` };
     }
-
-    await prisma.loanType.delete({ where: { id } });
+    await prisma.sector.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
-    if ((e as any).code === 'P2025') {
-      return { success: true };
+    if ((e as any).code === 'P2025') return { success: true };
+    return createErrorResult(`Failed to delete sector.`, "deleteSector", e);
+  }
+}
+
+// --- RequestType Functions ---
+
+export async function getRequestTypes(): Promise<{ requestTypes?: ConfigurableListItem[]; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
+  try {
+    const requestTypes = await prisma.requestType.findMany({ orderBy: { name: 'asc' } });
+    return { requestTypes: requestTypes.map(mapPrismaToApp) };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch request types.", "getRequestTypes", e);
+  }
+}
+
+export async function addRequestType(name: string): Promise<{ id?: string; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
+  if (!name.trim()) return { error: "Request type name cannot be empty." };
+  try {
+    const existing = await prisma.requestType.findUnique({ where: { name: name.trim() } });
+    if (existing) return { error: `Request type with name "${name.trim()}" already exists.` };
+
+    const newRequestType = await prisma.requestType.create({ data: { name: name.trim() } });
+    return { id: newRequestType.id };
+  } catch (e: any) {
+    return createErrorResult("Failed to add request type.", "addRequestType", e);
+  }
+}
+
+export async function updateRequestType(id: string, name: string): Promise<ServiceResult<ConfigurableListItem>> {
+    if (!await hasPermission()) return { error: "Unauthorized" };
+    if (!name.trim()) return { error: "Request type name cannot be empty." };
+    try {
+        const existing = await prisma.requestType.findFirst({ where: { name: name.trim(), id: { not: id } } });
+        if (existing) return { error: `Another request type with name "${name.trim()}" already exists.` };
+
+        const updatedRequestType = await prisma.requestType.update({ where: { id }, data: { name: name.trim(), updatedAt: new Date() } });
+        return { data: mapPrismaToApp(updatedRequestType) };
+    } catch (e: any) {
+        if ((e as any).code === 'P2025') return createErrorResult(`Request type not found.`, "updateRequestType", e);
+        return createErrorResult(`Failed to update request type.`, "updateRequestType", e);
     }
-    return createErrorResult(`Failed to delete loan type.`, "deleteLoanType", e);
+}
+
+export async function deleteRequestType(id: string): Promise<{ success?: boolean; error?: string }> {
+  if (!await hasPermission()) return { error: "Unauthorized" };
+  try {
+    const relatedWorkflows = await prisma.workflowDefinition.count({ where: { requestTypeId: id } });
+    if (relatedWorkflows > 0) {
+      return { error: `Cannot delete: Request Type is linked to ${relatedWorkflows} workflow definition(s).` };
+    }
+    await prisma.requestType.delete({ where: { id } });
+    return { success: true };
+  } catch (e: any) {
+    if ((e as any).code === 'P2025') return { success: true };
+    return createErrorResult(`Failed to delete request type.`, "deleteRequestType", e);
   }
 }

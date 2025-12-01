@@ -5,13 +5,22 @@ import type { AppPermission } from '@/lib/permissions';
 // Represents a predefined department in the system (name string)
 export type Department = string;
 
-// Represents a loan type, e.g., "Personal Loan", "Mortgage"
-export interface LoanType {
+// Represents a configurable sector, e.g., "Agriculture", "Manufacturing"
+export interface Sector {
   id: string;
   name: string;
   createdAt?: string;
   updatedAt?: string;
 }
+
+// Represents a configurable request type, e.g., "New Loan", "Restructuring"
+export interface RequestType {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 
 export interface District {
   id: string;
@@ -97,14 +106,16 @@ export interface WorkflowVersion {
   updatedAt?: string;
 }
 
-// Represents a workflow template for a specific LoanType and Department
+// Represents a workflow template for a specific combination
 export interface WorkflowDefinition {
   id: string;
   name: string;
   departmentId: string;
   departmentName: string;
-  loanTypeId: string;
-  loanTypeName: string;
+  sectorId: string;
+  sectorName: string;
+  requestTypeId: string;
+  requestTypeName: string;
   description?: string;
   versions: WorkflowVersion[];
   order: number; // Added for ordering
@@ -153,10 +164,11 @@ export interface LoanRequest {
   customerPhone?: string;
   customerBranch?: string;
   loanAmount: number;
-  loanType: string;
+  sectorName: string;
+  requestTypeName: string;
   loanPurpose: string;
 
-  workflowVersionId?: string; // This will link to the active version for the initial department
+  workflowVersionId?: string; 
   currentStageId?: string;
   currentStageStatus?: string; 
 
@@ -188,6 +200,7 @@ export interface LoanRequest {
 export interface ActiveWorkflow {
   id: string; // The ID of the workflow *version*
   name: string; // A combined name, e.g., "Standard Personal Loan (v2)"
-  loanTypeName: string;
+  sectorName: string;
+  requestTypeName: string;
   departmentName: string;
 }

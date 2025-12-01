@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import Link from 'next/link';
-import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft, ArrowDown, ArrowUp, X, Mail, DollarSign, Type, CalendarDays } from 'lucide-react';
+import { BookCheck, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, User, BarChartBig, Download, ArrowLeft, ArrowDown, ArrowUp, X, Mail, DollarSign, Type, CalendarDays, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -54,15 +55,21 @@ export default function ReportsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [loansResult, wfResult, deptsResult] = await Promise.all([
-        getLoanRequests(),
-        getWorkflowDefinitions(),
-        getDepartments()
-      ]);
+      // Loan requests now includes users associated with them
+      const loansResult = await getLoanRequests();
 
       if (loansResult.error) throw new Error(`Loans: ${loansResult.error}`);
       setLoans(loansResult.loans || []);
-      setUsers(loansResult.users || []);
+      
+      const allUsersFromLoans = (loansResult.loans || []).flatMap(l => [...l.assignedToUsers, ...l.stageCompletedBy]);
+      const uniqueUsers = Array.from(new Map(allUsersFromLoans.map(u => [u.id, u])).values());
+      setUsers(uniqueUsers);
+
+      // These are still needed for filters and getting stage names if not on loan object
+      const [wfResult, deptsResult] = await Promise.all([
+        getWorkflowDefinitions(),
+        getDepartments()
+      ]);
 
       if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
       setWorkflowDefs(wfResult.workflows || []);
@@ -80,8 +87,10 @@ export default function ReportsPage() {
   useEffect(() => {
     if (canViewReport) {
       fetchPageData();
+    } else if (!authIsLoading) {
+        setIsLoading(false);
     }
-  }, [canViewReport, fetchPageData]);
+  }, [canViewReport, fetchPageData, authIsLoading]);
   
   const departmentOptions = useMemo(() => [
     { value: 'all', label: 'All Departments' },
@@ -182,7 +191,7 @@ export default function ReportsPage() {
     }
 
     const headers = [
-      "Loan Number", "Customer Name", "Customer Email", "Loan Amount", "Loan Type", "Submitted Date", "Last Updated",
+      "Loan Number", "Customer Name", "Customer Email", "Loan Amount", "Sector", "Request Type", "Submitted Date", "Last Updated",
       "Current Stage", "Department", "Assigned Staff", "Time in Stage", "Status"
     ];
 
@@ -205,10 +214,11 @@ export default function ReportsPage() {
         loan.customerName,
         loan.customerEmail,
         loan.loanAmount,
-        loan.loanType,
+        loan.sectorName,
+        loan.requestTypeName,
         format(parseISO(loan.submittedDate), 'yyyy-MM-dd HH:mm'),
         format(parseISO(loan.lastUpdatedDate), 'yyyy-MM-dd HH:mm'),
-        getStageName(loan.workflowVersionId, loan.currentStageId),
+        loan.currentStageName || getStageName(loan.workflowVersionId, loan.currentStageId),
         loan.assignedDepartment || 'N/A',
         getAssignedUserNames(loan.assignedToUsers),
         timeInStage,
@@ -384,7 +394,8 @@ export default function ReportsPage() {
                         {renderSortIcon('loanAmount')}
                     </Button>
                   </TableHead>
-                  <TableHead><Type className="inline h-4 w-4 mr-1"/>Loan Type</TableHead>
+                  <TableHead><Briefcase className="inline h-4 w-4 mr-1"/>Sector</TableHead>
+                  <TableHead><Type className="inline h-4 w-4 mr-1"/>Request Type</TableHead>
                   <TableHead>
                     <Button variant="ghost" onClick={() => handleSort('submittedDate')} className="px-1">
                       Submitted
@@ -423,7 +434,8 @@ export default function ReportsPage() {
                         <div className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />{loan.customerEmail}</div>
                       </TableCell>
                       <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
-                      <TableCell>{loan.loanType}</TableCell>
+                      <TableCell>{loan.sectorName}</TableCell>
+                      <TableCell>{loan.requestTypeName}</TableCell>
                       <TableCell>
                         <Tooltip>
                           <TooltipTrigger>{format(parseISO(loan.submittedDate), 'MMM dd, yyyy')}</TooltipTrigger>
@@ -431,7 +443,7 @@ export default function ReportsPage() {
                         </Tooltip>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge>
+                        <Badge variant="outline">{loan.currentStageName || getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge>
                       </TableCell>
                       <TableCell>{loan.assignedDepartment || 'N/A'}</TableCell>
                       <TableCell>

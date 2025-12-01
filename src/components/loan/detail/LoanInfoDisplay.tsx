@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import type { LoanRequest, User as UserType } from '@/types/loan';
-import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon } from 'lucide-react'; // Added Mail, UsersIcon
+import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon, Briefcase } from 'lucide-react'; // Added Briefcase
 import { InfoItem } from '@/components/loan/common/InfoItem';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -30,7 +31,8 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
   return (
     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
       <InfoItem icon={DollarSign} label="Loan Amount" value={`$${loan.loanAmount.toLocaleString()}`} />
-      <InfoItem icon={Type} label="Loan Type" value={loan.loanType} />
+      <InfoItem icon={Briefcase} label="Sector" value={loan.sectorName} />
+      <InfoItem icon={Type} label="Request Type" value={loan.requestTypeName} />
       <InfoItem icon={Info} label="Loan Purpose" value={loan.loanPurpose} />
       <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />
       <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
