@@ -150,6 +150,7 @@ export async function addLoanRequest(
 
     const selectedChildSector = await prisma.sector.findUnique({
         where: { id: loanData.sectorId },
+        include: { parent: true }
     });
     if (!selectedChildSector || !selectedChildSector.parentId) {
         return createErrorResult("Invalid child sector selected or it has no parent.", "addLoanRequest");
@@ -1010,7 +1011,7 @@ export async function searchLoanRequests(
             workflowDefinition: {
               include: {
                 sector: {
-                  select: { parentId: true }
+                  include: { parent: true }
                 }
               }
             }
@@ -1024,7 +1025,6 @@ export async function searchLoanRequests(
       return { loans: [] };
     }
     
-    // Get all possible workflow definitions in one go to build the full timeline
     const allWorkflowDefinitions = await prisma.workflowDefinition.findMany({
         orderBy: { order: 'asc' },
         include: {
@@ -1047,21 +1047,18 @@ export async function searchLoanRequests(
         let workflowSequence: PublicLoanStatus['workflowSequence'] = [];
 
         if (parentSectorId) {
-            // Filter all definitions to find the ones that match the loan's parent sector path
             workflowSequence = allWorkflowDefinitions
                 .filter(def => def.parentSectorId === parentSectorId)
                 .flatMap(def => 
                     def.versions.flatMap(v => v.stages.map(s => ({
                         stageId: s.id,
                         stageName: s.name,
-                        stageOrder: s.order, // Use the stage order within its version
+                        stageOrder: s.order,
                         stageTimelineDays: s.defaultTimelineDays,
                         departmentName: s.responsibleDepartment.name,
-                        // Add workflow-level info for sorting
                         workflowOrder: def.order,
                     })))
                 )
-                // Sort by workflow order first, then by stage order
                 .sort((a, b) => {
                     if (a.workflowOrder !== b.workflowOrder) {
                         return a.workflowOrder - b.workflowOrder;
