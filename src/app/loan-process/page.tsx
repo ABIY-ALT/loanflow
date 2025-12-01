@@ -152,93 +152,86 @@ export default function LoanProcessPage() {
         loan.requestTypeName.toLowerCase().includes(lowercasedFilter)
       );
     }
+    
+    const allLoanIdsInFilter = new Set(filteredLoans.map(l => l.id));
 
     const structure: Record<string, {
-      groupingKey: string;
-      parentSectorName?: string;
-      workflows: Record<string, PipelineWorkflow> 
+        groupingKey: string;
+        parentSectorName?: string;
+        workflows: Record<string, PipelineWorkflow>
     }> = {};
 
+    // 1. Build the structure from workflow definitions first
+    workflowDefinitions.forEach(def => {
+        if (!def.parentSectorId) return;
+
+        const groupingKey = def.parentSectorId;
+        if (!structure[groupingKey]) {
+            structure[groupingKey] = {
+                groupingKey,
+                parentSectorName: def.parentSectorName,
+                workflows: {}
+            };
+        }
+
+        const activeVersion = def.versions.find(v => v.isActive);
+        if (activeVersion) {
+            const workflowId = `workflow-${activeVersion.id}`;
+            if (!structure[groupingKey].workflows[workflowId]) {
+                structure[groupingKey].workflows[workflowId] = {
+                    id: workflowId,
+                    name: getWorkflowNameById(activeVersion.id),
+                    departmentName: def.departmentName || 'N/A',
+                    order: def.order ?? 0,
+                    stages: activeVersion.stages.map(stageDef => ({
+                        id: stageDef.id,
+                        name: stageDef.name,
+                        responsibleDepartment: stageDef.responsibleDepartment,
+                        defaultTimelineDays: stageDef.defaultTimelineDays,
+                        percentageWeight: stageDef.percentageWeight,
+                        order: stageDef.order,
+                        loans: [] // Initialize with empty loans
+                    })).sort((a, b) => a.order - b.order)
+                };
+            }
+        }
+    });
+
+    // 2. Place filtered loans into the structure
     filteredLoans.forEach(loan => {
-      const { parentSectorName, sectorName, requestTypeName, workflowVersionId, currentStageId, currentStageName, assignedDepartment } = loan;
-      if (!parentSectorName || !workflowVersionId || !currentStageId) return;
-      
-      const groupingKey = parentSectorName; // Group by Parent Sector only
-      const workflowId = `workflow-${workflowVersionId}`;
+        const { parentSectorId, workflowVersionId, currentStageId } = loan;
+        if (!parentSectorId || !workflowVersionId || !currentStageId) return;
 
-      if (!structure[groupingKey]) {
-        structure[groupingKey] = {
-          groupingKey,
-          parentSectorName: parentSectorName,
-          workflows: {}
-        };
-      }
-      
-      const workflowNameFromLoan = loan.workflowVersionId ? getWorkflowNameById(loan.workflowVersionId) : `Workflow (ID: ...${workflowVersionId.slice(-4)})`;
+        const groupingKey = parentSectorId;
+        const workflowId = `workflow-${workflowVersionId}`;
 
-      if (!structure[groupingKey].workflows[workflowId]) {
-        const wfDef = workflowDefinitions.find(def => def.versions.some(v => v.id === workflowVersionId));
-        structure[groupingKey].workflows[workflowId] = {
-          id: workflowId,
-          name: workflowNameFromLoan,
-          departmentName: wfDef?.departmentName || 'N/A',
-          order: wfDef?.order ?? 0,
-          stages: []
-        };
-      }
-      
-      let stage = structure[groupingKey].workflows[workflowId].stages.find(s => s.id === currentStageId);
-      if (!stage) {
-        const stageDef = workflowDefinitions
-            .flatMap(def => def.versions)
-            .find(v => v.id === workflowVersionId)
-            ?.stages.find(s => s.id === currentStageId);
-        
-        stage = {
-          id: currentStageId,
-          name: currentStageName || 'Unknown Stage',
-          responsibleDepartment: assignedDepartment || 'N/A',
-          defaultTimelineDays: stageDef?.defaultTimelineDays || 0,
-          percentageWeight: stageDef?.percentageWeight || 0,
-          order: stageDef?.order || 0, 
-          loans: []
-        };
-        structure[groupingKey].workflows[workflowId].stages.push(stage);
-      }
-      
-      stage.loans.push({
-        id: loan.id,
-        loanNumber: loan.loanNumber,
-        customerName: loan.customerName,
-        loanAmount: loan.loanAmount,
-        isUrgent: loan.isUrgent,
-        isOverdue: !!loan.isOverdue,
-        lastUpdatedDate: loan.lastUpdatedDate,
-        assignedToUsers: loan.assignedToUsers,
-        sectorName: loan.sectorName,
-        parentSectorName: loan.parentSectorName,
-        requestTypeName: loan.requestTypeName,
-        currentStageName: loan.currentStageName,
-        workflowVersionId: loan.workflowVersionId,
-        workflowName: workflowNameFromLoan,
-        currentStageId: loan.currentStageId,
-        assignedDepartment: loan.assignedDepartment,
-      });
+        if (structure[groupingKey]?.workflows[workflowId]) {
+            let stage = structure[groupingKey].workflows[workflowId].stages.find(s => s.id === currentStageId);
+            if (stage) {
+                stage.loans.push({
+                  id: loan.id, loanNumber: loan.loanNumber, customerName: loan.customerName, loanAmount: loan.loanAmount,
+                  isUrgent: loan.isUrgent, isOverdue: !!loan.isOverdue, lastUpdatedDate: loan.lastUpdatedDate,
+                  assignedToUsers: loan.assignedToUsers, sectorName: loan.sectorName, parentSectorName: loan.parentSectorName,
+                  requestTypeName: loan.requestTypeName, currentStageName: loan.currentStageName, workflowVersionId: loan.workflowVersionId,
+                  workflowName: getWorkflowNameById(loan.workflowVersionId), currentStageId: loan.currentStageId, assignedDepartment: loan.assignedDepartment,
+                });
+            }
+        }
     });
+    
+    // 3. Filter out groups and workflows that have no matching loans *after* filtering
+    const finalStructure = Object.values(structure)
+        .map(group => {
+            const workflowsWithLoans = Object.values(group.workflows).filter(wf => 
+                wf.stages.some(stage => stage.loans.length > 0)
+            );
+            if (workflowsWithLoans.length === 0) return null;
+            return { ...group, workflows: workflowsWithLoans.sort((a,b) => a.order - b.order) };
+        })
+        .filter((g): g is Exclude<typeof g, null> => g !== null);
 
-    return Object.values(structure).map(groupData => {
-      // Sort workflows within each parent sector group
-      const sortedWorkflows = Object.values(groupData.workflows).sort((a,b) => a.order - b.order);
-      // Sort stages within each workflow
-      sortedWorkflows.forEach(wf => {
-        wf.stages.sort((a, b) => a.order - b.order);
-      });
-      return {
-        groupingKey: groupData.groupingKey,
-        parentSectorName: groupData.parentSectorName,
-        workflows: sortedWorkflows
-      };
-    });
+
+    return finalStructure;
 
   }, [allLoans, searchTerm, statusFilter, workflowDefinitions, getWorkflowNameById]);
 
@@ -358,6 +351,7 @@ export default function LoanProcessPage() {
                                   <h4 className="font-semibold flex items-center gap-1.5"><Network className="h-4 w-4 text-primary" />{workflow.name}</h4>
                                    <div className="text-xs text-muted-foreground flex items-center gap-2 ml-1">
                                       <span className="flex items-center gap-1"><Building className="h-3 w-3" />Dept: {workflow.departmentName}</span>
+                                      <span className="flex items-center gap-1"><FileDigit className="h-3 w-3" />{workflow.stages.length} Stages</span>
                                     </div>
                                 </div>
                                 <Badge variant="outline">{workflow.stages.reduce((sum, st) => sum + st.loans.length, 0)} Loans</Badge>
@@ -372,7 +366,7 @@ export default function LoanProcessPage() {
                                         <span>{stage.order + 1}. {stage.name}</span>
                                         <span className="text-xs text-muted-foreground">({stage.loans.length} loans)</span>
                                       </h5>
-                                       {stage.loans.length > 0 && (
+                                       {stage.loans.length > 0 ? (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                             {stage.loans.map(loan => (
                                               <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
@@ -414,6 +408,10 @@ export default function LoanProcessPage() {
                                                 </CardContent>
                                               </Card>
                                             ))}
+                                        </div>
+                                       ) : (
+                                        <div className="text-center py-4">
+                                            <p className="text-xs text-muted-foreground">No loans currently in this stage.</p>
                                         </div>
                                        )}
                                     </div>
