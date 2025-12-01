@@ -22,9 +22,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
-import { addLoanRequest, getActiveWorkflowsForCreate } from '@/services/loan-service-prisma';
+import { addLoanRequest } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
-import type { ActiveWorkflow, Branch } from '@/types/loan';
+import type { Branch } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
@@ -115,6 +115,8 @@ export default function NewLoanRequestPage() {
       })),
     [branches]
   );
+  
+  const childSectorOptions = useMemo(() => sectors.filter(s => s.parentId), [sectors]);
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -287,7 +289,7 @@ export default function NewLoanRequestPage() {
                   name="sectorId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Sector</FormLabel>
+                      <FormLabel>Child Sector</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || sectors.length === 0}>
                         <FormControl>
                           <SelectTrigger>
@@ -295,9 +297,11 @@ export default function NewLoanRequestPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {sectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                           {childSectorOptions.length === 0 && <SelectItem value="none" disabled>No child sectors defined</SelectItem>}
+                          {childSectorOptions.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                      <FormDescription>The selected parent sector will determine the workflow path.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
