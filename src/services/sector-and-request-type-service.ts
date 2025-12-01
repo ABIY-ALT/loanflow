@@ -6,15 +6,17 @@ import prisma from '@/lib/prisma';
 import type { Sector as PrismaSector, RequestType as PrismaRequestType } from '@prisma/client';
 import { getCurrentUser } from '@/app/auth/actions';
 import { PERMISSIONS } from '@/lib/permissions';
+import type { Sector } from '@/types/loan';
 
 export interface ConfigurableListItem {
   id: string;
   name: string;
 }
 
-const mapPrismaToApp = (prismaItem: PrismaSector | PrismaRequestType): ConfigurableListItem => ({
+const mapPrismaToApp = (prismaItem: PrismaSector): Sector => ({
   id: prismaItem.id,
   name: prismaItem.name,
+  parentId: prismaItem.parentId,
 });
 
 interface ServiceResult<T> {
@@ -35,8 +37,7 @@ const hasPermission = async (): Promise<boolean> => {
 
 // --- Sector Functions ---
 
-export async function getSectors(): Promise<{ sectors?: ConfigurableListItem[]; error?: string }> {
-  // Read operation can be less strict, but let's keep it consistent for settings
+export async function getSectors(): Promise<{ sectors?: Sector[]; error?: string }> {
   if (!await hasPermission()) return { error: "Unauthorized" };
   try {
     const sectors = await prisma.sector.findMany({ orderBy: { name: 'asc' } });
@@ -46,21 +47,26 @@ export async function getSectors(): Promise<{ sectors?: ConfigurableListItem[]; 
   }
 }
 
-export async function addSector(name: string): Promise<{ id?: string; error?: string }> {
+export async function addSector(name: string, parentId: string | null): Promise<{ id?: string; error?: string }> {
   if (!await hasPermission()) return { error: "Unauthorized" };
   if (!name.trim()) return { error: "Sector name cannot be empty." };
   try {
     const existing = await prisma.sector.findUnique({ where: { name: name.trim() } });
     if (existing) return { error: `Sector with name "${name.trim()}" already exists.` };
 
-    const newSector = await prisma.sector.create({ data: { name: name.trim() } });
+    const newSector = await prisma.sector.create({ 
+        data: { 
+            name: name.trim(),
+            parentId: parentId || undefined,
+        } 
+    });
     return { id: newSector.id };
   } catch (e: any) {
     return createErrorResult("Failed to add sector.", "addSector", e);
   }
 }
 
-export async function updateSector(id: string, name: string): Promise<ServiceResult<ConfigurableListItem>> {
+export async function updateSector(id: string, name: string): Promise<ServiceResult<Sector>> {
     if (!await hasPermission()) return { error: "Unauthorized" };
     if (!name.trim()) return { error: "Sector name cannot be empty." };
     try {
@@ -78,10 +84,16 @@ export async function updateSector(id: string, name: string): Promise<ServiceRes
 export async function deleteSector(id: string): Promise<{ success?: boolean; error?: string }> {
   if (!await hasPermission()) return { error: "Unauthorized" };
   try {
+    const childrenCount = await prisma.sector.count({ where: { parentId: id } });
+    if (childrenCount > 0) {
+      return { error: `Cannot delete: Sector has ${childrenCount} child sector(s).` };
+    }
+    
     const relatedWorkflows = await prisma.workflowDefinition.count({ where: { sectorId: id } });
     if (relatedWorkflows > 0) {
       return { error: `Cannot delete: Sector is linked to ${relatedWorkflows} workflow definition(s).` };
     }
+
     await prisma.sector.delete({ where: { id } });
     return { success: true };
   } catch (e: any) {
@@ -93,10 +105,9 @@ export async function deleteSector(id: string): Promise<{ success?: boolean; err
 // --- RequestType Functions ---
 
 export async function getRequestTypes(): Promise<{ requestTypes?: ConfigurableListItem[]; error?: string }> {
-  // This is a public read for the new loan form, so no permission check needed here.
   try {
     const requestTypes = await prisma.requestType.findMany({ orderBy: { name: 'asc' } });
-    return { requestTypes: requestTypes.map(mapPrismaToApp) };
+    return { requestTypes };
   } catch (e: any) {
     return createErrorResult("Failed to fetch request types.", "getRequestTypes", e);
   }
@@ -124,7 +135,7 @@ export async function updateRequestType(id: string, name: string): Promise<Servi
         if (existing) return { error: `Another request type with name "${name.trim()}" already exists.` };
 
         const updatedRequestType = await prisma.requestType.update({ where: { id }, data: { name: name.trim(), updatedAt: new Date() } });
-        return { data: mapPrismaToApp(updatedRequestType) };
+        return { data: { id: updatedRequestType.id, name: updatedRequestType.name } };
     } catch (e: any) {
         if ((e as any).code === 'P2025') return createErrorResult(`Request type not found.`, "updateRequestType", e);
         return createErrorResult(`Failed to update request type.`, "updateRequestType", e);

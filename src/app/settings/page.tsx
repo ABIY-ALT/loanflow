@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map, Briefcase } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map, Briefcase, Network } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -45,7 +45,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector } from '@/types/loan';
+import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector, RequestType } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
@@ -513,8 +513,8 @@ export default function SettingsPage() {
   
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [departments, setDepartments] = useState<DepartmentObject[]>([]);
-  const [sectors, setSectors] = useState<ConfigurableListItem[]>([]);
-  const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
+  const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -524,7 +524,8 @@ export default function SettingsPage() {
 
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
-  const [newWorkflowSectorId, setNewWorkflowSectorId] = useState('');
+  const [newWorkflowParentSectorId, setNewWorkflowParentSectorId] = useState('');
+  const [newWorkflowChildSectorId, setNewWorkflowChildSectorId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
   
   const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
@@ -532,15 +533,15 @@ export default function SettingsPage() {
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
   const [newSectorName, setNewSectorName] = useState('');
-  const [editingSector, setEditingSector] = useState<ConfigurableListItem | null>(null);
+  const [newSectorParentId, setNewSectorParentId] = useState<string | null>(null);
+  const [editingSector, setEditingSector] = useState<Sector | null>(null);
   const [editingSectorName, setEditingSectorName] = useState('');
   const [isEditSectorDialogOpen, setIsEditSectorDialogOpen] = useState(false);
   
   const [newRequestTypeName, setNewRequestTypeName] = useState('');
-  const [editingRequestType, setEditingRequestType] = useState<ConfigurableListItem | null>(null);
+  const [editingRequestType, setEditingRequestType] = useState<RequestType | null>(null);
   const [editingRequestTypeName, setEditingRequestTypeName] = useState('');
   const [isEditRequestTypeDialogOpen, setIsEditRequestTypeDialogOpen] = useState(false);
-
 
   const [enableNotifications, setEnableNotifications] = useState(true);
   const [overdueThreshold, setOverdueThreshold] = useState(2);
@@ -549,6 +550,10 @@ export default function SettingsPage() {
   const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 
   const fetchInitialData = useCallback(async () => {
+    if (!canManageWorkflows) {
+      setIsLoadingData(false);
+      return;
+    }
       setIsLoadingData(true);
       setError(null);
       try {
@@ -572,10 +577,11 @@ export default function SettingsPage() {
         
         if (requestTypeResult.error) throw new Error(`Request Types: ${requestTypeResult.error}`);
         const fetchedRequestTypes = requestTypeResult.requestTypes || [];
-        setRequestTypes(fetchedRequestTypes);
+        setRequestTypes(fetchedRequestTypes as RequestType[]);
 
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
-        if(fetchedSectors.length > 0 && newWorkflowSectorId === '') setNewWorkflowSectorId(fetchedSectors[0].id);
+        const parentSectors = fetchedSectors.filter(s => !s.parentId);
+        if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
         
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -588,24 +594,32 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast]);
+    }, [canManageWorkflows, toast]);
 
 
   useEffect(() => {
-    if (currentUser && (currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || 
-                        currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) ||
-                        currentUser.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) ||
-                        currentUser.permissions.includes(PERMISSIONS.MANAGE_USERS)
-                        )) {
-        fetchInitialData();
+    if (!authLoading) {
+      fetchInitialData();
     }
-  }, [fetchInitialData, currentUser]);
+  }, [fetchInitialData, authLoading]);
   
+  const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
+  const childSectorsForSelectedParent = useMemo(() => {
+    if (!newWorkflowParentSectorId) return [];
+    return sectors.filter(s => s.parentId === newWorkflowParentSectorId);
+  }, [sectors, newWorkflowParentSectorId]);
+
+  useEffect(() => {
+    // Reset child sector if parent changes
+    setNewWorkflowChildSectorId('');
+  }, [newWorkflowParentSectorId]);
+
+
   const referenceWorkflowOptions = useMemo(() => {
     return workflowDefinitions
-      .filter(wf => wf.sectorId === newWorkflowSectorId)
+      .filter(wf => wf.parentSectorId === newWorkflowParentSectorId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [workflowDefinitions, newWorkflowSectorId]);
+  }, [workflowDefinitions, newWorkflowParentSectorId]);
   
   useEffect(() => {
     if (referenceWorkflowOptions.length > 0) {
@@ -625,14 +639,14 @@ export default function SettingsPage() {
     if (!targetDefToActivate) return;
     
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-        if (def.sectorId === targetDefToActivate.sectorId) {
+        if (def.parentSectorId === targetDefToActivate.parentSectorId) {
             if (def.id === definitionIdToActivate) {
                 return {
                     ...def,
                     versions: def.versions.map(v => ({ ...v, isActive: v.id === versionIdToActivate }))
                 };
             }
-            // Deactivate versions in other definitions of the same sector
+            // Deactivate versions in other definitions of the same parent sector
             return {
                 ...def,
                 versions: def.versions.map(v => ({ ...v, isActive: false }))
@@ -642,7 +656,7 @@ export default function SettingsPage() {
     }));
 
     const activatedVersion = targetDefToActivate?.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its sector. Click "Save All Settings" to persist.` });
+    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its parent sector. Click "Save All Settings" to persist.` });
   };
   
   const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
@@ -701,18 +715,22 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowSectorId) {
-        toast({ title: "Validation Error", description: "Workflow name, department, and sector are all required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowParentSectorId || !newWorkflowChildSectorId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, parent sector, and child sector are all required.", variant: "destructive", duration: 9000 });
         return;
     }
+    
+    const parentSector = sectors.find(s => s.id === newWorkflowParentSectorId);
     
     const newWf: Omit<WorkflowDefinition, 'id' | 'versions'> = {
         name: newWorkflowName,
         description: newWorkflowDescription,
         departmentId: newWorkflowDepartmentId,
         departmentName: departments.find(d => d.id === newWorkflowDepartmentId)?.name || 'Unknown',
-        sectorId: newWorkflowSectorId,
-        sectorName: sectors.find(s => s.id === newWorkflowSectorId)?.name || 'Unknown',
+        sectorId: newWorkflowChildSectorId,
+        sectorName: sectors.find(s => s.id === newWorkflowChildSectorId)?.name || 'Unknown',
+        parentSectorId: parentSector?.id,
+        parentSectorName: parentSector?.name,
         order: 0,
     };
     
@@ -754,7 +772,7 @@ export default function SettingsPage() {
     }
     setIsSavingData(true);
     try {
-      const result = await addSector(newSectorName.trim());
+      const result = await addSector(newSectorName.trim(), newSectorParentId);
       if (result.error || !result.id) {
         toast({ title: "Error Adding Sector", description: result.error || "Failed to add sector.", variant: "destructive" });
       } else {
@@ -954,17 +972,17 @@ export default function SettingsPage() {
   }
   
   const workflowsByCombination = workflowDefinitions.reduce((acc, wf) => {
-    const key = `${wf.sectorName}`;
+    const key = `${wf.parentSectorName}`;
     if (!acc[key]) {
       acc[key] = {
-        sectorName: wf.sectorName,
+        parentSectorName: wf.parentSectorName,
         workflows: []
       };
     }
     acc[key].workflows.push(wf);
     acc[key].workflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return acc;
-  }, {} as Record<string, { sectorName: string; workflows: WorkflowDefinition[] }>);
+  }, {} as Record<string, { parentSectorName?: string; workflows: WorkflowDefinition[] }>);
 
 
   return (
@@ -998,46 +1016,68 @@ export default function SettingsPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
             <CardHeader>
-                <CardTitle>Manage Sectors</CardTitle>
-                <CardDescription>Define business sectors, e.g., "Agriculture", "Manufacturing".</CardDescription>
+                <CardTitle>Manage Sectors (Parent & Child)</CardTitle>
+                <CardDescription>Define business sectors, e.g., "Agriculture", and sub-sectors, e.g., "Crop", "Livestock".</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <Input
-                        placeholder="e.g., Service Industry"
+                        placeholder="e.g., Service Industry, Crop Production"
                         value={newSectorName}
                         onChange={(e) => setNewSectorName(e.target.value)}
                         disabled={isSavingData || isSavingAll}
                     />
+                    <Select value={newSectorParentId || 'none'} onValueChange={(value) => setNewSectorParentId(value === 'none' ? null : value)}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                            <SelectValue placeholder="Select Parent (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">None (Is a Parent)</SelectItem>
+                            {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
                     <Button onClick={handleAddSector} disabled={!newSectorName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
                         {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
                         Add Sector
                     </Button>
                 </div>
                 <Table>
-                  <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead>Parent</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {sectors.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
-                    {sectors.map(item => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => { setEditingSector(item); setEditingSectorName(item.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
-                              <Edit className="mr-1 h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}>
-                                        <Trash2 className="mr-1 h-4 w-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Delete Sector "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
-                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </TableCell>
-                      </TableRow>
+                    {sectors.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
+                    {sectors.filter(s => !s.parentId).map(parent => (
+                        <React.Fragment key={parent.id}>
+                            <TableRow className="bg-muted/30">
+                                <TableCell className="font-semibold">{parent.name}</TableCell>
+                                <TableCell className="text-muted-foreground">-</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="sm" onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="mr-1 h-4 w-4" /></Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
+                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </TableCell>
+                            </TableRow>
+                            {sectors.filter(s => s.parentId === parent.id).map(child => (
+                                <TableRow key={child.id}>
+                                    <TableCell className="pl-8">{child.name}</TableCell>
+                                    <TableCell className="text-muted-foreground">{parent.name}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="sm" onClick={() => { setEditingSector(child); setEditingSectorName(child.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="mr-1 h-4 w-4" /></Button>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader><AlertDialogTitle>Delete Sector "{child.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(child.id, child.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>
@@ -1091,20 +1131,13 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows for different departments and sectors. New loans will use the active version for their specific sector.</CardDescription>
+          <CardDescription>Manage workflows. New loans use the active version for their specific Parent Sector.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
             <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-4">
               <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
-              <div>
-                <Label htmlFor="new-wf-sector">For Sector</Label>
-                <Select value={newWorkflowSectorId} onValueChange={(value) => setNewWorkflowSectorId(value)}>
-                  <SelectTrigger id="new-wf-sector" className="mt-1"><SelectValue placeholder="Select Sector" /></SelectTrigger>
-                  <SelectContent>{sectors.map(s => <SelectItem key={`new-wf-s-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
               <div>
                 <Label htmlFor="new-wf-dept">Owning Department</Label>
                 <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
@@ -1112,7 +1145,24 @@ export default function SettingsPage() {
                   <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="md:col-span-3"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
+              <div>
+                <Label htmlFor="new-wf-parent-sector">For Parent Sector</Label>
+                <Select value={newWorkflowParentSectorId} onValueChange={(value) => setNewWorkflowParentSectorId(value)}>
+                  <SelectTrigger id="new-wf-parent-sector" className="mt-1"><SelectValue placeholder="Select Parent Sector" /></SelectTrigger>
+                  <SelectContent>{parentSectors.map(s => <SelectItem key={`new-wf-ps-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+               <div>
+                <Label htmlFor="new-wf-child-sector">For Child Sector</Label>
+                <Select value={newWorkflowChildSectorId} onValueChange={(value) => setNewWorkflowChildSectorId(value)} disabled={!newWorkflowParentSectorId}>
+                  <SelectTrigger id="new-wf-child-sector" className="mt-1"><SelectValue placeholder="Select Child Sector" /></SelectTrigger>
+                  <SelectContent>
+                    {childSectorsForSelectedParent.length === 0 && <SelectItem value="none" disabled>No child sectors</SelectItem>}
+                    {childSectorsForSelectedParent.map(s => <SelectItem key={`new-wf-cs-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
             </div>
             
             <div className="grid md:grid-cols-3 gap-4 items-end">
@@ -1144,16 +1194,16 @@ export default function SettingsPage() {
                   Add Workflow
               </Button>
             </div>
-            {(sectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A sector and department must be configured first.</p>}
+            {(parentSectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A parent sector and department must be configured first.</p>}
           </div>
 
           <Separator/>
           
-          <h4 className="font-medium text-lg">Current Workflow Paths (By Sector)</h4>
+          <h4 className="font-medium text-lg">Current Workflow Paths (By Parent Sector)</h4>
           <div className="space-y-4">
-          {Object.values(workflowsByCombination).map(({ sectorName, workflows }) => (
-            <div key={`${sectorName}`} className="p-4 border rounded-lg">
-              <h5 className="font-medium mb-3"><span className="text-primary">{sectorName}</span> Path</h5>
+          {Object.values(workflowsByCombination).map(({ parentSectorName, workflows }) => (
+            <div key={`${parentSectorName}`} className="p-4 border rounded-lg">
+              <h5 className="font-medium mb-3"><span className="text-primary">{parentSectorName}</span> Path</h5>
               <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
                 {workflows.map((def, index) => (
                   <React.Fragment key={def.id}>
@@ -1162,6 +1212,7 @@ export default function SettingsPage() {
                         {index + 1}
                       </div>
                       <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
+                       <div className="text-xs text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" />{def.sectorName}</div>
                       <div className="text-xs text-muted-foreground">{def.departmentName}</div>
                     </div>
                     {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
@@ -1186,7 +1237,8 @@ export default function SettingsPage() {
                       <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
-                        <Badge variant="outline">Sector: {def.sectorName || 'N/A'}</Badge>
+                        <Badge variant="outline">Parent Sector: {def.parentSectorName || 'N/A'}</Badge>
+                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
                         {def.description && (
                           <Button variant="ghost" size="sm" className="h-auto p-1 text-xs" onClick={(e) => { e.stopPropagation(); toggleDescription(def.id); }}>
                             {expandedDescriptions.has(def.id) ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
@@ -1312,3 +1364,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

@@ -12,14 +12,32 @@ async function main() {
 
   // --- Seed Sectors ---
   console.log('Seeding Sectors...');
-  const sectors = ['Agriculture', 'Manufacturing', 'Service', 'Trade'];
-  for (const sectorName of sectors) {
-    await prisma.sector.upsert({
+  const parentSectors = ['Agriculture', 'Manufacturing', 'Service', 'Trade'];
+  const childSectors: Record<string, string[]> = {
+    'Agriculture': ['Crop Production', 'Livestock'],
+    'Manufacturing': ['Textiles', 'Food Processing'],
+    'Service': ['Tourism', 'IT Services'],
+    'Trade': ['Import', 'Export'],
+  };
+  
+  for (const sectorName of parentSectors) {
+    const parent = await prisma.sector.upsert({
       where: { name: sectorName },
       update: {},
       create: { name: sectorName },
     });
-    console.log(`Created/verified sector: ${sectorName}`);
+    console.log(`Created/verified parent sector: ${sectorName}`);
+
+    if (childSectors[sectorName]) {
+      for (const childName of childSectors[sectorName]) {
+        await prisma.sector.upsert({
+          where: { name: childName },
+          update: { parentId: parent.id },
+          create: { name: childName, parentId: parent.id },
+        });
+        console.log(`  - Created/verified child sector: ${childName}`);
+      }
+    }
   }
   console.log('Sectors seeded.');
 

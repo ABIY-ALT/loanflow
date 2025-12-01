@@ -58,7 +58,7 @@ const mapPrismaUserToAppUser = (
 const mapPrismaLoanToAppLoan = (
     prismaLoan: PrismaLoanRequest & {
         customer: PrismaCustomer;
-        sector: PrismaSector;
+        sector: PrismaSector & { parent?: PrismaSector | null };
         requestType: PrismaRequestType;
         assignedToUsers: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         stageCompletedBy: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
@@ -85,7 +85,11 @@ const mapPrismaLoanToAppLoan = (
     customerPhone: prismaLoan.customer.phone || undefined,
     customerBranch: prismaLoan.customer.branch || undefined,
     loanAmount: prismaLoan.loanAmount.toNumber(),
+    sectorId: prismaLoan.sectorId,
     sectorName: prismaLoan.sector.name,
+    parentSectorId: prismaLoan.sector.parentId || undefined,
+    parentSectorName: prismaLoan.sector.parent?.name || undefined,
+    requestTypeId: prismaLoan.requestTypeId,
     requestTypeName: prismaLoan.requestType.name,
     loanPurpose: prismaLoan.loanPurpose,
 
@@ -135,7 +139,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName' | 'parentSectorId' | 'parentSectorName'>
   & { sectorId: string; requestTypeId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -144,16 +148,23 @@ export async function addLoanRequest(
         return createErrorResult("Unauthorized: You do not have permission to create loan requests.", "addLoanRequest");
     }
 
+    const selectedChildSector = await prisma.sector.findUnique({
+        where: { id: loanData.sectorId },
+    });
+    if (!selectedChildSector || !selectedChildSector.parentId) {
+        return createErrorResult("Invalid child sector selected or it has no parent.", "addLoanRequest");
+    }
+
     const activeVersion = await prisma.workflowVersion.findFirst({
         where: {
             isActive: true,
             workflowDefinition: {
-                sectorId: loanData.sectorId,
+                parentSectorId: selectedChildSector.parentId,
             }
         },
         include: {
             workflowDefinition: {
-                include: { sector: true, department: true },
+                include: { sector: { include: { parent: true }}, department: true },
             },
             stages: {
                 orderBy: { order: 'asc' },
@@ -163,7 +174,7 @@ export async function addLoanRequest(
     });
 
     if (!activeVersion || !activeVersion.workflowDefinition.department || activeVersion.stages.length === 0) {
-        return createErrorResult(`An active workflow for the selected sector is not available or properly configured.`, "addLoanRequest");
+        return createErrorResult(`An active workflow for the selected Parent Sector is not available or properly configured.`, "addLoanRequest");
     }
 
     const firstStage = activeVersion.stages[0];
@@ -259,12 +270,12 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[] }> {
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
       include: {
         customer: true,
-        sector: true,
+        sector: { include: { parent: true } },
         requestType: true,
         assignedToUsers: { include: { department: true, customRole: true } },
         stageCompletedBy: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-        workflowVersion: { include: { workflowDefinition: { include: { sector: true, department: true } } } },
+        workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
@@ -290,14 +301,14 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
       where: { id },
       include: {
         customer: true,
-        sector: true,
+        sector: { include: { parent: true } },
         requestType: true,
         assignedToUsers: { include: { department: true, customRole: true } },
         stageCompletedBy: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
           include: {
-            workflowDefinition: { include: { sector: true, department: true } },
+            workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } },
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true, documentRequirements: true} },
           },
         },
@@ -475,12 +486,12 @@ export async function updateLoanRequest(
         data: updatePayload,
         include: {
           customer: true,
-          sector: true,
+          sector: { include: { parent: true } },
           requestType: true,
           assignedToUsers: { include: { department: true, customRole: true } },
           stageCompletedBy: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-          workflowVersion: { include: { workflowDefinition: { include: { sector: true, department: true } } } },
+          workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
           assignedDepartment: true,
           history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
@@ -505,7 +516,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
     const prismaWorkflowDefs = await prisma.workflowDefinition.findMany({
       orderBy: { order: 'asc' },
       include: {
-        sector: true,
+        sector: { include: { parent: true } },
         department: true,
         versions: {
           orderBy: { versionNumber: 'desc' },
@@ -524,6 +535,8 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
       name: def.name,
       sectorId: def.sectorId,
       sectorName: def.sector.name,
+      parentSectorId: def.sector.parentId ?? undefined,
+      parentSectorName: def.sector.parent?.name,
       departmentId: def.departmentId,
       departmentName: def.department.name,
       description: def.description || undefined,
@@ -564,7 +577,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 }
 
 export async function addWorkflowDefinition(
-  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'sectorName' | 'departmentName' | 'order'>
+  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'sectorName' | 'parentSectorName' | 'departmentName' | 'order'>
 ): Promise<{ id?: string; error?: string }> {
   try {
      const { user } = await getCurrentUser();
@@ -578,7 +591,7 @@ export async function addWorkflowDefinition(
         },
     });
     if (existing) {
-        return createErrorResult(`A workflow definition for this department and sector combination already exists.`, "addWorkflowDefinition");
+        return createErrorResult(`A workflow definition for this department and child sector combination already exists.`, "addWorkflowDefinition");
     }
 
     const maxOrder = await prisma.workflowDefinition.aggregate({ _max: { order: true }});
@@ -802,7 +815,7 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
       include: {
         workflowDefinition: {
           include: {
-            sector: true,
+            sector: { include: { parent: true }},
             department: true,
           }
         }
@@ -950,7 +963,7 @@ export async function searchLoanRequests(
       orderBy: { lastUpdatedDate: 'desc' },
       include: {
         customer: true,
-        sector: true,
+        sector: { include: { parent: true } },
         requestType: true,
         currentWorkflowStage: { select: { name: true } },
       },
@@ -966,7 +979,11 @@ export async function searchLoanRequests(
         currentStageName: pl.currentWorkflowStage?.name || 'Unknown Stage',
         customerId: pl.customerId,
         customerEmail: pl.customer.email,
+        sectorId: pl.sectorId,
         sectorName: pl.sector.name,
+        parentSectorId: pl.sector.parentId ?? undefined,
+        parentSectorName: pl.sector.parent?.name,
+        requestTypeId: pl.requestTypeId,
         requestTypeName: pl.requestType.name,
         loanPurpose: pl.loanPurpose,
         lastUpdatedDate: formatISO(pl.lastUpdatedDate),

@@ -9,6 +9,7 @@ export type Department = string;
 export interface Sector {
   id: string;
   name: string;
+  parentId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -114,6 +115,8 @@ export interface WorkflowDefinition {
   departmentName: string;
   sectorId: string;
   sectorName: string;
+  parentSectorId?: string;
+  parentSectorName?: string;
   description?: string;
   versions: WorkflowVersion[];
   order: number; // Added for ordering
@@ -162,7 +165,11 @@ export interface LoanRequest {
   customerPhone?: string;
   customerBranch?: string;
   loanAmount: number;
+  sectorId: string;
   sectorName: string;
+  parentSectorId?: string;
+  parentSectorName?: string;
+  requestTypeId: string;
   requestTypeName: string;
   loanPurpose: string;
 
