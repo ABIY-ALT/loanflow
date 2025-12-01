@@ -239,7 +239,7 @@ export async function addLoanRequest(
   }
 }
 
-export async function getLoanRequests(): Promise<{ loans?: LoanRequest[] }> {
+export async function getLoanRequests(): Promise<{ loans?: LoanRequest[], error?: string }> {
   try {
     const { user } = await getCurrentUser();
     if (!user) {
@@ -1009,3 +1009,5 @@ export async function searchLoanRequests(
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }
+
+    
