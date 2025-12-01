@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreHorizontal, ChevronDown, ChevronUp, Map, Briefcase, Network } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreVertical, ChevronDown, ChevronUp, Map, Briefcase, Network } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -948,6 +948,7 @@ export default function SettingsPage() {
   const canAccessAnySettings = currentUser?.permissions.some(p => 
     p === PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS ||
     p === PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS ||
+    p === PERMISSIONS.MANAGE_SETTINGS_BRANCHES ||
     p === PERMISSIONS.MANAGE_SETTINGS_ROLES ||
     p === PERMISSIONS.MANAGE_USERS
   );
@@ -1075,7 +1076,7 @@ export default function SettingsPage() {
                                 </div>
                                 <DropdownMenu onOpenChange={(open) => open && (event?.stopPropagation())} >
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={(e) => e.stopPropagation()}><MoreVertical className="h-4 w-4" /></Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                                         <DropdownMenuItem onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>
@@ -1346,4 +1347,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
