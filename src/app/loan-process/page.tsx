@@ -45,8 +45,6 @@ interface PipelineWorkflow {
 interface PipelineGrouping {
   groupingKey: string;
   parentSectorName?: string;
-  sectorName?: string;
-  requestTypeName?: string;
   workflows: PipelineWorkflow[];
 }
 
@@ -157,24 +155,20 @@ export default function LoanProcessPage() {
     const structure: Record<string, {
       groupingKey: string;
       parentSectorName?: string;
-      sectorName?: string;
-      requestTypeName?: string;
       workflows: Record<string, PipelineWorkflow> 
     }> = {};
 
     filteredLoans.forEach(loan => {
       const { parentSectorName, sectorName, requestTypeName, workflowVersionId, currentStageId, currentStageName, assignedDepartment } = loan;
-      if (!parentSectorName || !sectorName || !requestTypeName || !workflowVersionId || !currentStageId) return;
+      if (!parentSectorName || !workflowVersionId || !currentStageId) return;
       
-      const groupingKey = `${parentSectorName} | ${sectorName} | ${requestTypeName}`;
+      const groupingKey = parentSectorName; // Group by Parent Sector only
       const workflowId = `workflow-${workflowVersionId}`;
 
       if (!structure[groupingKey]) {
         structure[groupingKey] = {
           groupingKey,
           parentSectorName: parentSectorName,
-          sectorName: sectorName,
-          requestTypeName: requestTypeName,
           workflows: {}
         };
       }
@@ -182,26 +176,32 @@ export default function LoanProcessPage() {
       const workflowNameFromLoan = loan.workflowVersionId ? getWorkflowNameById(loan.workflowVersionId) : `Workflow (ID: ...${workflowVersionId.slice(-4)})`;
 
       if (!structure[groupingKey].workflows[workflowId]) {
+        const wfDef = workflowDefinitions.find(def => def.versions.some(v => v.id === workflowVersionId));
         structure[groupingKey].workflows[workflowId] = {
           id: workflowId,
           name: workflowNameFromLoan,
-          departmentName: assignedDepartment || 'N/A',
-          sectorName: sectorName,
-          requestTypeName: requestTypeName,
-          order: 0, 
+          departmentName: wfDef?.departmentName || 'N/A',
+          sectorName: wfDef?.sectorName || 'N/A',
+          requestTypeName: 'N/A', // Request Type no longer a grouping property for workflows
+          order: wfDef?.order ?? 0,
           stages: []
         };
       }
       
       let stage = structure[groupingKey].workflows[workflowId].stages.find(s => s.id === currentStageId);
       if (!stage) {
+        const stageDef = workflowDefinitions
+            .flatMap(def => def.versions)
+            .find(v => v.id === workflowVersionId)
+            ?.stages.find(s => s.id === currentStageId);
+        
         stage = {
           id: currentStageId,
           name: currentStageName || 'Unknown Stage',
           responsibleDepartment: assignedDepartment || 'N/A',
-          defaultTimelineDays: 0,
-          percentageWeight: 0,
-          order: 0, 
+          defaultTimelineDays: stageDef?.defaultTimelineDays || 0,
+          percentageWeight: stageDef?.percentageWeight || 0,
+          order: stageDef?.order || 0, 
           loans: []
         };
         structure[groupingKey].workflows[workflowId].stages.push(stage);
@@ -227,13 +227,19 @@ export default function LoanProcessPage() {
       });
     });
 
-    return Object.values(structure).map(groupData => ({
-      groupingKey: groupData.groupingKey,
-      parentSectorName: groupData.parentSectorName,
-      sectorName: groupData.sectorName,
-      requestTypeName: groupData.requestTypeName,
-      workflows: Object.values(groupData.workflows)
-    }));
+    return Object.values(structure).map(groupData => {
+      // Sort workflows within each parent sector group
+      const sortedWorkflows = Object.values(groupData.workflows).sort((a,b) => a.order - b.order);
+      // Sort stages within each workflow
+      sortedWorkflows.forEach(wf => {
+        wf.stages.sort((a, b) => a.order - b.order);
+      });
+      return {
+        groupingKey: groupData.groupingKey,
+        parentSectorName: groupData.parentSectorName,
+        workflows: sortedWorkflows
+      };
+    });
 
   }, [allLoans, searchTerm, statusFilter, workflowDefinitions, getWorkflowNameById]);
 
@@ -331,18 +337,13 @@ export default function LoanProcessPage() {
         </Card>
       ) : (
         <Accordion type="multiple" className="w-full space-y-4" value={openAccordionItems} onValueChange={setOpenAccordionItems}>
-          {pipelineData.map(({ groupingKey, parentSectorName, sectorName, requestTypeName, workflows }) => (
+          {pipelineData.map(({ groupingKey, parentSectorName, workflows }) => (
             <AccordionItem value={`group-${groupingKey}`} key={`group-${groupingKey}`} className="border-none">
               <Card className="shadow-sm">
                 <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
                    <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
                      <div className="flex flex-col md:flex-row md:items-center gap-x-4 gap-y-1 text-left">
                         <h3 className="text-xl font-semibold flex items-center gap-2"><Briefcase className="h-6 w-6 text-primary" />{parentSectorName}</h3>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground pl-8 md:pl-0">
-                          <span><span className="font-semibold text-foreground">Sector:</span> {sectorName}</span>
-                          <span>|</span>
-                          <span><span className="font-semibold text-foreground">Request:</span> {requestTypeName}</span>
-                        </div>
                      </div>
                      <Badge variant="secondary">{workflows.reduce((sum, wf) => sum + wf.stages.reduce((s, st) => s + st.loans.length, 0), 0)} Matching Loans</Badge>
                   </CardHeader>
@@ -354,9 +355,13 @@ export default function LoanProcessPage() {
                          <Card className="bg-muted/30">
                            <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
                               <CardHeader className="flex flex-row justify-between items-center w-full p-3 rounded-t-md hover:bg-background/50">
-                                <div>
+                                <div className="text-left">
                                   <h4 className="font-semibold flex items-center gap-1.5"><Network className="h-4 w-4 text-primary" />{workflow.name}</h4>
-                                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 ml-1"><Building className="h-3 w-3" /> Dept: {workflow.departmentName}</p>
+                                   <div className="text-xs text-muted-foreground flex items-center gap-2 ml-1">
+                                      <span><span className="font-semibold text-foreground/80">Child Sector:</span> {workflow.sectorName}</span>
+                                      <span>|</span>
+                                      <span><span className="font-semibold text-foreground/80">Dept:</span> {workflow.departmentName}</span>
+                                    </div>
                                 </div>
                                 <Badge variant="outline">{workflow.stages.reduce((sum, st) => sum + st.loans.length, 0)} Loans</Badge>
                               </CardHeader>
@@ -376,7 +381,10 @@ export default function LoanProcessPage() {
                                               <Card key={loan.id} className={cn("bg-background shadow-sm hover:shadow-md transition-shadow", loan.isUrgent && "border-2 border-destructive")}>
                                                 <CardContent className="p-3 space-y-2">
                                                   <div className="flex justify-between items-start">
-                                                    <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
+                                                    <div>
+                                                      <p className="font-semibold text-sm truncate pr-2">{loan.customerName}</p>
+                                                      <p className="text-xs text-muted-foreground">{loan.requestTypeName}</p>
+                                                    </div>
                                                     {loan.isUrgent && <Flame className="h-4 w-4 text-destructive shrink-0" />}
                                                   </div>
                                                   <p className="text-xs text-muted-foreground">{loan.loanNumber}</p>
