@@ -62,6 +62,9 @@ export async function addSector(name: string, parentId: string | null): Promise<
     });
     return { id: newSector.id };
   } catch (e: any) {
+    if ((e as any).code === 'P2003' && (e as any).meta?.field_name?.includes('parentId')) {
+        return createErrorResult("Invalid Parent Sector selected.", "addSector", e);
+    }
     return createErrorResult("Failed to add sector.", "addSector", e);
   }
 }

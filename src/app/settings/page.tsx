@@ -533,8 +533,10 @@ export default function SettingsPage() {
   const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
-  const [newSectorName, setNewSectorName] = useState('');
-  const [newSectorParentId, setNewSectorParentId] = useState<string | null>(null);
+  const [newParentSectorName, setNewParentSectorName] = useState('');
+  const [newChildSectorName, setNewChildSectorName] = useState('');
+  const [newChildSectorParentId, setNewChildSectorParentId] = useState<string>('');
+  
   const [editingSector, setEditingSector] = useState<Sector | null>(null);
   const [editingSectorName, setEditingSectorName] = useState('');
   const [isEditSectorDialogOpen, setIsEditSectorDialogOpen] = useState(false);
@@ -583,6 +585,7 @@ export default function SettingsPage() {
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
         const parentSectors = fetchedSectors.filter(s => !s.parentId);
         if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
+        if(parentSectors.length > 0 && newChildSectorParentId === '') setNewChildSectorParentId(parentSectors[0].id);
         
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -595,7 +598,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [canManageWorkflows, toast]);
+    }, [canManageWorkflows, toast, newChildSectorParentId, newWorkflowDepartmentId, newWorkflowParentSectorId]);
 
 
   useEffect(() => {
@@ -765,26 +768,25 @@ export default function SettingsPage() {
     toast({ title: "Workflow Added Locally", description: `"${newWorkflowName}" was added. Save all settings to persist.` });
   };
 
-   const handleAddSector = async () => {
-    if (!canManageWorkflows) return;
-    if (!newSectorName.trim()) {
-      toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
-      return;
+  const handleAddSector = async (name: string, parentId: string | null) => {
+    if (!canManageWorkflows || !name.trim()) {
+        toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
+        return;
     }
     setIsSavingData(true);
     try {
-      const result = await addSector(newSectorName.trim(), newSectorParentId);
-      if (result.error || !result.id) {
-        toast({ title: "Error Adding Sector", description: result.error || "Failed to add sector.", variant: "destructive" });
-      } else {
-        toast({ title: "Success", description: `Sector "${newSectorName.trim()}" added.` });
-        setNewSectorName('');
-        await fetchInitialData(); 
-      }
+        const result = await addSector(name.trim(), parentId);
+        if (result.error || !result.id) {
+            toast({ title: "Error Adding Sector", description: result.error || "Failed to add sector.", variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: `Sector "${name.trim()}" added.` });
+            if (parentId) setNewChildSectorName(''); else setNewParentSectorName('');
+            await fetchInitialData();
+        }
     } catch (error: any) {
-      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
     } finally {
-      setIsSavingData(false);
+        setIsSavingData(false);
     }
   };
 
@@ -1021,32 +1023,38 @@ export default function SettingsPage() {
                 <CardDescription>Define business sectors, e.g., "Agriculture", and sub-sectors, e.g., "Crop", "Livestock".</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <Input
-                        placeholder="e.g., Service Industry, Crop Production"
-                        value={newSectorName}
-                        onChange={(e) => setNewSectorName(e.target.value)}
-                        disabled={isSavingData || isSavingAll}
-                    />
-                    <Select value={newSectorParentId || 'none'} onValueChange={(value) => setNewSectorParentId(value === 'none' ? null : value)}>
-                        <SelectTrigger className="w-full sm:w-[200px]">
-                            <SelectValue placeholder="Select Parent (optional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="none">None (Is a Parent)</SelectItem>
-                            {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Button onClick={handleAddSector} disabled={!newSectorName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
-                        {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
-                        Add Sector
-                    </Button>
+                <div className="space-y-4">
+                    <div className="p-3 border rounded-md">
+                        <Label htmlFor="new-parent-sector" className="font-semibold">Add Parent Sector</Label>
+                        <div className="flex gap-2 mt-1">
+                            <Input id="new-parent-sector" placeholder="e.g., Service Industry" value={newParentSectorName} onChange={(e) => setNewParentSectorName(e.target.value)} disabled={isSavingData || isSavingAll} />
+                            <Button onClick={() => handleAddSector(newParentSectorName, null)} disabled={!newParentSectorName.trim() || isSavingData || isSavingAll}>Add Parent</Button>
+                        </div>
+                    </div>
+                    <div className="p-3 border rounded-md">
+                        <Label htmlFor="new-child-sector" className="font-semibold">Add Child Sector</Label>
+                        <div className="flex flex-col gap-2 mt-1">
+                            <Select value={newChildSectorParentId} onValueChange={setNewChildSectorParentId} disabled={parentSectors.length === 0}>
+                                <SelectTrigger><SelectValue placeholder="Select a Parent Sector..." /></SelectTrigger>
+                                <SelectContent>
+                                    {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                            <div className="flex gap-2">
+                                <Input id="new-child-sector" placeholder="e.g., Crop Production" value={newChildSectorName} onChange={(e) => setNewChildSectorName(e.target.value)} disabled={isSavingData || isSavingAll || !newChildSectorParentId} />
+                                <Button onClick={() => handleAddSector(newChildSectorName, newChildSectorParentId)} disabled={!newChildSectorName.trim() || !newChildSectorParentId || isSavingData || isSavingAll}>Add Child</Button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <Separator className="my-4"/>
+
                 <Table>
                   <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead>Parent</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {sectors.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
-                    {sectors.filter(s => !s.parentId).map(parent => (
+                    {parentSectors.map(parent => (
                         <React.Fragment key={parent.id}>
                             <TableRow className="bg-muted/30">
                                 <TableCell className="font-semibold">{parent.name}</TableCell>
@@ -1365,5 +1373,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
 
