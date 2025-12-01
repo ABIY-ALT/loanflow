@@ -300,28 +300,27 @@ export default function LoanProcessPage() {
           </div>
         </div>
          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <div className="relative">
-              <Combobox
-                options={loanOptions}
-                value={searchTerm}
-                onSelect={(currentValue) => {
-                  const loan = allLoans.find(l => l.loanNumber.toLowerCase() === currentValue);
-                  setSearchTerm(loan ? loan.loanNumber : '');
-                }}
-                onInputChange={(inputValue) => {
-                  setSearchTerm(inputValue);
-                }}
-                placeholder="Search loans..."
-                searchPlaceholder="Filter loans..."
-                notFoundText="No loan found."
-                className="w-full sm:w-[300px]"
-              />
-               {searchTerm && (
-                <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setSearchTerm('')}>
-                  <X className="h-4 w-4 text-muted-foreground"/>
-                </Button>
-              )}
-            </div>
+            <Combobox
+              options={loanOptions}
+              value={searchTerm}
+              onSelect={(currentValue) => {
+                const loan = allLoans.find(l => l.loanNumber.toLowerCase() === currentValue);
+                setSearchTerm(loan ? loan.loanNumber : '');
+              }}
+              onInputChange={(inputValue) => {
+                setSearchTerm(inputValue);
+              }}
+              placeholder="Search loans..."
+              searchPlaceholder="Filter loans..."
+              notFoundText="No loan found."
+              className="w-full sm:w-[300px]"
+            />
+             {searchTerm && (
+              <Button variant="ghost" onClick={() => setSearchTerm('')}>
+                <X className="h-4 w-4 mr-2" />
+                Clear Filter
+              </Button>
+            )}
           {currentUser && userPermissions.has(PERMISSIONS.CREATE_LOAN_REQUEST) && (
             <Link href="/loan-requests/new" passHref><Button className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> New Loan</Button></Link>
           )}
