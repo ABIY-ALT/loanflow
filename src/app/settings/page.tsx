@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,6 +62,12 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
@@ -1020,7 +1027,6 @@ export default function SettingsPage() {
     {canManageWorkflows && (
       <>
         <div className="grid lg:grid-cols-2 gap-8 items-start">
-            {/* Left Column: Sectors */}
             <Card>
                 <CardHeader>
                     <CardTitle>Manage Sectors</CardTitle>
@@ -1057,23 +1063,35 @@ export default function SettingsPage() {
                     </Accordion>
                     <Separator className="my-4"/>
                     <h4 className="font-medium text-sm mb-2">Existing Sectors</h4>
-                    <Accordion type="multiple" className="w-full space-y-2">
-                      {parentSectors.map(parent => (
+                     <Accordion type="multiple" className="w-full space-y-2">
+                      {parentSectors.map(parent => {
+                        const childCount = sectors.filter(s => s.parentId === parent.id).length;
+                        return (
                         <AccordionItem value={parent.id} key={parent.id} className="border rounded-md px-2">
-                            <AccordionTrigger className="py-2 hover:no-underline">
-                                <span className="font-semibold">{parent.name}</span>
+                            <AccordionTrigger className="py-2 hover:no-underline flex justify-between w-full">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-semibold">{parent.name}</span>
+                                    <Badge variant="secondary">{childCount} {childCount === 1 ? 'child' : 'children'}</Badge>
+                                </div>
+                                <DropdownMenu onOpenChange={(open) => open && (event?.stopPropagation())} >
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                        <DropdownMenuItem onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>
+                                        <AlertDialog onOpenChange={(open) => open && (event?.stopPropagation())}>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive px-2 py-1.5 text-sm h-auto font-normal relative" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4 mr-2" /> Delete</Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </AccordionTrigger>
                             <AccordionContent className="pt-2 pb-2 pl-4">
-                                <div className="flex items-center justify-end border-t pt-2">
-                                    <Button variant="ghost" size="sm" onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-1" /> Edit</Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button></AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
-                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
                                 <h5 className="text-xs font-semibold uppercase text-muted-foreground mt-2 mb-1">Child Sectors</h5>
                                 <div className="space-y-1">
                                     {sectors.filter(s => s.parentId === parent.id).map(child => (
@@ -1091,16 +1109,15 @@ export default function SettingsPage() {
                                             </div>
                                         </div>
                                     ))}
-                                    {sectors.filter(s => s.parentId === parent.id).length === 0 && <p className="text-xs text-muted-foreground pl-2">No child sectors defined.</p>}
+                                    {childCount === 0 && <p className="text-xs text-muted-foreground pl-2">No child sectors defined.</p>}
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
-                      ))}
+                      )})}
                     </Accordion>
                 </CardContent>
             </Card>
 
-            {/* Right Column: Request Types */}
             <Card>
                 <CardHeader>
                     <CardTitle>Manage Request Types</CardTitle>
@@ -1141,14 +1158,13 @@ export default function SettingsPage() {
             </Card>
         </div>
 
-        {/* Bottom Section: Workflows */}
         <Card>
             <CardHeader>
                 <CardTitle>Workflow Definitions</CardTitle>
                 <CardDescription>Manage workflows. New loans use the active version for their specific Parent Sector.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <Accordion type="single" collapsible>
+              <Accordion type="single" collapsible defaultValue="add-new-workflow">
                   <AccordionItem value="add-new-workflow">
                     <AccordionTrigger>
                        <span className="flex items-center text-primary font-semibold"><PlusCircle className="mr-2 h-5 w-5"/> Add New Workflow Definition</span>
@@ -1330,3 +1346,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
