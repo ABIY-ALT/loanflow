@@ -184,7 +184,7 @@ export default function LoanDetailPage() {
   }, [loan, toast, fetchLoanData]);
 
 
-  const onEditLoanSubmit = async (data: { assignedTo?: string[] }) => {
+  const onAssignStaffSubmit = async (data: { assignedTo?: string[] }) => {
     if (!loan) return;
     
     const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
@@ -869,7 +869,7 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onAssignStaffSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentRequirementToUpload(null);}} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
