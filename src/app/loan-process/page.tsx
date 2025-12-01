@@ -10,7 +10,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle, Briefcase, Network } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getLoanRequests, getWorkflowDefinitions as getWfDefs } from '@/services/loan-service-prisma';
 import { Alert, AlertDescription as AlertDescShadCN, AlertTitle as AlertTitleShadCN } from '@/components/ui/alert';
 import {
   Accordion,
@@ -90,26 +90,24 @@ export default function LoanProcessPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const loansResult = await getLoanRequests();
+        const [loansResult, wfResult] = await Promise.all([
+          getLoanRequests(),
+          getWfDefs()
+        ]);
 
         if (loansResult.error) { 
           setError(loansResult.error); 
         } else if (loansResult.loans) {
           setAllLoans(loansResult.loans);
-          // Extract unique workflow definitions from loans
-          const uniqueWfDefs = new Map<string, WorkflowDefinition>();
-          loansResult.loans.forEach(loan => {
-             // This part seems to be missing from the original implementation.
-             // We need to get the workflow definitions to display names.
-             // Let's assume getLoanRequests also returns workflow definitions.
-             // This might require a change in the service.
-             // For now, let's proceed as if it does.
-             // NOTE: I will have to find where getLoanRequests returns workflows
-          });
-
+        }
+        
+        if (wfResult.error) {
+          setError(prev => prev ? `${prev}\n${wfResult.error}` : wfResult.error);
+        } else if (wfResult.workflows) {
+          setWorkflowDefinitions(wfResult.workflows);
         }
 
-      } catch (err: any) => {
+      } catch (err: any) {
         setError(`FetchError: ${err.message || "Error fetching page data."}`);
       }
       finally { setIsLoading(false); }
@@ -118,7 +116,7 @@ export default function LoanProcessPage() {
     fetchPageData();
   }, [authLoading, canViewPage]);
 
-   const getWorkflowNameById = (versionId: string): string => {
+   const getWorkflowNameById = useCallback((versionId: string): string => {
     for (const def of workflowDefinitions) {
       for (const ver of def.versions) {
         if (ver.id === versionId) {
@@ -127,7 +125,7 @@ export default function LoanProcessPage() {
       }
     }
     return `Workflow (ID: ...${versionId.slice(-4)})`;
-  };
+  }, [workflowDefinitions]);
   
   const pipelineData = useMemo((): PipelineGrouping[] => {
     let loansToDisplay: LoanRequest[];
@@ -237,7 +235,7 @@ export default function LoanProcessPage() {
       workflows: Object.values(groupData.workflows)
     }));
 
-  }, [allLoans, searchTerm, statusFilter, workflowDefinitions]);
+  }, [allLoans, searchTerm, statusFilter, workflowDefinitions, getWorkflowNameById]);
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, group) => 
