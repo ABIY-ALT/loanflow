@@ -49,7 +49,8 @@ import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Depa
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
-import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType, type ConfigurableListItem } from '@/services/sector-and-request-type-service';
+import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType } from '@/services/sector-and-request-type-service';
+import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1364,4 +1365,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
