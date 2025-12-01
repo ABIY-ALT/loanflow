@@ -155,18 +155,23 @@ export async function addLoanRequest(
         return createErrorResult("Invalid child sector selected or it has no parent.", "addLoanRequest");
     }
 
+    const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
+        where: {
+            parentSectorId: selectedChildSector.parentId
+        },
+        orderBy: {
+            order: 'asc'
+        }
+    });
+
+    if (!firstWorkflowInSequence) {
+        return createErrorResult(`No workflow sequence found for the selected Parent Sector.`, "addLoanRequest");
+    }
+
     const activeVersion = await prisma.workflowVersion.findFirst({
         where: {
+            workflowDefinitionId: firstWorkflowInSequence.id,
             isActive: true,
-            workflowDefinition: {
-                is: {
-                   sector: {
-                    is: {
-                        parentId: selectedChildSector.parentId
-                    }
-                   }
-                }
-            }
         },
         include: {
             workflowDefinition: {
@@ -180,7 +185,7 @@ export async function addLoanRequest(
     });
 
     if (!activeVersion || !activeVersion.workflowDefinition.department || activeVersion.stages.length === 0) {
-        return createErrorResult(`An active workflow for the selected Parent Sector is not available or properly configured.`, "addLoanRequest");
+        return createErrorResult(`The first workflow in the sequence ("${firstWorkflowInSequence.name}") has no active version or is improperly configured.`, "addLoanRequest");
     }
 
     const firstStage = activeVersion.stages[0];
@@ -1015,5 +1020,3 @@ export async function searchLoanRequests(
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }
-
-    

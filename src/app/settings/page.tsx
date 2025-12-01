@@ -737,41 +737,27 @@ export default function SettingsPage() {
   }, [referenceWorkflowOptions, newWorkflowReferenceId]);
 
 
-  const handleActivateWorkflowVersion = (definitionIdToActivate: string, versionIdToActivate: string) => {
+  const handleActivateWorkflowVersion = (definitionId: string, versionId: string) => {
     if (!canManageWorkflows) return;
     
-    const targetDefToActivate = workflowDefinitions.find(d => d.id === definitionIdToActivate);
-    if (!targetDefToActivate) return;
-    
-    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-        if (def.parentSectorId === targetDefToActivate.parentSectorId) {
-            return {
-                ...def,
-                versions: def.versions.map(v => ({ 
-                    ...v, 
-                    isActive: (def.id === definitionIdToActivate && v.id === versionIdToActivate) 
-                }))
-            };
-        }
-        return def;
-    }));
-
-    const activatedVersion = targetDefToActivate?.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its parent sector. Click "Save All Settings" to persist.` });
-  };
-  
-  const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
-    if (!canManageWorkflows) return;
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
         if (def.id === definitionId) {
             return {
                 ...def,
-                versions: def.versions.map(v => v.id === versionId ? { ...v, isActive: false } : v)
+                versions: def.versions.map(v => 
+                    v.id === versionId ? { ...v, isActive: !v.isActive } : v
+                )
             };
         }
         return def;
     }));
-    toast({ title: "Success (Local)", description: `Version deactivated locally. Click "Save All Settings" to persist.` });
+    
+    toast({ title: "Success (Local)", description: `Workflow version status toggled. Click "Save All Settings" to persist.` });
+  };
+  
+  const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
+    // This function is now the same as handleActivateWorkflowVersion (it toggles), so it can be deprecated or kept for clarity.
+    handleActivateWorkflowVersion(definitionId, versionId);
 };
 
 
@@ -1388,11 +1374,10 @@ export default function SettingsPage() {
                                       <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                                        {!version.isActive ? (
-                                            <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}><ShieldCheck className="mr-2 h-4 w-4"/>Set Active</Button>
-                                        ) : (
-                                            <Button variant="secondary" size="sm" onClick={() => handleDeactivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData} className="text-amber-700 border-amber-500 hover:bg-amber-100"><ShieldOff className="mr-2 h-4 w-4"/>Deactivate</Button>
-                                        )}
+                                        <Button variant={version.isActive ? "secondary" : "outline"} size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
+                                          {version.isActive ? <ShieldOff className="mr-2 h-4 w-4 text-amber-700"/> : <ShieldCheck className="mr-2 h-4 w-4"/>}
+                                          {version.isActive ? 'Deactivate' : 'Set Active'}
+                                        </Button>
                                         <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}><Edit className="mr-2 h-4 w-4" />Edit Stages</Button>
                                     </div>
                                   </div>
@@ -1460,6 +1445,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-
-
