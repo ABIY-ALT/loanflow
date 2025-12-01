@@ -552,42 +552,39 @@ export default function SettingsPage() {
 
   const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 
-  const fetchInitialData = useCallback(async () => {
+  const fetchInitialData = useCallback(() => {
     if (!canManageWorkflows) {
       setIsLoadingData(false);
       return;
     }
       setIsLoadingData(true);
       setError(null);
-      try {
-        const [wfResult, deptResult, sectorResult, requestTypeResult] = await Promise.all([
+      Promise.all([
           getWorkflowDefinitions(),
           getDepartments(),
           getSectors(),
           getRequestTypes(),
-        ]);
+      ]).then(([wfResult, deptResult, sectorResult, requestTypeResult]) => {
+          if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
+          setWorkflowDefinitions((wfResult.workflows || []).sort((a,b) => (a.order || 0) - (b.order || 0)));
 
-        if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
-        setWorkflowDefinitions((wfResult.workflows || []).sort((a,b) => (a.order || 0) - (b.order || 0)));
+          if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
+          const fetchedDepts = deptResult.departments || [];
+          setDepartments(fetchedDepts);
 
-        if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
-        const fetchedDepts = deptResult.departments || [];
-        setDepartments(fetchedDepts);
+          if (sectorResult.error) throw new Error(`Sectors: ${sectorResult.error}`);
+          const fetchedSectors = sectorResult.sectors || [];
+          setSectors(fetchedSectors);
+          
+          if (requestTypeResult.error) throw new Error(`Request Types: ${requestTypeResult.error}`);
+          const fetchedRequestTypes = requestTypeResult.requestTypes || [];
+          setRequestTypes(fetchedRequestTypes as RequestType[]);
 
-        if (sectorResult.error) throw new Error(`Sectors: ${sectorResult.error}`);
-        const fetchedSectors = sectorResult.sectors || [];
-        setSectors(fetchedSectors);
-        
-        if (requestTypeResult.error) throw new Error(`Request Types: ${requestTypeResult.error}`);
-        const fetchedRequestTypes = requestTypeResult.requestTypes || [];
-        setRequestTypes(fetchedRequestTypes as RequestType[]);
-
-        if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
-        const parentSectors = fetchedSectors.filter(s => !s.parentId);
-        if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
-        if(parentSectors.length > 0 && newChildSectorParentId === '') setNewChildSectorParentId(parentSectors[0].id);
-        
-      } catch (err: any) {
+          if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
+          const parentSectors = fetchedSectors.filter(s => !s.parentId);
+          if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
+          if(parentSectors.length > 0 && newChildSectorParentId === '') setNewChildSectorParentId(parentSectors[0].id);
+      }).catch(err => {
         const errorMessage = err.message || "Failed to load settings data.";
         setError(errorMessage);
         setWorkflowDefinitions([]);
@@ -595,10 +592,10 @@ export default function SettingsPage() {
         setSectors([]);
         setRequestTypes([]);
         toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive", duration: 9000});
-      } finally {
+      }).finally(() => {
         setIsLoadingData(false);
-      }
-    }, [canManageWorkflows, toast, newChildSectorParentId, newWorkflowDepartmentId, newWorkflowParentSectorId]);
+      });
+    }, [canManageWorkflows, toast]);
 
 
   useEffect(() => {
@@ -995,357 +992,313 @@ export default function SettingsPage() {
         <p className="text-muted-foreground">
           Configure various aspects of the LoanFlow application. Access to specific sections depends on your permissions.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && (
-             <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
-          )}
-           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES) && (
-             <Link href="/settings/branches" passHref><Button variant="outline">Manage Branches & Districts</Button></Link>
-          )}
-          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) && (
-             <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
-          )}
-          {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
-             <Link href="/settings/user-assignments" passHref><Button variant="outline">Manage User Assignments</Button></Link>
-          )}
-           {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
-             <Link href="/settings/register-user" passHref><Button variant="outline">Register New User</Button></Link>
-          )}
-        </div>
       </div>
 
-    {canManageWorkflows && (
-      <>
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-            <CardHeader>
-                <CardTitle>Manage Sectors (Parent & Child)</CardTitle>
-                <CardDescription>Define business sectors, e.g., "Agriculture", and sub-sectors, e.g., "Crop", "Livestock".</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    <div className="p-3 border rounded-md">
-                        <Label htmlFor="new-parent-sector" className="font-semibold">Add Parent Sector</Label>
-                        <div className="flex gap-2 mt-1">
-                            <Input id="new-parent-sector" placeholder="e.g., Service Industry" value={newParentSectorName} onChange={(e) => setNewParentSectorName(e.target.value)} disabled={isSavingData || isSavingAll} />
-                            <Button onClick={() => handleAddSector(newParentSectorName, null)} disabled={!newParentSectorName.trim() || isSavingData || isSavingAll}>Add Parent</Button>
-                        </div>
-                    </div>
-                    <div className="p-3 border rounded-md">
-                        <Label htmlFor="new-child-sector" className="font-semibold">Add Child Sector</Label>
-                        <div className="flex flex-col gap-2 mt-1">
-                            <Select value={newChildSectorParentId} onValueChange={setNewChildSectorParentId} disabled={parentSectors.length === 0}>
-                                <SelectTrigger><SelectValue placeholder="Select a Parent Sector..." /></SelectTrigger>
-                                <SelectContent>
-                                    {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            <div className="flex gap-2">
-                                <Input id="new-child-sector" placeholder="e.g., Crop Production" value={newChildSectorName} onChange={(e) => setNewChildSectorName(e.target.value)} disabled={isSavingData || isSavingAll || !newChildSectorParentId} />
-                                <Button onClick={() => handleAddSector(newChildSectorName, newChildSectorParentId)} disabled={!newChildSectorName.trim() || !newChildSectorParentId || isSavingData || isSavingAll}>Add Child</Button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <Separator className="my-4"/>
-
-                <Table>
-                  <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead>Parent</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {sectors.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
-                    {parentSectors.map(parent => (
-                        <React.Fragment key={parent.id}>
-                            <TableRow className="bg-muted/30">
-                                <TableCell className="font-semibold">{parent.name}</TableCell>
-                                <TableCell className="text-muted-foreground">-</TableCell>
-                                <TableCell className="text-right">
-                                    <Button variant="ghost" size="sm" onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="mr-1 h-4 w-4" /></Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
-                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </TableCell>
-                            </TableRow>
-                            {sectors.filter(s => s.parentId === parent.id).map(child => (
-                                <TableRow key={child.id}>
-                                    <TableCell className="pl-8">{child.name}</TableCell>
-                                    <TableCell className="text-muted-foreground">{parent.name}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => { setEditingSector(child); setEditingSectorName(child.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="mr-1 h-4 w-4" /></Button>
-                                        <AlertDialog>
-                                            <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>Delete Sector "{child.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(child.id, child.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </React.Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader>
-                <CardTitle>Manage Request Types</CardTitle>
-                <CardDescription>Define request types, e.g., "New Loan", "Restructuring".</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <Input
-                        placeholder="e.g., Additional Facility"
-                        value={newRequestTypeName}
-                        onChange={(e) => setNewRequestTypeName(e.target.value)}
-                        disabled={isSavingData || isSavingAll}
-                    />
-                    <Button onClick={handleAddRequestType} disabled={!newRequestTypeName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
-                        {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
-                        Add Request Type
-                    </Button>
-                </div>
-                <Table>
-                  <TableHeader><TableRow><TableHead>Request Type Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {requestTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No request types defined yet.</TableCell></TableRow>}
-                    {requestTypes.map(item => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => { setEditingRequestType(item); setEditingRequestTypeName(item.name); setIsEditRequestTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
-                              <Edit className="mr-1 h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect existing loan requests that use it.</AlertDialogDescription></AlertDialogHeader>
-                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequestType(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-      </div>
-
-      <Card>
+       <Card>
         <CardHeader>
-          <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows. New loans use the active version for their specific Parent Sector.</CardDescription>
+          <CardTitle>Administrative Areas</CardTitle>
+          <CardDescription>Quick links to other settings and management pages.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
-            <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
-            <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-4">
-              <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
-              <div>
-                <Label htmlFor="new-wf-dept">Owning Department</Label>
-                <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
-                  <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
-                  <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="new-wf-parent-sector">For Parent Sector</Label>
-                <Select value={newWorkflowParentSectorId} onValueChange={(value) => setNewWorkflowParentSectorId(value)}>
-                  <SelectTrigger id="new-wf-parent-sector" className="mt-1"><SelectValue placeholder="Select Parent Sector" /></SelectTrigger>
-                  <SelectContent>{parentSectors.map(s => <SelectItem key={`new-wf-ps-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-               <div>
-                <Label htmlFor="new-wf-child-sector">For Child Sector</Label>
-                <Select value={newWorkflowChildSectorId} onValueChange={(value) => setNewWorkflowChildSectorId(value)} disabled={!newWorkflowParentSectorId}>
-                  <SelectTrigger id="new-wf-child-sector" className="mt-1"><SelectValue placeholder="Select Child Sector" /></SelectTrigger>
-                  <SelectContent>
-                    {childSectorsForSelectedParent.length === 0 && <SelectItem value="none" disabled>No child sectors</SelectItem>}
-                    {childSectorsForSelectedParent.map(s => <SelectItem key={`new-wf-cs-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-2"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
-            </div>
-            
-            <div className="grid md:grid-cols-3 gap-4 items-end">
-              <div className="flex items-center space-x-2">
-                <Label>Insert</Label>
-                <Select value={newWorkflowInsertMode} onValueChange={(v) => setNewWorkflowInsertMode(v as 'before' | 'after')}>
-                  <SelectTrigger><SelectValue/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="before">Before</SelectItem>
-                    <SelectItem value="after">After</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Reference Workflow (in same category)</Label>
-                <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={referenceWorkflowOptions.length === 0}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference workflow"/></SelectTrigger>
-                  <SelectContent>
-                    {referenceWorkflowOptions.length === 0 ? (
-                      <SelectItem value="no-workflows-found" disabled>No existing workflows for this category</SelectItem>
-                    ) : (
-                      referenceWorkflowOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>)
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Workflow
-              </Button>
-            </div>
-            {(parentSectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A parent sector and department must be configured first.</p>}
-          </div>
-
-          <Separator/>
-          
-          <h4 className="font-medium text-lg">Current Workflow Paths (By Parent Sector)</h4>
-          <div className="space-y-4">
-          {Object.values(workflowsByCombination).map(({ parentSectorName, workflows }) => (
-            <div key={`${parentSectorName}`} className="p-4 border rounded-lg">
-              <h5 className="font-medium mb-3"><span className="text-primary">{parentSectorName}</span> Path</h5>
-              <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
-                {workflows.map((def, index) => (
-                  <React.Fragment key={def.id}>
-                    <div className="flex flex-col items-center text-center w-36">
-                      <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">
-                        {index + 1}
-                      </div>
-                      <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
-                       <div className="text-xs text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" />{def.sectorName}</div>
-                      <div className="text-xs text-muted-foreground">{def.departmentName}</div>
-                    </div>
-                    {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
-                  </React.Fragment>
-                ))}
-                {workflows.length === 0 && <p className="text-muted-foreground">No workflows defined for this combination.</p>}
-              </div>
-            </div>
-          ))}
-          {Object.keys(workflowsByCombination).length === 0 && (
-             <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet. Add one above to start.</div>
-          )}
-        </div>
-            
-          <Accordion type="multiple" className="w-full space-y-4">
-          {workflowDefinitions.map(def => (
-            <AccordionItem value={def.id} key={def.id}>
-              <Card className="shadow-sm">
-                <AccordionTrigger className="hover:no-underline p-0">
-                  <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
-                    <div className="text-left">
-                      <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
-                        <Badge variant="outline">Parent Sector: {def.parentSectorName || 'N/A'}</Badge>
-                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
-                        {def.description && (
-                          <Button variant="ghost" size="sm" className="h-auto p-1 text-xs" onClick={(e) => { e.stopPropagation(); toggleDescription(def.id); }}>
-                            {expandedDescriptions.has(def.id) ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-                            {expandedDescriptions.has(def.id) ? 'Hide' : 'Show'} Desc.
-                          </Button>
-                        )}
-                      </div>
-                      {expandedDescriptions.has(def.id) && (
-                        <CardDescription className="mt-2 text-sm text-muted-foreground animate-in fade-in-0">
-                          {def.description || "No description."}
-                        </CardDescription>
-                      )}
-                    </div>
-                  </CardHeader>
-                </AccordionTrigger>
-                <AccordionContent className="p-0">
-                  <CardContent className="space-y-3 p-4">
-                    <h4 className="font-medium text-sm">Versions (Latest first):</h4>
-                    {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined for this workflow. Add one below.</p>}
-                    {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
-                      <div key={version.id} className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 border rounded-md gap-2 ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
-                        <div>
-                          <div className="font-semibold flex items-center">
-                            Version {version.versionNumber}
-                            {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
-                          </div>
-                          <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                            {!version.isActive ? (
-                                <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
-                                    <ShieldCheck className="mr-2 h-4 w-4"/>Set Active
-                                </Button>
-                            ) : (
-                                <Button variant="secondary" size="sm" onClick={() => handleDeactivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData} className="text-amber-700 border-amber-500 hover:bg-amber-100">
-                                    <ShieldOff className="mr-2 h-4 w-4"/>Deactivate
-                                </Button>
-                            )}
-                            <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}>
-                                <Edit className="mr-2 h-4 w-4" />Edit Stages
-                            </Button>
-                        </div>
-                      </div>
-                    ))}
-                    <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2" disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" />Add New Version to &quot;{def.name}&quot;</Button>
-                  </CardContent>
-                </AccordionContent>
-              </Card>
-            </AccordionItem>
-          ))}
-          </Accordion>
+        <CardContent className="flex flex-wrap gap-2">
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && (
+              <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES) && (
+              <Link href="/settings/branches" passHref><Button variant="outline">Manage Branches & Districts</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) && (
+              <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+              <Link href="/settings/user-assignments" passHref><Button variant="outline">Manage User Assignments</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+              <Link href="/settings/register-user" passHref><Button variant="outline">Register New User</Button></Link>
+            )}
         </CardContent>
       </Card>
-      </>
-    )}
+
+    {canManageWorkflows && (
+      <div className="grid lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-1 space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Manage Sectors & Request Types</CardTitle>
+                    <CardDescription>Define business sectors and loan request types used in workflows.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Accordion type="single" collapsible defaultValue="item-1">
+                        <AccordionItem value="item-1">
+                            <AccordionTrigger>Sectors</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="p-3 border rounded-md">
+                                    <Label htmlFor="new-parent-sector" className="font-semibold">Add Parent Sector</Label>
+                                    <div className="flex gap-2 mt-1">
+                                        <Input id="new-parent-sector" placeholder="e.g., Service Industry" value={newParentSectorName} onChange={(e) => setNewParentSectorName(e.target.value)} disabled={isSavingData || isSavingAll} />
+                                        <Button onClick={() => handleAddSector(newParentSectorName, null)} disabled={!newParentSectorName.trim() || isSavingData || isSavingAll}>Add Parent</Button>
+                                    </div>
+                                </div>
+                                <div className="p-3 border rounded-md">
+                                    <Label htmlFor="new-child-sector" className="font-semibold">Add Child Sector</Label>
+                                    <div className="flex flex-col gap-2 mt-1">
+                                        <Select value={newChildSectorParentId} onValueChange={setNewChildSectorParentId} disabled={parentSectors.length === 0}>
+                                            <SelectTrigger><SelectValue placeholder="Select a Parent Sector..." /></SelectTrigger>
+                                            <SelectContent>
+                                                {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                        <div className="flex gap-2">
+                                            <Input id="new-child-sector" placeholder="e.g., Crop Production" value={newChildSectorName} onChange={(e) => setNewChildSectorName(e.target.value)} disabled={isSavingData || isSavingAll || !newChildSectorParentId} />
+                                            <Button onClick={() => handleAddSector(newChildSectorName, newChildSectorParentId)} disabled={!newChildSectorName.trim() || !newChildSectorParentId || isSavingData || isSavingAll}>Add Child</Button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <Separator className="my-4"/>
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Sector Name</TableHead><TableHead>Parent</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {sectors.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No sectors defined yet.</TableCell></TableRow>}
+                                        {parentSectors.map(parent => (
+                                            <React.Fragment key={parent.id}>
+                                                <TableRow className="bg-muted/30">
+                                                    <TableCell className="font-semibold">{parent.name}</TableCell>
+                                                    <TableCell className="text-muted-foreground">-</TableCell>
+                                                    <TableCell className="text-right py-1">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4" /></Button>
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </TableCell>
+                                                </TableRow>
+                                                {sectors.filter(s => s.parentId === parent.id).map(child => (
+                                                    <TableRow key={child.id}>
+                                                        <TableCell className="pl-8">{child.name}</TableCell>
+                                                        <TableCell className="text-muted-foreground">{parent.name}</TableCell>
+                                                        <TableCell className="text-right py-1">
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSector(child); setEditingSectorName(child.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4" /></Button>
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader><AlertDialogTitle>Delete Sector "{child.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(child.id, child.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </AccordionContent>
+                        </AccordionItem>
+                        <AccordionItem value="item-2">
+                            <AccordionTrigger>Request Types</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <Input placeholder="e.g., Additional Facility" value={newRequestTypeName} onChange={(e) => setNewRequestTypeName(e.target.value)} disabled={isSavingData || isSavingAll}/>
+                                    <Button onClick={handleAddRequestType} disabled={!newRequestTypeName.trim() || isSavingData || isSavingAll} className="w-full sm:w-auto">
+                                        {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
+                                        Add
+                                    </Button>
+                                </div>
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Request Type Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {requestTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No request types defined.</TableCell></TableRow>}
+                                        {requestTypes.map(item => (
+                                          <TableRow key={item.id}>
+                                            <TableCell className="font-medium">{item.name}</TableCell>
+                                            <TableCell className="text-right py-1">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingRequestType(item); setEditingRequestTypeName(item.name); setIsEditRequestTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
+                                                  <Edit className="h-4 w-4" />
+                                                </Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect existing loan requests that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequestType(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                </CardContent>
+            </Card>
+        </div>
+
+        <div className="lg:col-span-2 space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Workflow Definitions</CardTitle>
+                    <CardDescription>Manage workflows. New loans use the active version for their specific Parent Sector.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <Accordion type="single" collapsible>
+                      <AccordionItem value="add-new-workflow">
+                        <AccordionTrigger>
+                           <span className="flex items-center text-primary font-semibold"><PlusCircle className="mr-2 h-5 w-5"/> Add New Workflow Definition</span>
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-4">
+                           <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+                              <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-4">
+                                <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
+                                <div>
+                                  <Label htmlFor="new-wf-dept">Owning Department</Label>
+                                  <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
+                                    <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                    <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label htmlFor="new-wf-parent-sector">For Parent Sector</Label>
+                                  <Select value={newWorkflowParentSectorId} onValueChange={(value) => setNewWorkflowParentSectorId(value)}>
+                                    <SelectTrigger id="new-wf-parent-sector" className="mt-1"><SelectValue placeholder="Select Parent Sector" /></SelectTrigger>
+                                    <SelectContent>{parentSectors.map(s => <SelectItem key={`new-wf-ps-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                </div>
+                                 <div>
+                                  <Label htmlFor="new-wf-child-sector">For Child Sector</Label>
+                                  <Select value={newWorkflowChildSectorId} onValueChange={(value) => setNewWorkflowChildSectorId(value)} disabled={!newWorkflowParentSectorId}>
+                                    <SelectTrigger id="new-wf-child-sector" className="mt-1"><SelectValue placeholder="Select Child Sector" /></SelectTrigger>
+                                    <SelectContent>
+                                      {childSectorsForSelectedParent.length === 0 && <SelectItem value="none" disabled>No child sectors</SelectItem>}
+                                      {childSectorsForSelectedParent.map(s => <SelectItem key={`new-wf-cs-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="md:col-span-2"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
+                              </div>
+                              <div className="grid md:grid-cols-3 gap-4 items-end pt-2">
+                                <div className="flex items-center space-x-2">
+                                  <Label>Insert</Label>
+                                  <Select value={newWorkflowInsertMode} onValueChange={(v) => setNewWorkflowInsertMode(v as 'before' | 'after')}>
+                                    <SelectTrigger><SelectValue/></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="before">Before</SelectItem>
+                                      <SelectItem value="after">After</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label>Reference Workflow</Label>
+                                  <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={referenceWorkflowOptions.length === 0}>
+                                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference"/></SelectTrigger>
+                                    <SelectContent>
+                                      {referenceWorkflowOptions.length === 0 ? (<SelectItem value="no-workflows-found" disabled>No workflows in this category</SelectItem>) : (referenceWorkflowOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" /> Add Workflow</Button>
+                              </div>
+                              {(parentSectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A parent sector and department must be configured first.</p>}
+                            </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                  </Accordion>
+                  <Separator/>
+                  <h4 className="font-medium text-lg pt-4">Current Workflow Paths & Definitions</h4>
+                  <Accordion type="multiple" className="w-full space-y-4">
+                  {Object.keys(workflowsByCombination).length === 0 && <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>}
+                  {Object.values(workflowsByCombination).map(({ parentSectorName, workflows }) => (
+                    <AccordionItem value={`path-${parentSectorName}`} key={`path-${parentSectorName}`}>
+                       <AccordionTrigger>
+                           <span className="flex items-center text-lg"><Briefcase className="mr-2 h-5 w-5 text-primary"/> Path for: {parentSectorName}</span>
+                       </AccordionTrigger>
+                       <AccordionContent className="space-y-4 pt-2">
+                          <div className="p-4 border rounded-lg">
+                            <h5 className="font-medium mb-3">Workflow Sequence</h5>
+                            <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
+                              {workflows.map((def, index) => (
+                                <React.Fragment key={def.id}>
+                                  <div className="flex flex-col items-center text-center w-36">
+                                    <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">{index + 1}</div>
+                                    <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
+                                     <div className="text-xs text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" />{def.sectorName}</div>
+                                    <div className="text-xs text-muted-foreground">{def.departmentName}</div>
+                                  </div>
+                                  {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
+                                </React.Fragment>
+                              ))}
+                              {workflows.length === 0 && <p className="text-muted-foreground">No workflows defined for this category.</p>}
+                            </div>
+                          </div>
+                          {workflows.map(def => (
+                            <Card key={def.id} className="shadow-sm">
+                                <CardHeader>
+                                    <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
+                                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
+                                    </div>
+                                    {def.description && <CardDescription className="pt-2">{def.description}</CardDescription>}
+                                </CardHeader>
+                                <CardContent className="space-y-3 p-4 pt-0">
+                                    <h4 className="font-medium text-sm">Versions (Latest first):</h4>
+                                    {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined. Add one below.</p>}
+                                    {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
+                                      <div key={version.id} className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 border rounded-md gap-2 ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
+                                        <div>
+                                          <div className="font-semibold flex items-center">
+                                            Version {version.versionNumber}
+                                            {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
+                                          </div>
+                                          <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
+                                        </div>
+                                        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                                            {!version.isActive ? (
+                                                <Button variant="outline" size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}><ShieldCheck className="mr-2 h-4 w-4"/>Set Active</Button>
+                                            ) : (
+                                                <Button variant="secondary" size="sm" onClick={() => handleDeactivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData} className="text-amber-700 border-amber-500 hover:bg-amber-100"><ShieldOff className="mr-2 h-4 w-4"/>Deactivate</Button>
+                                            )}
+                                            <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}><Edit className="mr-2 h-4 w-4" />Edit Stages</Button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2" disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" />Add New Version</Button>
+                                </CardContent>
+                            </Card>
+                          ))}
+                       </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                  </Accordion>
+                </CardContent>
+            </Card>
+        </div>
+      </div>
+      )}
       
-      <EditWorkflowVersionDialog
-        isOpen={isEditVersionDialogOpen}
-        onOpenChange={setIsEditVersionDialogOpen}
-        workflowDefinition={currentWorkflowDefForEdit}
-        versionToEdit={currentVersionToEdit}
-        departments={departments}
-        onSaveVersion={handleSaveVersion}
-        departmentName={currentWorkflowDefForEdit?.departmentName || ''}
-      />
-      
+      <EditWorkflowVersionDialog isOpen={isEditVersionDialogOpen} onOpenChange={setIsEditVersionDialogOpen} workflowDefinition={currentWorkflowDefForEdit} versionToEdit={currentVersionToEdit} departments={departments} onSaveVersion={handleSaveVersion} departmentName={currentWorkflowDefForEdit?.departmentName || ''}/>
       <Dialog open={isEditSectorDialogOpen} onOpenChange={setIsEditSectorDialogOpen}>
         <DialogContent>
             <DialogHeader><DialogTitle>Edit Sector</DialogTitle><DialogDescription>Update the name for &quot;{editingSector?.name}&quot;.</DialogDescription></DialogHeader>
-            <div className="grid gap-4 py-4">
-                <Label htmlFor="editing-sector-name">New Name</Label>
-                <Input id="editing-sector-name" value={editingSectorName} onChange={(e) => setEditingSectorName(e.target.value)} disabled={isSavingData} />
-            </div>
+            <div className="grid gap-4 py-4"><Label htmlFor="editing-sector-name">New Name</Label><Input id="editing-sector-name" value={editingSectorName} onChange={(e) => setEditingSectorName(e.target.value)} disabled={isSavingData} /></div>
             <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleUpdateSector} disabled={isSavingData || !editingSectorName.trim()}>
-                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save
-                </Button>
+                <Button type="button" onClick={handleUpdateSector} disabled={isSavingData || !editingSectorName.trim()}>{isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save</Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>
-      
       <Dialog open={isEditRequestTypeDialogOpen} onOpenChange={setIsEditRequestTypeDialogOpen}>
         <DialogContent>
             <DialogHeader><DialogTitle>Edit Request Type</DialogTitle><DialogDescription>Update the name for &quot;{editingRequestType?.name}&quot;.</DialogDescription></DialogHeader>
-            <div className="grid gap-4 py-4">
-                <Label htmlFor="editing-rt-name">New Name</Label>
-                <Input id="editing-rt-name" value={editingRequestTypeName} onChange={(e) => setEditingRequestTypeName(e.target.value)} disabled={isSavingData} />
-            </div>
+            <div className="grid gap-4 py-4"><Label htmlFor="editing-rt-name">New Name</Label><Input id="editing-rt-name" value={editingRequestTypeName} onChange={(e) => setEditingRequestTypeName(e.target.value)} disabled={isSavingData} /></div>
             <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleUpdateRequestType} disabled={isSavingData || !editingRequestTypeName.trim()}>
-                    {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save
-                </Button>
+                <Button type="button" onClick={handleUpdateRequestType} disabled={isSavingData || !editingRequestTypeName.trim()}>{isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save</Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       <Card>
         <CardHeader><CardTitle>Notification Settings (Conceptual)</CardTitle><CardDescription>Manage how and when notifications are sent for overdue tasks. (Currently UI only).</CardDescription></CardHeader>
@@ -1373,6 +1326,7 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
 
 
