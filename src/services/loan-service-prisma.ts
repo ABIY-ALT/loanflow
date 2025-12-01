@@ -155,16 +155,12 @@ export async function addLoanRequest(
     }
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
-        where: {
-            sector: {
-                is: {
-                    parentId: selectedChildSector.parentId
-                }
-            }
-        },
-        orderBy: {
-            order: 'asc'
+      where: {
+        sector: {
+          parentId: selectedChildSector.parentId
         }
+      },
+      orderBy: { order: 'asc' },
     });
     
     if (!firstWorkflowInSequence) {
@@ -237,19 +233,9 @@ export async function addLoanRequest(
         currentWorkflowStage: { connect: { id: firstStage.id } },
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
-        history: {
-          create: [{
-            loanRequest: { connect: { id: 'will-be-replaced-by-prisma' } }, // Dummy value
-            user: { connect: { id: systemUserId } },
-            stageName: firstStage.name,
-            timestamp: currentDate,
-            notes: initialHistoryNote,
-          }],
-        },
       },
     });
     
-    // Now create the history entry with the correct loanId
     await prisma.loanHistoryEntry.create({
       data: {
         loanRequest: { connect: { id: newLoan.id } },
@@ -972,74 +958,8 @@ export async function getCustomerById(id: string): Promise<{ customer?: Customer
   }
 }
 
-export async function searchLoanRequests(
-  searchTerm: string,
-  searchType: 'loanNumber' | 'customerName' | 'customerNumber'
-): Promise<{ loans?: LoanRequest[]; error?: string }> {
-  try {
-    const { user } = await getCurrentUser();
-    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP)) {
-      return { error: "Unauthorized to search loans." };
-    }
-    let whereClause: any = {};
-
-    switch (searchType) {
-      case 'loanNumber':
-        whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } };
-        break;
-      case 'customerName':
-        whereClause = { customer: { name: { contains: searchTerm, mode: 'insensitive' } } };
-        break;
-      case 'customerNumber':
-        whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } }; // Assuming customerNumber is loanNumber for now
-        break;
-    }
-
-    const prismaLoans = await prisma.loanRequest.findMany({
-      where: whereClause,
-      orderBy: { lastUpdatedDate: 'desc' },
-      include: {
-        customer: true,
-        sector: { include: { parent: true } },
-        requestType: true,
-        currentWorkflowStage: { select: { name: true } },
-      },
-      take: 50,
-    });
-
-    const appLoans = prismaLoans.map(pl => ({
-        id: pl.id,
-        loanNumber: pl.loanNumber,
-        customerName: pl.customer.name,
-        loanAmount: pl.loanAmount.toNumber(),
-        submittedDate: formatISO(pl.submittedDate),
-        currentStageName: pl.currentWorkflowStage?.name || 'Unknown Stage',
-        customerId: pl.customerId,
-        customerEmail: pl.customer.email,
-        sectorId: pl.sectorId,
-        sectorName: pl.sector.name,
-        parentSectorId: pl.sector.parentId ?? undefined,
-        parentSectorName: pl.sector.parent?.name,
-        requestTypeId: pl.requestTypeId,
-        requestTypeName: pl.requestType.name,
-        loanPurpose: pl.loanPurpose,
-        lastUpdatedDate: formatISO(pl.lastUpdatedDate),
-        isUrgent: pl.isUrgent,
-        documents: [],
-        history: [],
-        assignedToUsers: [],
-        stageCompletedBy: [],
-    }));
-
-    return { loans: appLoans as LoanRequest[] };
-  } catch (e: any) {
-    return createErrorResult(`Search failed.`, "searchLoanRequests", e);
-  }
-}
-
-
-// NEW PUBLIC FUNCTION
 export interface PublicLoanStatus {
+  id: string; // Add loan ID
   loanNumber: string;
   customerName: string;
   submittedDate: string;
@@ -1054,6 +974,108 @@ export interface PublicLoanStatus {
     departmentName: string;
   }[];
 }
+
+
+export async function searchLoanRequests(
+  searchTerm: string,
+  searchType: 'loanNumber' | 'customerName' | 'customerNumber'
+): Promise<{ loans?: PublicLoanStatus[]; error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP)) {
+      return { error: "Unauthorized to search loans." };
+    }
+    let whereClause: any = {};
+
+    switch (searchType) {
+      case 'loanNumber':
+        whereClause = { loanNumber: { contains: searchTerm, mode: 'insensitive' } };
+        break;
+      case 'customerName':
+        whereClause = { customer: { name: { contains: searchTerm, mode: 'insensitive' } } };
+        break;
+      case 'customerNumber': // Assuming customer number is a property on the customer model
+        whereClause = { customer: { id: { contains: searchTerm, mode: 'insensitive' } } }; // Example, adjust if needed
+        break;
+    }
+
+    const prismaLoans = await prisma.loanRequest.findMany({
+      where: whereClause,
+      orderBy: { lastUpdatedDate: 'desc' },
+      include: {
+        customer: true,
+        workflowVersion: {
+          include: {
+            workflowDefinition: {
+              include: {
+                sector: {
+                  select: { parentId: true }
+                }
+              }
+            }
+          }
+        },
+      },
+      take: 50,
+    });
+    
+    if (prismaLoans.length === 0) {
+      return { loans: [] };
+    }
+
+    const allWorkflowDefinitions = await prisma.workflowDefinition.findMany({
+        orderBy: { order: 'asc' },
+        include: {
+            versions: {
+                where: { isActive: true },
+                include: {
+                    stages: {
+                        orderBy: { order: 'asc' },
+                        include: {
+                            responsibleDepartment: { select: { name: true }}
+                        }
+                    }
+                }
+            },
+        }
+    });
+
+    const results: PublicLoanStatus[] = prismaLoans.map(loan => {
+        const parentSectorId = loan.workflowVersion?.workflowDefinition.sector?.parentId;
+        let workflowSequence: PublicLoanStatus['workflowSequence'] = [];
+
+        if (parentSectorId) {
+            workflowSequence = allWorkflowDefinitions
+                .filter(def => def.parentSectorId === parentSectorId)
+                .flatMap(def => 
+                    def.versions.flatMap(v => v.stages.map(s => ({
+                        stageId: s.id,
+                        stageName: s.name,
+                        stageOrder: s.order,
+                        stageTimelineDays: s.defaultTimelineDays,
+                        departmentName: s.responsibleDepartment.name,
+                    })))
+                );
+        }
+
+        return {
+          id: loan.id,
+          loanNumber: loan.loanNumber,
+          customerName: loan.customer.name,
+          submittedDate: formatISO(loan.submittedDate),
+          currentStageId: loan.currentStageIdMirror,
+          currentStageStatus: loan.currentStageStatus,
+          isTerminalStage: loan.isTerminalStage,
+          workflowSequence,
+        };
+    });
+
+    return { loans: results };
+  } catch (e: any) {
+    return createErrorResult(`Search failed.`, "searchLoanRequests", e);
+  }
+}
+
 
 export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus | null, error?: string }> {
   try {
@@ -1123,6 +1145,7 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
 
 
     const result: PublicLoanStatus = {
+      id: prismaLoan.id,
       loanNumber: prismaLoan.loanNumber,
       customerName: prismaLoan.customer.name,
       submittedDate: formatISO(prismaLoan.submittedDate),

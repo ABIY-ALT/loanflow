@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,10 +22,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import { searchLoanRequests } from '@/services/loan-service-prisma';
-import type { LoanRequest } from '@/types/loan';
+import { searchLoanRequests, type PublicLoanStatus } from '@/services/loan-service-prisma';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
+import { PublicLoanStatusStepper } from '@/components/PublicLoanStatusStepper';
+
 
 export const loanStatusSchema = z.object({
   searchTerm: z.string().min(1, { message: "Please enter a search term." }),
@@ -39,7 +39,7 @@ export default function LoanStatusPage() {
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [lookupResult, setLookupResult] = useState<LoanRequest[] | null>(null);
+  const [lookupResult, setLookupResult] = useState<PublicLoanStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canViewLookup = user?.permissions.includes(PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP);
@@ -130,7 +130,7 @@ export default function LoanStatusPage() {
                       <FormControl>
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="e.g., LN00001, John Doe, CUST001" {...field} className="pl-10" />
+                          <Input placeholder="e.g., LN-PSQL-123456, John Doe, CUST001" {...field} className="pl-10" />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -222,25 +222,23 @@ export default function LoanStatusPage() {
               <div className="text-center text-muted-foreground py-10">
                   <p>No loans found matching your criteria.</p>
               </div>
+            ) : lookupResult.length === 1 ? (
+              <PublicLoanStatusStepper loanData={lookupResult[0]} />
             ) : (
             <Table>
                 <TableHeader>
                     <TableRow>
                     <TableHead>Loan Number</TableHead>
                     <TableHead>Customer Name</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Current Stage</TableHead>
                     <TableHead>Submitted On</TableHead>
                     {canViewDetails && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {lookupResult.map((loan) => (
-                    <TableRow key={loan.id}>
+                    <TableRow key={loan.loanNumber}>
                         <TableCell className="font-medium">{loan.loanNumber}</TableCell>
                         <TableCell>{loan.customerName}</TableCell>
-                        <TableCell>{loan.loanAmount.toLocaleString()} ETB</TableCell>
-                        <TableCell><Badge variant="secondary">{loan.currentStageName}</Badge></TableCell>
                         <TableCell>{format(parseISO(loan.submittedDate), 'PP')}</TableCell>
                         {canViewDetails && (
                         <TableCell className="text-right">
