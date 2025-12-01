@@ -63,7 +63,7 @@ const mapPrismaLoanToAppLoan = (
         assignedToUsers: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         stageCompletedBy: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
-        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector, department: PrismaDepartment } }) | null;
+        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector & { parent?: PrismaSector | null}, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
         documents?: (PrismaLoanDocument & { requirement: PrismaDocumentRequirement | null })[];
@@ -157,7 +157,11 @@ export async function addLoanRequest(
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
         where: {
-            parentSectorId: selectedChildSector.parentId
+            sector: {
+                is: {
+                    parentId: selectedChildSector.parentId
+                }
+            }
         },
         orderBy: {
             order: 'asc'
@@ -1020,3 +1024,4 @@ export async function searchLoanRequests(
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }
+
