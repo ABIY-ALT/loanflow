@@ -45,11 +45,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector, RequestType } from '@/types/loan';
+import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
-import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType } from '@/services/sector-and-request-type-service';
+import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType, type ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -90,10 +90,6 @@ const createNewDocumentRequirement = (name: string, isMandatory: boolean, type: 
 interface DepartmentObject {
   id: string;
   name: Department;
-}
-interface ConfigurableItem {
-  id: string;
-  name: string;
 }
 
 
@@ -517,8 +513,8 @@ export default function SettingsPage() {
   
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [departments, setDepartments] = useState<DepartmentObject[]>([]);
-  const [sectors, setSectors] = useState<ConfigurableItem[]>([]);
-  const [requestTypes, setRequestTypes] = useState<ConfigurableItem[]>([]);
+  const [sectors, setSectors] = useState<ConfigurableListItem[]>([]);
+  const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -529,7 +525,6 @@ export default function SettingsPage() {
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
   const [newWorkflowSectorId, setNewWorkflowSectorId] = useState('');
-  const [newWorkflowRequestTypeId, setNewWorkflowRequestTypeId] = useState('');
   const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
   
   const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
@@ -537,12 +532,12 @@ export default function SettingsPage() {
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
   const [newSectorName, setNewSectorName] = useState('');
-  const [editingSector, setEditingSector] = useState<ConfigurableItem | null>(null);
+  const [editingSector, setEditingSector] = useState<ConfigurableListItem | null>(null);
   const [editingSectorName, setEditingSectorName] = useState('');
   const [isEditSectorDialogOpen, setIsEditSectorDialogOpen] = useState(false);
   
   const [newRequestTypeName, setNewRequestTypeName] = useState('');
-  const [editingRequestType, setEditingRequestType] = useState<ConfigurableItem | null>(null);
+  const [editingRequestType, setEditingRequestType] = useState<ConfigurableListItem | null>(null);
   const [editingRequestTypeName, setEditingRequestTypeName] = useState('');
   const [isEditRequestTypeDialogOpen, setIsEditRequestTypeDialogOpen] = useState(false);
 
@@ -581,7 +576,6 @@ export default function SettingsPage() {
 
         if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
         if(fetchedSectors.length > 0 && newWorkflowSectorId === '') setNewWorkflowSectorId(fetchedSectors[0].id);
-        if(fetchedRequestTypes.length > 0 && newWorkflowRequestTypeId === '') setNewWorkflowRequestTypeId(fetchedRequestTypes[0].id);
         
       } catch (err: any) {
         const errorMessage = err.message || "Failed to load settings data.";
@@ -594,7 +588,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast, newWorkflowDepartmentId, newWorkflowSectorId, newWorkflowRequestTypeId]);
+    }, [toast, newWorkflowDepartmentId, newWorkflowSectorId]);
 
 
   useEffect(() => {
@@ -609,9 +603,9 @@ export default function SettingsPage() {
   
   const referenceWorkflowOptions = useMemo(() => {
     return workflowDefinitions
-      .filter(wf => wf.sectorId === newWorkflowSectorId && wf.requestTypeId === newWorkflowRequestTypeId)
+      .filter(wf => wf.sectorId === newWorkflowSectorId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [workflowDefinitions, newWorkflowSectorId, newWorkflowRequestTypeId]);
+  }, [workflowDefinitions, newWorkflowSectorId]);
   
   useEffect(() => {
     if (referenceWorkflowOptions.length > 0) {
@@ -631,13 +625,14 @@ export default function SettingsPage() {
     if (!targetDefToActivate) return;
     
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-        if (def.departmentId === targetDefToActivate.departmentId && def.sectorId === targetDefToActivate.sectorId && def.requestTypeId === targetDefToActivate.requestTypeId) {
+        if (def.sectorId === targetDefToActivate.sectorId) {
             if (def.id === definitionIdToActivate) {
                 return {
                     ...def,
                     versions: def.versions.map(v => ({ ...v, isActive: v.id === versionIdToActivate }))
                 };
             }
+            // Deactivate versions in other definitions of the same sector
             return {
                 ...def,
                 versions: def.versions.map(v => ({ ...v, isActive: false }))
@@ -647,7 +642,7 @@ export default function SettingsPage() {
     }));
 
     const activatedVersion = targetDefToActivate?.versions.find(v => v.id === versionIdToActivate);
-    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its combination. Click "Save All Settings" to persist.` });
+    toast({ title: "Success (Local)", description: `Workflow Version ${activatedVersion?.versionNumber} for '${targetDefToActivate?.name}' is now marked as active for its sector. Click "Save All Settings" to persist.` });
   };
   
   const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
@@ -706,31 +701,11 @@ export default function SettingsPage() {
 
   const handleAddNewWorkflowDefinition = async () => {
     if (!canManageWorkflows) return;
-    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowSectorId || !newWorkflowRequestTypeId) {
-        toast({ title: "Validation Error", description: "Workflow name, department, sector, and request type are all required.", variant: "destructive", duration: 9000 });
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowSectorId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, and sector are all required.", variant: "destructive", duration: 9000 });
         return;
     }
     
-    // Client-side validation for duplicate combination
-    const alreadyExists = workflowDefinitions.some(
-        wf => wf.departmentId === newWorkflowDepartmentId && wf.sectorId === newWorkflowSectorId && wf.requestTypeId === newWorkflowRequestTypeId
-    );
-
-    if (alreadyExists) {
-        toast({
-            title: "Duplicate Workflow",
-            description: "A workflow for this Department/Sector/Request Type combination already exists.",
-            variant: "destructive",
-            duration: 9000
-        });
-        return;
-    }
-
-    if (referenceWorkflowOptions.length > 0 && !newWorkflowReferenceId) {
-      toast({ title: "Validation Error", description: "A reference workflow must be selected to determine the order.", variant: "destructive", duration: 9000 });
-      return;
-    }
-
     const newWf: Omit<WorkflowDefinition, 'id' | 'versions'> = {
         name: newWorkflowName,
         description: newWorkflowDescription,
@@ -738,8 +713,6 @@ export default function SettingsPage() {
         departmentName: departments.find(d => d.id === newWorkflowDepartmentId)?.name || 'Unknown',
         sectorId: newWorkflowSectorId,
         sectorName: sectors.find(s => s.id === newWorkflowSectorId)?.name || 'Unknown',
-        requestTypeId: newWorkflowRequestTypeId,
-        requestTypeName: requestTypes.find(rt => rt.id === newWorkflowRequestTypeId)?.name || 'Unknown',
         order: 0,
     };
     
@@ -763,12 +736,10 @@ export default function SettingsPage() {
         updatedWfList.splice(insertIndex, 0, newWorkflowWithId);
     }
 
-    // Re-assign order to all items
     const finalList = updatedWfList.map((wf, index) => ({ ...wf, order: index }));
     
     setWorkflowDefinitions(finalList);
 
-    // Reset form
     setNewWorkflowName('');
     setNewWorkflowDescription('');
     
@@ -983,18 +954,17 @@ export default function SettingsPage() {
   }
   
   const workflowsByCombination = workflowDefinitions.reduce((acc, wf) => {
-    const key = `${wf.sectorName} | ${wf.requestTypeName}`;
+    const key = `${wf.sectorName}`;
     if (!acc[key]) {
       acc[key] = {
         sectorName: wf.sectorName,
-        requestTypeName: wf.requestTypeName,
         workflows: []
       };
     }
     acc[key].workflows.push(wf);
     acc[key].workflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return acc;
-  }, {} as Record<string, { sectorName: string; requestTypeName: string; workflows: WorkflowDefinition[] }>);
+  }, {} as Record<string, { sectorName: string; workflows: WorkflowDefinition[] }>);
 
 
   return (
@@ -1105,7 +1075,7 @@ export default function SettingsPage() {
                             <AlertDialog>
                                 <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSavingData || isSavingAll}><Trash2 className="mr-1 h-4 w-4" /></Button></AlertDialogTrigger>
                                 <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect existing loan requests that use it.</AlertDialogDescription></AlertDialogHeader>
                                     <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequestType(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
@@ -1121,12 +1091,12 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Workflow Definitions</CardTitle>
-          <CardDescription>Manage workflows for different departments, sectors and request types. New loans will use the active version for their specific combination.</CardDescription>
+          <CardDescription>Manage workflows for different departments and sectors. New loans will use the active version for their specific sector.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
             <h4 className="font-medium text-lg">Add New Workflow Definition</h4>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
               <div>
                 <Label htmlFor="new-wf-sector">For Sector</Label>
@@ -1136,20 +1106,13 @@ export default function SettingsPage() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="new-wf-request-type">For Request Type</Label>
-                <Select value={newWorkflowRequestTypeId} onValueChange={(value) => setNewWorkflowRequestTypeId(value)}>
-                  <SelectTrigger id="new-wf-request-type" className="mt-1"><SelectValue placeholder="Select Request Type" /></SelectTrigger>
-                  <SelectContent>{requestTypes.map(rt => <SelectItem key={`new-wf-rt-option-${rt.id}`} value={rt.id}>{rt.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
                 <Label htmlFor="new-wf-dept">Owning Department</Label>
                 <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
                   <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
                   <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="md:col-span-4"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
+              <div className="md:col-span-3"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
             </div>
             
             <div className="grid md:grid-cols-3 gap-4 items-end">
@@ -1181,16 +1144,16 @@ export default function SettingsPage() {
                   Add Workflow
               </Button>
             </div>
-            {(sectors.length === 0 || requestTypes.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A sector, request type, and department must be configured first.</p>}
+            {(sectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A sector and department must be configured first.</p>}
           </div>
 
           <Separator/>
           
-          <h4 className="font-medium text-lg">Current Workflow Paths (By Combination)</h4>
+          <h4 className="font-medium text-lg">Current Workflow Paths (By Sector)</h4>
           <div className="space-y-4">
-          {Object.values(workflowsByCombination).map(({ sectorName, requestTypeName, workflows }) => (
-            <div key={`${sectorName}-${requestTypeName}`} className="p-4 border rounded-lg">
-              <h5 className="font-medium mb-3"><span className="text-primary">{sectorName}</span> / <span className="text-primary/80">{requestTypeName}</span> Path</h5>
+          {Object.values(workflowsByCombination).map(({ sectorName, workflows }) => (
+            <div key={`${sectorName}`} className="p-4 border rounded-lg">
+              <h5 className="font-medium mb-3"><span className="text-primary">{sectorName}</span> Path</h5>
               <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
                 {workflows.map((def, index) => (
                   <React.Fragment key={def.id}>
@@ -1224,7 +1187,6 @@ export default function SettingsPage() {
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
                         <Badge variant="outline">Sector: {def.sectorName || 'N/A'}</Badge>
-                        <Badge variant="outline">Request Type: {def.requestTypeName || 'N/A'}</Badge>
                         {def.description && (
                           <Button variant="ghost" size="sm" className="h-auto p-1 text-xs" onClick={(e) => { e.stopPropagation(); toggleDescription(def.id); }}>
                             {expandedDescriptions.has(def.id) ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
@@ -1350,10 +1312,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
-
-    
-
-
-

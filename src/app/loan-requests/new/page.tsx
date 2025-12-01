@@ -30,6 +30,9 @@ import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
 import Link from 'next/link';
+import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
+import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
+
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -37,7 +40,8 @@ const loanRequestFormSchema = z.object({
   customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
   customerBranch: z.string().min(1, { message: 'A branch must be selected.' }),
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
-  workflowVersionId: z.string().min(1, { message: 'A workflow must be selected.' }),
+  sectorId: z.string().min(1, { message: 'A sector must be selected.' }),
+  requestTypeId: z.string().min(1, { message: 'A request type must be selected.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
 });
 
@@ -48,8 +52,11 @@ export default function NewLoanRequestPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [availableWorkflows, setAvailableWorkflows] = useState<ActiveWorkflow[]>([]);
+  
+  const [sectors, setSectors] = useState<ConfigurableListItem[]>([]);
+  const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,16 +72,24 @@ export default function NewLoanRequestPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [workflowsResult, branchesResult] = await Promise.all([
-          getActiveWorkflowsForCreate(),
+        const [sectorsResult, requestTypesResult, branchesResult] = await Promise.all([
+          getSectors(),
+          getRequestTypes(),
           getBranches(),
         ]);
 
-        if (workflowsResult.error) {
-          setError(prev => (prev ? `${prev}\n` : '') + `Workflows: ${workflowsResult.error}`);
-          setAvailableWorkflows([]);
+        if (sectorsResult.error) {
+          setError(prev => (prev ? `${prev}\n` : '') + `Sectors: ${sectorsResult.error}`);
+          setSectors([]);
         } else {
-          setAvailableWorkflows(workflowsResult.activeWorkflows || []);
+          setSectors(sectorsResult.sectors || []);
+        }
+
+        if (requestTypesResult.error) {
+          setError(prev => (prev ? `${prev}\n` : '') + `Request Types: ${requestTypesResult.error}`);
+          setRequestTypes([]);
+        } else {
+          setRequestTypes(requestTypesResult.requestTypes || []);
         }
 
         if (branchesResult.error) {
@@ -109,7 +124,8 @@ export default function NewLoanRequestPage() {
       customerPhone: '',
       customerBranch: '',
       loanAmount: 0,
-      workflowVersionId: '',
+      sectorId: '',
+      requestTypeId: '',
       loanPurpose: '',
     },
   });
@@ -117,24 +133,7 @@ export default function NewLoanRequestPage() {
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
     try {
-      const selectedWorkflow = availableWorkflows.find(wf => wf.id === data.workflowVersionId);
-      if (!selectedWorkflow) {
-        toast({ title: "Submission Error", description: "Selected workflow not found.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
-      
-      const sector = await prisma.sector.findUnique({ where: { name: selectedWorkflow.sectorName } });
-      const requestType = await prisma.requestType.findUnique({ where: { name: selectedWorkflow.requestTypeName } });
-
-      if (!sector || !requestType) {
-        toast({ title: "Configuration Error", description: "Could not find sector or request type for the selected workflow.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
-
-      const payload = { ...data, sectorId: sector.id, requestTypeId: requestType.id };
-      const result = await addLoanRequest(payload as any);
+      const result = await addLoanRequest(data);
 
       if (result.error) {
         toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
@@ -194,7 +193,6 @@ export default function NewLoanRequestPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
               <div className="grid md:grid-cols-2 gap-8">
 
-                {/* ✅ Customer Name */}
                 <FormField
                   control={form.control}
                   name="customerName"
@@ -212,7 +210,6 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Email */}
                 <FormField
                   control={form.control}
                   name="customerEmail"
@@ -231,7 +228,6 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Phone */}
                 <FormField
                   control={form.control}
                   name="customerPhone"
@@ -249,7 +245,6 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Branch Selection */}
                 <FormField
                   control={form.control}
                   name="customerBranch"
@@ -272,7 +267,6 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Loan Amount */}
                 <FormField
                   control={form.control}
                   name="loanAmount"
@@ -288,44 +282,49 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                {/* ✅ Workflow Selector */}
                 <FormField
                   control={form.control}
-                  name="workflowVersionId"
+                  name="sectorId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Workflow</FormLabel>
-                      <FormControl>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          disabled={isLoading || isSubmitting || availableWorkflows.length === 0}
-                        >
+                      <FormLabel>Sector</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || sectors.length === 0}>
+                        <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={isLoading ? "Loading workflows..." : "Select a workflow"} />
+                            <SelectValue placeholder={isLoading ? "Loading..." : "Select a sector"} />
                           </SelectTrigger>
-                          <SelectContent>
-                            {availableWorkflows.map(wf => (
-                              <SelectItem key={wf.id} value={wf.id}>
-                                {wf.name} ({wf.sectorName} / {wf.requestTypeName})
-                              </SelectItem>
-                            ))}
-                            {availableWorkflows.length === 0 && !isLoading && (
-                              <SelectItem value="no-workflows-found-disabled" disabled>
-                                No active workflows found
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      {error?.includes('Workflows') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                        </FormControl>
+                        <SelectContent>
+                          {sectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                 <FormField
+                  control={form.control}
+                  name="requestTypeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Request Type</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || requestTypes.length === 0}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoading ? "Loading..." : "Select a request type"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {requestTypes.map(rt => <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
 
-              {/* ✅ Loan Purpose */}
               <FormField
                 control={form.control}
                 name="loanPurpose"
@@ -347,7 +346,7 @@ export default function NewLoanRequestPage() {
               <Button
                 type="submit"
                 className="w-full sm:w-auto"
-                disabled={isSubmitting || isLoading || availableWorkflows.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}
+                disabled={isSubmitting || isLoading || sectors.length === 0 || requestTypes.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}
               >
                 {isSubmitting ? (
                   <>

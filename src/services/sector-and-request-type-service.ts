@@ -7,7 +7,6 @@ import type { Sector as PrismaSector, RequestType as PrismaRequestType } from '@
 import { getCurrentUser } from '@/app/auth/actions';
 import { PERMISSIONS } from '@/lib/permissions';
 
-// Renamed interfaces to be more generic, can be used for both Sector and RequestType
 export interface ConfigurableListItem {
   id: string;
   name: string;
@@ -26,7 +25,7 @@ interface ServiceResult<T> {
 const createErrorResult = <T>(message: string, context?: string, originalError?: any): ServiceResult<T> => {
   const genericMessage = `An unexpected error occurred in the configuration service for ${context}.`;
   console.error(`[ConfigService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: genericMessage };
+  return { error: message }; // For admin settings, it's okay to return a more specific message
 };
 
 const hasPermission = async (): Promise<boolean> => {
@@ -37,6 +36,7 @@ const hasPermission = async (): Promise<boolean> => {
 // --- Sector Functions ---
 
 export async function getSectors(): Promise<{ sectors?: ConfigurableListItem[]; error?: string }> {
+  // Read operation can be less strict, but let's keep it consistent for settings
   if (!await hasPermission()) return { error: "Unauthorized" };
   try {
     const sectors = await prisma.sector.findMany({ orderBy: { name: 'asc' } });
@@ -93,7 +93,7 @@ export async function deleteSector(id: string): Promise<{ success?: boolean; err
 // --- RequestType Functions ---
 
 export async function getRequestTypes(): Promise<{ requestTypes?: ConfigurableListItem[]; error?: string }> {
-  if (!await hasPermission()) return { error: "Unauthorized" };
+  // This is a public read for the new loan form, so no permission check needed here.
   try {
     const requestTypes = await prisma.requestType.findMany({ orderBy: { name: 'asc' } });
     return { requestTypes: requestTypes.map(mapPrismaToApp) };
@@ -134,9 +134,9 @@ export async function updateRequestType(id: string, name: string): Promise<Servi
 export async function deleteRequestType(id: string): Promise<{ success?: boolean; error?: string }> {
   if (!await hasPermission()) return { error: "Unauthorized" };
   try {
-    const relatedWorkflows = await prisma.workflowDefinition.count({ where: { requestTypeId: id } });
-    if (relatedWorkflows > 0) {
-      return { error: `Cannot delete: Request Type is linked to ${relatedWorkflows} workflow definition(s).` };
+    const relatedLoans = await prisma.loanRequest.count({ where: { requestTypeId: id } });
+    if (relatedLoans > 0) {
+      return { error: `Cannot delete: Request Type is linked to ${relatedLoans} existing loan(s).` };
     }
     await prisma.requestType.delete({ where: { id } });
     return { success: true };

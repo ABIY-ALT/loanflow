@@ -114,8 +114,6 @@ export interface WorkflowDefinition {
   departmentName: string;
   sectorId: string;
   sectorName: string;
-  requestTypeId: string;
-  requestTypeName: string;
   description?: string;
   versions: WorkflowVersion[];
   order: number; // Added for ordering
@@ -201,6 +199,5 @@ export interface ActiveWorkflow {
   id: string; // The ID of the workflow *version*
   name: string; // A combined name, e.g., "Standard Personal Loan (v2)"
   sectorName: string;
-  requestTypeName: string;
   departmentName: string;
 }

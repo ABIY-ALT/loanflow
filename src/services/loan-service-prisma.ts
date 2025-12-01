@@ -30,7 +30,7 @@ import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   const genericMessage = 'An unexpected error occurred. Please try again later.';
   console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: genericMessage };
+  return { error: message }; // Return specific error to client for admin-facing functions
 };
 
 const mapPrismaUserToAppUser = (
@@ -63,7 +63,7 @@ const mapPrismaLoanToAppLoan = (
         assignedToUsers: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         stageCompletedBy: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null })[];
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
-        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector, requestType: PrismaRequestType, department: PrismaDepartment } }) | null;
+        workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
         documents?: (PrismaLoanDocument & { requirement: PrismaDocumentRequirement | null })[];
@@ -136,7 +136,7 @@ const mapPrismaLoanToAppLoan = (
 
 export async function addLoanRequest(
   loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName'>
-  & { workflowVersionId: string; sectorId: string; requestTypeId: string; }
+  & { sectorId: string; requestTypeId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
     const { user } = await getCurrentUser();
@@ -146,12 +146,14 @@ export async function addLoanRequest(
 
     const activeVersion = await prisma.workflowVersion.findFirst({
         where: {
-            id: loanData.workflowVersionId,
             isActive: true,
+            workflowDefinition: {
+                sectorId: loanData.sectorId,
+            }
         },
         include: {
             workflowDefinition: {
-                include: { sector: true, requestType: true, department: true },
+                include: { sector: true, department: true },
             },
             stages: {
                 orderBy: { order: 'asc' },
@@ -161,7 +163,7 @@ export async function addLoanRequest(
     });
 
     if (!activeVersion || !activeVersion.workflowDefinition.department || activeVersion.stages.length === 0) {
-        return createErrorResult(`The selected workflow is not active or properly configured.`, "addLoanRequest");
+        return createErrorResult(`An active workflow for the selected sector is not available or properly configured.`, "addLoanRequest");
     }
 
     const firstStage = activeVersion.stages[0];
@@ -262,7 +264,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[] }> {
         assignedToUsers: { include: { department: true, customRole: true } },
         stageCompletedBy: { include: { department: true, customRole: true } },
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-        workflowVersion: { include: { workflowDefinition: { include: { sector: true, requestType: true, department: true } } } },
+        workflowVersion: { include: { workflowDefinition: { include: { sector: true, department: true } } } },
         assignedDepartment: true,
         history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
@@ -295,7 +297,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: {
           include: {
-            workflowDefinition: { include: { sector: true, requestType: true, department: true } },
+            workflowDefinition: { include: { sector: true, department: true } },
             stages: { orderBy: { order: 'asc' }, include: {responsibleDepartment: true, documentRequirements: true} },
           },
         },
@@ -478,7 +480,7 @@ export async function updateLoanRequest(
           assignedToUsers: { include: { department: true, customRole: true } },
           stageCompletedBy: { include: { department: true, customRole: true } },
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-          workflowVersion: { include: { workflowDefinition: { include: { sector: true, requestType: true, department: true } } } },
+          workflowVersion: { include: { workflowDefinition: { include: { sector: true, department: true } } } },
           assignedDepartment: true,
           history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
@@ -504,7 +506,6 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
       orderBy: { order: 'asc' },
       include: {
         sector: true,
-        requestType: true,
         department: true,
         versions: {
           orderBy: { versionNumber: 'desc' },
@@ -523,8 +524,6 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
       name: def.name,
       sectorId: def.sectorId,
       sectorName: def.sector.name,
-      requestTypeId: def.requestTypeId,
-      requestTypeName: def.requestType.name,
       departmentId: def.departmentId,
       departmentName: def.department.name,
       description: def.description || undefined,
@@ -565,7 +564,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
 }
 
 export async function addWorkflowDefinition(
-  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'sectorName' | 'requestTypeName' | 'departmentName' | 'order'>
+  definitionData: Omit<WorkflowDefinition, 'id' | 'versions' | 'createdAt' | 'updatedAt' | 'sectorName' | 'departmentName' | 'order'>
 ): Promise<{ id?: string; error?: string }> {
   try {
      const { user } = await getCurrentUser();
@@ -576,11 +575,10 @@ export async function addWorkflowDefinition(
         where: {
             departmentId: definitionData.departmentId,
             sectorId: definitionData.sectorId,
-            requestTypeId: definitionData.requestTypeId,
         },
     });
     if (existing) {
-        return createErrorResult(`A workflow definition for this department, sector and request type combination already exists.`, "addWorkflowDefinition");
+        return createErrorResult(`A workflow definition for this department and sector combination already exists.`, "addWorkflowDefinition");
     }
 
     const maxOrder = await prisma.workflowDefinition.aggregate({ _max: { order: true }});
@@ -591,7 +589,6 @@ export async function addWorkflowDefinition(
         name: definitionData.name,
         department: { connect: { id: definitionData.departmentId } },
         sector: { connect: { id: definitionData.sectorId } },
-        requestType: { connect: { id: definitionData.requestTypeId } },
         description: definitionData.description,
         order: nextOrder,
       },
@@ -621,7 +618,6 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             order: defData.order,
             department: { connect: { id: defData.departmentId } },
             sector: { connect: { id: defData.sectorId } },
-            requestType: { connect: { id: defData.requestTypeId } },
           },
           update: {
             name: defData.name,
@@ -629,7 +625,6 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             order: defData.order,
             department: { connect: { id: defData.departmentId } },
             sector: { connect: { id: defData.sectorId } },
-            requestType: { connect: { id: defData.requestTypeId } },
             updatedAt: new Date(),
           },
         });
@@ -808,14 +803,12 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
         workflowDefinition: {
           include: {
             sector: true,
-            requestType: true,
             department: true,
           }
         }
       },
       orderBy: [
         { workflowDefinition: { sector: { name: 'asc' }}},
-        { workflowDefinition: { requestType: { name: 'asc' }}},
         { workflowDefinition: { name: 'asc' }}
       ]
     });
@@ -824,7 +817,6 @@ export async function getActiveWorkflowsForCreate(): Promise<{ activeWorkflows?:
       id: v.id,
       name: `${v.workflowDefinition.name} (v${v.versionNumber})`,
       sectorName: v.workflowDefinition.sector.name,
-      requestTypeName: v.workflowDefinition.requestType.name,
       departmentName: v.workflowDefinition.department.name,
     }));
 
