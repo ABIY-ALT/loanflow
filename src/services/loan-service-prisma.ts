@@ -375,6 +375,16 @@ export async function updateLoanRequest(
         await tx.customer.update({ where: { id: existingLoan.customerId }, data: customerUpdatePayload });
       }
 
+      if (dataToUpdate.hasOwnProperty('sectorId') && dataToUpdate.sectorId) {
+        if (!user.permissions.includes(PERMISSIONS.EDIT_LOAN_DETAILS)) throw new Error("Unauthorized to edit sector.");
+        updatePayload.sector = { connect: { id: dataToUpdate.sectorId } };
+      }
+      if (dataToUpdate.hasOwnProperty('requestTypeId') && dataToUpdate.requestTypeId) {
+        if (!user.permissions.includes(PERMISSIONS.EDIT_LOAN_DETAILS)) throw new Error("Unauthorized to edit request type.");
+        updatePayload.requestType = { connect: { id: dataToUpdate.requestTypeId } };
+      }
+
+
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign staff.");
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];

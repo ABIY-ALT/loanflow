@@ -44,7 +44,6 @@ export interface User {
   fullName: string; // Typically derived if firstName/lastName exist, or from a 'name' claim
   email: string;
   phoneNumber?: string;
-  imageUrl?: string;
   isPasswordChanged: boolean; // Flag for forced password change
 
   departmentId?: string;

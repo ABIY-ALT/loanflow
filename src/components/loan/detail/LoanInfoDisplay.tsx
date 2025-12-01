@@ -50,7 +50,7 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
                   <Tooltip key={user.id}>
                     <TooltipTrigger>
                        <Avatar className="h-8 w-8 text-xs">
-                          <AvatarImage src={user.imageUrl} alt={user.fullName} />
+                          <AvatarImage src={undefined} alt={user.fullName} />
                           <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                         </Avatar>
                     </TooltipTrigger>
