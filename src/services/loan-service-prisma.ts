@@ -961,20 +961,14 @@ export async function getCustomerById(id: string): Promise<{ customer?: Customer
 }
 
 export interface PublicLoanStatus {
-  id: string; // Add loan ID
+  id: string; 
   loanNumber: string;
   customerName: string;
   submittedDate: string;
   currentStageId: string;
   currentStageStatus: string | null;
   isTerminalStage: boolean;
-  workflowSequence: {
-    stageId: string;
-    stageName: string;
-    stageOrder: number;
-    stageTimelineDays: number;
-    departmentName: string;
-  }[];
+  // workflowSequence is removed as it's not needed for the simple table view
 }
 
 
@@ -1003,21 +997,20 @@ export async function searchLoanRequests(
 
     const prismaLoans = await prisma.loanRequest.findMany({
       where: whereClause,
-      orderBy: { lastUpdatedDate: 'desc' },
-      include: {
-        customer: true,
-        workflowVersion: {
-          include: {
-            workflowDefinition: {
-              include: {
-                sector: {
-                  include: { parent: true }
-                }
-              }
-            }
+      select: {
+        id: true,
+        loanNumber: true,
+        submittedDate: true,
+        currentStageIdMirror: true,
+        currentStageStatus: true,
+        isTerminalStage: true,
+        customer: {
+          select: {
+            name: true,
           }
         },
       },
+      orderBy: { lastUpdatedDate: 'desc' },
       take: 50,
     });
     
@@ -1025,59 +1018,15 @@ export async function searchLoanRequests(
       return { loans: [] };
     }
     
-    const allWorkflowDefinitions = await prisma.workflowDefinition.findMany({
-        orderBy: { order: 'asc' },
-        include: {
-            versions: {
-                where: { isActive: true },
-                include: {
-                    stages: {
-                        orderBy: { order: 'asc' },
-                        include: {
-                            responsibleDepartment: { select: { name: true }}
-                        }
-                    }
-                }
-            },
-        }
-    });
-
-    const results: PublicLoanStatus[] = prismaLoans.map(loan => {
-        const parentSectorId = loan.workflowVersion?.workflowDefinition.sector?.parentId;
-        let workflowSequence: PublicLoanStatus['workflowSequence'] = [];
-
-        if (parentSectorId) {
-            workflowSequence = allWorkflowDefinitions
-                .filter(def => def.parentSectorId === parentSectorId)
-                .flatMap(def => 
-                    def.versions.flatMap(v => v.stages.map(s => ({
-                        stageId: s.id,
-                        stageName: s.name,
-                        stageOrder: s.order,
-                        stageTimelineDays: s.defaultTimelineDays,
-                        departmentName: s.responsibleDepartment.name,
-                        workflowOrder: def.order,
-                    })))
-                )
-                .sort((a, b) => {
-                    if (a.workflowOrder !== b.workflowOrder) {
-                        return a.workflowOrder - b.workflowOrder;
-                    }
-                    return a.stageOrder - b.stageOrder;
-                });
-        }
-
-        return {
-          id: loan.id,
-          loanNumber: loan.loanNumber,
-          customerName: loan.customer.name,
-          submittedDate: formatISO(loan.submittedDate),
-          currentStageId: loan.currentStageIdMirror,
-          currentStageStatus: loan.currentStageStatus,
-          isTerminalStage: loan.isTerminalStage,
-          workflowSequence,
-        };
-    });
+    const results: PublicLoanStatus[] = prismaLoans.map(loan => ({
+        id: loan.id,
+        loanNumber: loan.loanNumber,
+        customerName: loan.customer.name,
+        submittedDate: formatISO(loan.submittedDate),
+        currentStageId: loan.currentStageIdMirror,
+        currentStageStatus: loan.currentStageStatus,
+        isTerminalStage: loan.isTerminalStage,
+    }));
 
     return { loans: results };
   } catch (e: any) {
@@ -1086,7 +1035,7 @@ export async function searchLoanRequests(
 }
 
 
-export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus | null, error?: string }> {
+export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus & { workflowSequence: { stageId: string; stageName: string; stageOrder: number; stageTimelineDays: number; departmentName: string; }[] } | null, error?: string }> {
   try {
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { loanNumber },
@@ -1153,7 +1102,7 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     });
 
 
-    const result: PublicLoanStatus = {
+    const result: PublicLoanStatus & { workflowSequence: any[] } = {
       id: prismaLoan.id,
       loanNumber: prismaLoan.loanNumber,
       customerName: prismaLoan.customer.name,

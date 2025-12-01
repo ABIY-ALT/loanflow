@@ -25,7 +25,6 @@ import { format, parseISO } from 'date-fns';
 import { searchLoanRequests, type PublicLoanStatus } from '@/services/loan-service-prisma';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
-import { PublicLoanStatusStepper } from '@/components/PublicLoanStatusStepper';
 
 
 export const loanStatusSchema = z.object({
@@ -222,8 +221,6 @@ export default function LoanStatusPage() {
               <div className="text-center text-muted-foreground py-10">
                   <p>No loans found matching your criteria.</p>
               </div>
-            ) : lookupResult.length === 1 ? (
-              <PublicLoanStatusStepper loanData={lookupResult[0]} />
             ) : (
             <Table>
                 <TableHeader>
