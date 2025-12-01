@@ -588,7 +588,7 @@ export default function SettingsPage() {
       } finally {
         setIsLoadingData(false);
       }
-    }, [toast, newWorkflowDepartmentId, newWorkflowSectorId]);
+    }, [toast]);
 
 
   useEffect(() => {
