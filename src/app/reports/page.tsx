@@ -433,7 +433,7 @@ export default function ReportsPage() {
                         <div className="font-semibold">{loan.customerName}</div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />{loan.customerEmail}</div>
                       </TableCell>
-                      <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
+                      <TableCell>{loan.loanAmount.toLocaleString()} ETB</TableCell>
                       <TableCell>{loan.sectorName}</TableCell>
                       <TableCell>{loan.requestTypeName}</TableCell>
                       <TableCell>

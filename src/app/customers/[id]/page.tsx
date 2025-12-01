@@ -193,7 +193,7 @@ export default function CustomerProfilePage() {
                 customer.loanRequests.map((loan) => (
                   <TableRow key={loan.id}>
                     <TableCell className="font-medium">{loan.loanNumber}</TableCell>
-                    <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
+                    <TableCell>{loan.loanAmount.toLocaleString()} ETB</TableCell>
                     <TableCell>{format(parseISO(loan.submittedDate), 'MMM dd, yyyy')}</TableCell>
                     <TableCell><Badge variant="secondary">{loan.currentStageName}</Badge></TableCell>
                     <TableCell className="text-right">

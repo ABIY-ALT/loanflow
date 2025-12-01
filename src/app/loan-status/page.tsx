@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -238,7 +239,7 @@ export default function LoanStatusPage() {
                     <TableRow key={loan.id}>
                         <TableCell className="font-medium">{loan.loanNumber}</TableCell>
                         <TableCell>{loan.customerName}</TableCell>
-                        <TableCell>${loan.loanAmount.toLocaleString()}</TableCell>
+                        <TableCell>{loan.loanAmount.toLocaleString()} ETB</TableCell>
                         <TableCell><Badge variant="secondary">{loan.currentStageName}</Badge></TableCell>
                         <TableCell>{format(parseISO(loan.submittedDate), 'PP')}</TableCell>
                         {canViewDetails && (

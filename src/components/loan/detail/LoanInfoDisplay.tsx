@@ -3,7 +3,7 @@
 'use client';
 
 import type { LoanRequest, User as UserType } from '@/types/loan';
-import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon, Briefcase } from 'lucide-react'; // Added Briefcase
+import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon, Briefcase } from 'lucide-react';
 import { InfoItem } from '@/components/loan/common/InfoItem';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -16,7 +16,7 @@ import {
 interface LoanInfoDisplayProps {
   loan: LoanRequest;
   assignedUsers?: UserType[];
-  assignedDepartment?: string; // Added
+  assignedDepartment?: string;
 }
 
 export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }: LoanInfoDisplayProps) {
@@ -30,8 +30,9 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
 
   return (
     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-      <InfoItem icon={DollarSign} label="Loan Amount" value={`$${loan.loanAmount.toLocaleString()}`} />
-      <InfoItem icon={Briefcase} label="Sector" value={loan.sectorName} />
+      <InfoItem icon={DollarSign} label="Loan Amount" value={`${loan.loanAmount.toLocaleString()} ETB`} />
+      <InfoItem icon={Briefcase} label="Parent Sector" value={loan.parentSectorName} />
+      <InfoItem icon={Briefcase} label="Child Sector" value={loan.sectorName} />
       <InfoItem icon={Type} label="Request Type" value={loan.requestTypeName} />
       <InfoItem icon={Info} label="Loan Purpose" value={loan.loanPurpose} />
       <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />

@@ -278,7 +278,7 @@ export default function NewLoanRequestPage() {
                       <FormControl>
                         <Input type="number" placeholder="e.g., 10000" {...field} disabled={isSubmitting} />
                       </FormControl>
-                      <FormDescription>Enter amount in birr</FormDescription>
+                      <FormDescription>Enter amount in ETB</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
