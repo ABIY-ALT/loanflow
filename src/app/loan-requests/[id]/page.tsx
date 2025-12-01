@@ -184,13 +184,12 @@ export default function LoanDetailPage() {
   }, [loan, toast, fetchLoanData]);
 
 
-  const onEditLoanSubmit = async (data: any) => {
+  const onEditLoanSubmit = async (data: { assignedTo?: string[] }) => {
     if (!loan) return;
     
-    const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
     const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
 
-    if (!canEditDetails && !canAssignStaff) return;
+    if (!canAssignStaff) return;
 
     const newAssignedUserIds = new Set(data.assignedTo || []);
     const currentAssignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
@@ -215,23 +214,14 @@ export default function LoanDetailPage() {
     }
     
     const payload: Partial<Omit<LoanRequest, 'id'>> = { history: historyUpdate };
-    if (canEditDetails) {
-        Object.assign(payload, {
-            customerName: data.customerName,
-            customerEmail: data.customerEmail,
-            customerPhone: data.customerPhone,
-            loanAmount: Number(data.loanAmount),
-            loanType: data.loanType,
-            loanPurpose: data.loanPurpose,
-        });
-    }
+
     if (canAssignStaff) {
         payload.assignedToUsers = Array.from(newAssignedUserIds).map(id => users.find(u => u.id === id)).filter(Boolean) as UserType[];
         payload.stageCompletedBy = [];
         payload.isReadyForManagerReview = false;
     }
 
-    const success = await handleLocalAndUpdateService(payload, "Loan details updated.");
+    const success = await handleLocalAndUpdateService(payload, "Staff assignment updated.");
     if (success) setIsEditLoanDialogOpen(false);
   };
 
@@ -410,7 +400,7 @@ export default function LoanDetailPage() {
     const currentUserName = currentUser.fullName || 'System Process';
     if (currentStageIndex === currentWorkflowVersion.stages.length - 1) {
         const loanWorkflows = workflowDefinitions
-            .filter(def => def.loanTypeId === currentWorkflowDef.loanTypeId)
+            .filter(def => def.parentSectorId === currentWorkflowDef.parentSectorId)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const currentWorkflowIndexInPath = loanWorkflows.findIndex(def => def.id === currentWorkflowDef.id);
@@ -879,7 +869,7 @@ export default function LoanDetailPage() {
         </CardFooter>
       </Card>
 
-      {(userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
+      {userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF) && <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onEditLoanSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={onAddNoteSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={onLogInfoRequestSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentRequirementToUpload(null);}} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
