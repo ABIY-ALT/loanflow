@@ -32,8 +32,17 @@ async function main() {
       for (const childName of childSectors[sectorName]) {
         await prisma.sector.upsert({
           where: { name: childName },
-          update: { parent: { connect: { id: parent.id } } },
-          create: { name: childName, parent: { connect: { id: parent.id } } },
+          update: {
+            parent: {
+              connect: { id: parent.id }
+            }
+          },
+          create: {
+            name: childName,
+            parent: {
+              connect: { id: parent.id }
+            }
+          },
         });
         console.log(`  - Created/verified child sector: ${childName}`);
       }
