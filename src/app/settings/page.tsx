@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -704,7 +705,8 @@ export default function SettingsPage() {
     if (!authLoading) {
       fetchInitialData();
     }
-  }, [fetchInitialData, authLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading]);
   
   const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
   const childSectorsForSelectedParent = useMemo(() => {
@@ -1461,4 +1463,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
