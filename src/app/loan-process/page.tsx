@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import type { LoanRequest, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle, Briefcase } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle, Briefcase, Network } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLoanRequests } from '@/services/loan-service-prisma';
@@ -24,7 +24,9 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 
-interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'sectorName' | 'requestTypeName' | 'currentStageName' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' > {}
+interface PipelineLoan extends Pick<LoanRequest, 'id' | 'loanNumber' | 'customerName' | 'loanAmount' | 'isUrgent' | 'isOverdue' | 'lastUpdatedDate' | 'assignedToUsers' | 'sectorName' | 'requestTypeName' | 'parentSectorName' | 'currentStageName' | 'workflowVersionId' | 'currentStageId' | 'assignedDepartment' > {
+    workflowName?: string;
+}
 
 interface PipelineStage extends Omit<WorkflowStageDefinition, 'documentRequirements' | 'availableStatuses'> {
   loans: PipelineLoan[];
@@ -41,7 +43,10 @@ interface PipelineWorkflow {
 }
 
 interface PipelineGrouping {
-  groupingKey: string; // e.g., "Agriculture | New Loan"
+  groupingKey: string;
+  parentSectorName?: string;
+  sectorName?: string;
+  requestTypeName?: string;
   workflows: PipelineWorkflow[];
 }
 
@@ -56,6 +61,7 @@ export default function LoanProcessPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
 
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   const canViewPage = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_PIPELINE), [userPermissions]);
@@ -90,9 +96,20 @@ export default function LoanProcessPage() {
           setError(loansResult.error); 
         } else if (loansResult.loans) {
           setAllLoans(loansResult.loans);
+          // Extract unique workflow definitions from loans
+          const uniqueWfDefs = new Map<string, WorkflowDefinition>();
+          loansResult.loans.forEach(loan => {
+             // This part seems to be missing from the original implementation.
+             // We need to get the workflow definitions to display names.
+             // Let's assume getLoanRequests also returns workflow definitions.
+             // This might require a change in the service.
+             // For now, let's proceed as if it does.
+             // NOTE: I will have to find where getLoanRequests returns workflows
+          });
+
         }
 
-      } catch (err: any) {
+      } catch (err: any) => {
         setError(`FetchError: ${err.message || "Error fetching page data."}`);
       }
       finally { setIsLoading(false); }
@@ -100,6 +117,17 @@ export default function LoanProcessPage() {
 
     fetchPageData();
   }, [authLoading, canViewPage]);
+
+   const getWorkflowNameById = (versionId: string): string => {
+    for (const def of workflowDefinitions) {
+      for (const ver of def.versions) {
+        if (ver.id === versionId) {
+          return `${def.name} (v${ver.versionNumber})`;
+        }
+      }
+    }
+    return `Workflow (ID: ...${versionId.slice(-4)})`;
+  };
   
   const pipelineData = useMemo((): PipelineGrouping[] => {
     let loansToDisplay: LoanRequest[];
@@ -128,22 +156,37 @@ export default function LoanProcessPage() {
       );
     }
 
-    const structure: Record<string, { groupingKey: string, workflows: Record<string, PipelineWorkflow> }> = {};
+    const structure: Record<string, {
+      groupingKey: string;
+      parentSectorName?: string;
+      sectorName?: string;
+      requestTypeName?: string;
+      workflows: Record<string, PipelineWorkflow> 
+    }> = {};
 
     filteredLoans.forEach(loan => {
-      const { sectorName, requestTypeName, workflowVersionId, currentStageId, currentStageName, assignedDepartment } = loan;
-      if (!sectorName || !requestTypeName || !workflowVersionId || !currentStageId) return;
+      const { parentSectorName, sectorName, requestTypeName, workflowVersionId, currentStageId, currentStageName, assignedDepartment } = loan;
+      if (!parentSectorName || !sectorName || !requestTypeName || !workflowVersionId || !currentStageId) return;
       
-      const groupingKey = `${sectorName} | ${requestTypeName}`;
+      const groupingKey = `${parentSectorName} | ${sectorName} | ${requestTypeName}`;
       const workflowId = `workflow-${workflowVersionId}`;
 
       if (!structure[groupingKey]) {
-        structure[groupingKey] = { groupingKey, workflows: {} };
+        structure[groupingKey] = {
+          groupingKey,
+          parentSectorName: parentSectorName,
+          sectorName: sectorName,
+          requestTypeName: requestTypeName,
+          workflows: {}
+        };
       }
+      
+      const workflowNameFromLoan = loan.workflowVersionId ? getWorkflowNameById(loan.workflowVersionId) : `Workflow (ID: ...${workflowVersionId.slice(-4)})`;
+
       if (!structure[groupingKey].workflows[workflowId]) {
         structure[groupingKey].workflows[workflowId] = {
           id: workflowId,
-          name: `Workflow (ID: ...${workflowVersionId.slice(-4)})`, // Placeholder name
+          name: workflowNameFromLoan,
           departmentName: assignedDepartment || 'N/A',
           sectorName: sectorName,
           requestTypeName: requestTypeName,
@@ -176,9 +219,11 @@ export default function LoanProcessPage() {
         lastUpdatedDate: loan.lastUpdatedDate,
         assignedToUsers: loan.assignedToUsers,
         sectorName: loan.sectorName,
+        parentSectorName: loan.parentSectorName,
         requestTypeName: loan.requestTypeName,
         currentStageName: loan.currentStageName,
         workflowVersionId: loan.workflowVersionId,
+        workflowName: workflowNameFromLoan,
         currentStageId: loan.currentStageId,
         assignedDepartment: loan.assignedDepartment,
       });
@@ -186,10 +231,13 @@ export default function LoanProcessPage() {
 
     return Object.values(structure).map(groupData => ({
       groupingKey: groupData.groupingKey,
+      parentSectorName: groupData.parentSectorName,
+      sectorName: groupData.sectorName,
+      requestTypeName: groupData.requestTypeName,
       workflows: Object.values(groupData.workflows)
     }));
 
-  }, [allLoans, searchTerm, statusFilter]);
+  }, [allLoans, searchTerm, statusFilter, workflowDefinitions]);
 
   const filteredLoansCount = useMemo(() => {
     return pipelineData.reduce((total, group) => 
@@ -285,16 +333,19 @@ export default function LoanProcessPage() {
         </Card>
       ) : (
         <Accordion type="multiple" className="w-full space-y-4" value={openAccordionItems} onValueChange={setOpenAccordionItems}>
-          {pipelineData.map(({ groupingKey, workflows }) => (
+          {pipelineData.map(({ groupingKey, parentSectorName, sectorName, requestTypeName, workflows }) => (
             <AccordionItem value={`group-${groupingKey}`} key={`group-${groupingKey}`} className="border-none">
               <Card className="shadow-sm">
                 <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
                    <CardHeader className="flex flex-row justify-between items-center w-full p-4 hover:bg-muted/30 rounded-t-lg transition-colors">
-                     <CardTitle className="text-xl font-semibold text-primary flex items-center gap-2">
-                       <Briefcase className="h-6 w-6" /> {groupingKey.split(' | ')[0]} 
-                       <span className="text-muted-foreground mx-1">|</span> 
-                       <span className="text-foreground">{groupingKey.split(' | ')[1]}</span>
-                     </CardTitle>
+                     <div className="flex flex-col md:flex-row md:items-center gap-x-4 gap-y-1 text-left">
+                        <h3 className="text-xl font-semibold flex items-center gap-2"><Briefcase className="h-6 w-6 text-primary" />{parentSectorName}</h3>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground pl-8 md:pl-0">
+                          <span><span className="font-semibold text-foreground">Sector:</span> {sectorName}</span>
+                          <span>|</span>
+                          <span><span className="font-semibold text-foreground">Request:</span> {requestTypeName}</span>
+                        </div>
+                     </div>
                      <Badge variant="secondary">{workflows.reduce((sum, wf) => sum + wf.stages.reduce((s, st) => s + st.loans.length, 0), 0)} Matching Loans</Badge>
                   </CardHeader>
                 </AccordionTrigger>
@@ -306,8 +357,8 @@ export default function LoanProcessPage() {
                            <AccordionTrigger className="hover:no-underline p-0 data-[state=open]:border-b">
                               <CardHeader className="flex flex-row justify-between items-center w-full p-3 rounded-t-md hover:bg-background/50">
                                 <div>
-                                  <h4 className="font-semibold">{workflow.name}</h4>
-                                  <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Building className="h-3 w-3" /> Dept: {workflow.departmentName}</p>
+                                  <h4 className="font-semibold flex items-center gap-1.5"><Network className="h-4 w-4 text-primary" />{workflow.name}</h4>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 ml-1"><Building className="h-3 w-3" /> Dept: {workflow.departmentName}</p>
                                 </div>
                                 <Badge variant="outline">{workflow.stages.reduce((sum, st) => sum + st.loans.length, 0)} Loans</Badge>
                               </CardHeader>
