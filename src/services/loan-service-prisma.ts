@@ -159,7 +159,7 @@ export async function addLoanRequest(
         where: {
             isActive: true,
             workflowDefinition: {
-                parentSectorId: selectedChildSector.parentId,
+                parentSectorId: selectedChildSector.parentId
             }
         },
         include: {
