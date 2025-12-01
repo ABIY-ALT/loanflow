@@ -29,7 +29,7 @@ export const mockUsers: MockAppUser[] = [
     name: 'Alex Officer', 
     email: 'alex.officer@loanflow.app', 
     customRoleName: "Loan Officer", 
-    department: "Origination", 
+    department: "Director Manufacturing and Agricultural Sector", 
     firstName: 'Alex', 
     lastName: 'Officer', 
     phoneNumber: '0911111111' 
@@ -40,7 +40,7 @@ export const mockUsers: MockAppUser[] = [
     name: 'Sam Admin', 
     email: 'sam.admin@loanflow.app', 
     customRoleName: "Administrator", 
-    department: "Compliance", 
+    department: "Chief WholeSale Banking Office", 
     firstName: 'Sam', 
     lastName: 'Admin', 
     phoneNumber: '0922222222' 
@@ -48,12 +48,16 @@ export const mockUsers: MockAppUser[] = [
 ];
 
 export const mockDepartments: Department[] = [
-  "Origination",
-  "Underwriting",
-  "Credit Analysis",
-  "Closing",
-  "Compliance",
-  "Servicing"
+  "Chief Retail and SME Banking Office",
+  "Chief WholeSale Banking Office",
+  "Deputy Chief Credit Operation Office",
+  "Director Credit Analysis and Appraisal",
+  "Director Credit Monitoring and Portfolio Management",
+  "Director Institutional Banking and Green Financing",
+  "Director Legal Service",
+  "Director Manufacturing and Agricultural Sector",
+  "Director Property Valuation",
+  "Director Service and Mining Sector"
 ];
 
 const createDocReq = (id: string, name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
@@ -66,3 +70,4 @@ const createDocReq = (id: string, name: string, isMandatory: boolean, type: Docu
 // This file is now largely superseded by the Prisma seed script.
 // The workflow and loan request mock data is kept for reference or potential future use in non-DB environments, but it is not actively used by the application which now relies on the database.
 // The primary exports used by the seeding process are mockUsers and mockDepartments.
+
