@@ -219,14 +219,22 @@ export default function LoanProcessPage() {
         }
     });
     
-    // 3. Filter out groups and workflows that have no matching loans *after* filtering
+    // 3. Convert structure to array, but don't filter out empty workflows if no search term
     const finalStructure = Object.values(structure)
         .map(group => {
-            const workflowsWithLoans = Object.values(group.workflows).filter(wf => 
-                wf.stages.some(stage => stage.loans.length > 0)
-            );
-            if (workflowsWithLoans.length === 0) return null;
-            return { ...group, workflows: workflowsWithLoans.sort((a,b) => a.order - b.order) };
+            let workflowsToShow = Object.values(group.workflows).sort((a, b) => a.order - b.order);
+
+            // If a search term is active, filter out workflows that don't have matching loans.
+            if (searchTerm) {
+                workflowsToShow = workflowsToShow.filter(wf => 
+                    wf.stages.some(stage => stage.loans.length > 0)
+                );
+            }
+            
+            // If after filtering (or not filtering) there are no workflows, remove the whole group.
+            if (workflowsToShow.length === 0) return null;
+
+            return { ...group, workflows: workflowsToShow };
         })
         .filter((g): g is Exclude<typeof g, null> => g !== null);
 
