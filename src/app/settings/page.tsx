@@ -745,16 +745,12 @@ export default function SettingsPage() {
     
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
         if (def.parentSectorId === targetDefToActivate.parentSectorId) {
-            if (def.id === definitionIdToActivate) {
-                return {
-                    ...def,
-                    versions: def.versions.map(v => ({ ...v, isActive: v.id === versionIdToActivate }))
-                };
-            }
-            // Deactivate versions in other definitions of the same parent sector
             return {
                 ...def,
-                versions: def.versions.map(v => ({ ...v, isActive: false }))
+                versions: def.versions.map(v => ({ 
+                    ...v, 
+                    isActive: (def.id === definitionIdToActivate && v.id === versionIdToActivate) 
+                }))
             };
         }
         return def;
@@ -1087,11 +1083,12 @@ export default function SettingsPage() {
     );
   }
   
-  const workflowsByCombination = workflowDefinitions.reduce((acc, wf) => {
-    const key = `${wf.parentSectorName}`;
+  const workflowsByParentSector = workflowDefinitions.reduce((acc, wf) => {
+    const key = wf.parentSectorId || 'unclassified';
+    const parentSectorName = wf.parentSectorName || 'Unclassified';
     if (!acc[key]) {
       acc[key] = {
-        parentSectorName: wf.parentSectorName,
+        parentSectorName: parentSectorName,
         workflows: []
       };
     }
@@ -1339,8 +1336,8 @@ export default function SettingsPage() {
               <Separator/>
               <h4 className="font-medium text-lg pt-4">Current Workflow Paths & Definitions</h4>
               <Accordion type="multiple" className="w-full space-y-4">
-              {Object.keys(workflowsByCombination).length === 0 && <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>}
-              {Object.values(workflowsByCombination).map(({ parentSectorName, workflows }) => (
+              {Object.keys(workflowsByParentSector).length === 0 && <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>}
+              {Object.values(workflowsByParentSector).map(({ parentSectorName, workflows }) => (
                 <AccordionItem value={`path-${parentSectorName}`} key={`path-${parentSectorName}`}>
                    <AccordionTrigger>
                        <span className="flex items-center text-lg"><Briefcase className="mr-2 h-5 w-5 text-primary"/> Path for: {parentSectorName}</span>
@@ -1463,5 +1460,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
 
