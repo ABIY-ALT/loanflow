@@ -31,6 +31,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import { Button } from '../ui/button';
 
 interface NavItemConfig {
   href: string;
@@ -232,37 +233,36 @@ export default function SidebarNav() {
         const isMenuOpen = openMenus.has(item.href);
 
         const buttonContent = (
-            <SidebarMenuButton
-                isActive={mainButtonIsActive}
-                className="justify-start w-full"
-                tooltip={item.label}
-                onClick={hasSubItems ? (e) => { e.preventDefault(); toggleMenu(item.href); } : undefined}
-            >
-                <div className="flex items-center gap-2">
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                </div>
-                {hasSubItems && (
-                    <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 transition-transform duration-200", isMenuOpen && "rotate-180")} />
-                )}
-            </SidebarMenuButton>
+          <SidebarMenuButton
+            isActive={mainButtonIsActive}
+            className="justify-start w-full pr-0"
+            tooltip={item.label}
+          >
+            <Link href={item.href} className="flex items-center gap-2 flex-grow" passHref>
+              <Icon className="h-5 w-5" />
+              <span>{item.label}</span>
+            </Link>
+            {hasSubItems && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 ml-auto shrink-0"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(item.href); }}
+              >
+                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-200", isMenuOpen && "rotate-180")} />
+              </Button>
+            )}
+          </SidebarMenuButton>
         );
 
         return (
           <SidebarMenuItem key={item.href}>
-            {hasSubItems ? (
-                buttonContent
-            ) : (
-                <Link href={item.href} passHref>
-                    {buttonContent}
-                </Link>
-            )}
-
+            {buttonContent}
             {hasSubItems && isMenuOpen && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
                 {item.subItems?.map(subItem => {
                   const SubIcon = subItem.icon;
-                  const subItemIsActive = currentPathname === subItem.href;
+                  const subItemIsActive = currentPathname.startsWith(subItem.href);
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
                        <Link href={subItem.href} passHref>
