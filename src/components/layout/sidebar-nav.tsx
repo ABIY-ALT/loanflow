@@ -20,6 +20,7 @@ import {
   Users,
   Map,
   FileSearch,
+  ChevronDown,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -29,6 +30,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
+import { cn } from '@/lib/utils';
 
 interface NavItemConfig {
   href: string;
@@ -155,10 +157,18 @@ export default function SidebarNav() {
   const [isClient, setIsClient] = useState(false);
   const currentPathname = usePathname();
   const { user, isLoading: authLoading } = useAuth();
+  const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    // Auto-open parent menu if on a sub-item page
+    const parentMenu = navItemsConfig.find(item => 
+        item.subItems?.some(sub => currentPathname.startsWith(sub.href))
+    );
+    if (parentMenu) {
+        setOpenMenus(prev => new Set(prev).add(parentMenu.href));
+    }
+  }, [currentPathname]);
 
   if (!isClient || authLoading) {
     return (
@@ -199,34 +209,58 @@ export default function SidebarNav() {
       subItems: item.subItems?.filter(sub => canView(sub.requiredPermissions))
   }));
 
+  const toggleMenu = (href: string) => {
+    setOpenMenus(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(href)) {
+            newSet.delete(href);
+        } else {
+            newSet.add(href);
+        }
+        return newSet;
+    });
+  };
 
   return (
     <SidebarMenu>
       {visibleNavItems.map((item) => {
         const Icon = item.icon;
-        
+        const hasSubItems = item.subItems && item.subItems.length > 0;
         const isActiveDirectly = currentPathname === item.href;
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
+        const isMenuOpen = openMenus.has(item.href);
 
-        const openSubMenu = item.subItems && item.subItems.length > 0 && 
-                            currentPathname.startsWith(item.href) && item.href !== '/';
+        const buttonContent = (
+            <SidebarMenuButton
+                isActive={mainButtonIsActive}
+                className="justify-start w-full"
+                tooltip={item.label}
+                onClick={hasSubItems ? (e) => { e.preventDefault(); toggleMenu(item.href); } : undefined}
+            >
+                <div className="flex items-center gap-2">
+                    <Icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                </div>
+                {hasSubItems && (
+                    <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 transition-transform duration-200", isMenuOpen && "rotate-180")} />
+                )}
+            </SidebarMenuButton>
+        );
 
         return (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href} passHref>
-              <SidebarMenuButton
-                isActive={mainButtonIsActive}
-                className="justify-start"
-                tooltip={item.label}
-              >
-                <Icon className="h-5 w-5" />
-                <span>{item.label}</span>
-              </SidebarMenuButton>
-            </Link>
-            {openSubMenu && item.subItems && item.subItems.length > 0 && (
+            {hasSubItems ? (
+                buttonContent
+            ) : (
+                <Link href={item.href} passHref>
+                    {buttonContent}
+                </Link>
+            )}
+
+            {hasSubItems && isMenuOpen && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
-                {item.subItems.map(subItem => {
+                {item.subItems?.map(subItem => {
                   const SubIcon = subItem.icon;
                   const subItemIsActive = currentPathname === subItem.href;
                   return (
