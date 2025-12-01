@@ -66,10 +66,22 @@ export default function DashboardPage() {
           
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
+          const terminalLoans = loans.filter(loan => loan.isTerminalStage);
+          const approvedLoansCount = terminalLoans.filter(loan => 
+            loan.currentStageName?.toLowerCase().includes('funded') || loan.currentStageName?.toLowerCase().includes('approved')
+          ).length;
+          const rejectedLoansCount = terminalLoans.filter(loan => 
+            loan.currentStageName?.toLowerCase().includes('rejected') || loan.currentStageName?.toLowerCase().includes('terminated')
+          ).length;
+
+          const totalCompleted = approvedLoansCount + rejectedLoansCount;
+          const approvalRateValue = totalCompleted > 0 ? (approvedLoansCount / totalCompleted) * 100 : 0;
+          const approvalRateString = totalCompleted > 0 ? `${approvalRateValue.toFixed(1)}%` : "N/A";
+
           setStats({
             activeLoansCount: activeLoans,
             newApplicationsCount: newApplications,
-            approvalRate: "78.5%", // Placeholder, calculate if possible
+            approvalRate: approvalRateString,
             overdueTasksCount: overdueTasks,
           });
         } else {
@@ -236,7 +248,7 @@ export default function DashboardPage() {
           title="Approval Rate"
           value={isLoading ? "-" : (stats?.approvalRate ?? "N/A")}
           icon={TrendingUp}
-          description={isLoading ? "Loading..." : "vs last month (placeholder)"}
+          description={isLoading ? "Loading..." : "Based on all completed loans"}
         />
         <StatCard
           title="Overdue Tasks"
