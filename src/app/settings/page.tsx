@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -512,6 +511,99 @@ function EditWorkflowVersionDialog({
 }
 
 
+interface EditWorkflowDefinitionDialogProps {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  definitionToEdit: WorkflowDefinition | null;
+  onSave: (updatedDefinition: WorkflowDefinition) => void;
+  sectors: Sector[];
+  departments: DepartmentObject[];
+  isSaving: boolean;
+}
+
+function EditWorkflowDefinitionDialog({ isOpen, onOpenChange, definitionToEdit, onSave, sectors, departments, isSaving }: EditWorkflowDefinitionDialogProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [parentSectorId, setParentSectorId] = useState('');
+  const [childSectorId, setChildSectorId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+
+  const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
+  const childSectors = useMemo(() => {
+    if (!parentSectorId) return [];
+    return sectors.filter(s => s.parentId === parentSectorId);
+  }, [sectors, parentSectorId]);
+
+  useEffect(() => {
+    if (definitionToEdit) {
+      setName(definitionToEdit.name);
+      setDescription(definitionToEdit.description || '');
+      setParentSectorId(definitionToEdit.parentSectorId || '');
+      setChildSectorId(definitionToEdit.sectorId || '');
+      setDepartmentId(definitionToEdit.departmentId || '');
+    }
+  }, [definitionToEdit]);
+
+  useEffect(() => {
+    // When parent sector changes, check if the current child is still valid. If not, reset it.
+    if (!childSectors.some(cs => cs.id === childSectorId)) {
+        setChildSectorId('');
+    }
+  }, [parentSectorId, childSectors, childSectorId]);
+
+  const handleSave = () => {
+    if (!definitionToEdit || !name.trim() || !parentSectorId || !childSectorId || !departmentId) {
+      // Basic validation
+      return;
+    }
+    const updatedDefinition: WorkflowDefinition = {
+      ...definitionToEdit,
+      name,
+      description,
+      parentSectorId,
+      parentSectorName: parentSectors.find(ps => ps.id === parentSectorId)?.name,
+      sectorId: childSectorId,
+      sectorName: sectors.find(s => s.id === childSectorId)?.name || '',
+      departmentId,
+      departmentName: departments.find(d => d.id === departmentId)?.name || '',
+    };
+    onSave(updatedDefinition);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Workflow Definition</DialogTitle>
+          <DialogDescription>Modify the core details of &quot;{definitionToEdit?.name}&quot;.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div><Label htmlFor="edit-wf-name">Workflow Name</Label><Input id="edit-wf-name" value={name} onChange={e => setName(e.target.value)} disabled={isSaving} /></div>
+          <div><Label htmlFor="edit-wf-desc">Description</Label><Textarea id="edit-wf-desc" value={description} onChange={e => setDescription(e.target.value)} disabled={isSaving} /></div>
+          <div>
+            <Label htmlFor="edit-wf-parent-sector">Parent Sector</Label>
+            <Select value={parentSectorId} onValueChange={setParentSectorId} disabled={isSaving}><SelectTrigger id="edit-wf-parent-sector"><SelectValue placeholder="Select Parent Sector..." /></SelectTrigger><SelectContent>{parentSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-wf-child-sector">Child Sector</Label>
+            <Select value={childSectorId} onValueChange={setChildSectorId} disabled={isSaving || !parentSectorId}><SelectTrigger id="edit-wf-child-sector"><SelectValue placeholder="Select Child Sector..." /></SelectTrigger><SelectContent>{childSectors.length > 0 ? childSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>) : <SelectItem value="none" disabled>No child sectors for this parent</SelectItem>}</SelectContent></Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-wf-dept">Owning Department</Label>
+            <Select value={departmentId} onValueChange={setDepartmentId} disabled={isSaving}><SelectTrigger id="edit-wf-dept"><SelectValue placeholder="Select Department..." /></SelectTrigger><SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
+          <Button onClick={handleSave} disabled={isSaving || !name.trim() || !parentSectorId || !childSectorId || !departmentId}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
 export default function SettingsPage() {
   const { toast } = useToast();
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -528,6 +620,10 @@ export default function SettingsPage() {
   const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
   const [currentWorkflowDefForEdit, setCurrentWorkflowDefForEdit] = useState<WorkflowDefinition | null>(null);
   const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
+  
+  const [isEditDefinitionDialogOpen, setIsEditDefinitionDialogOpen] = useState(false);
+  const [definitionToEdit, setDefinitionToEdit] = useState<WorkflowDefinition | null>(null);
+
 
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
@@ -601,7 +697,7 @@ export default function SettingsPage() {
       }).finally(() => {
         setIsLoadingData(false);
       });
-    }, [canManageWorkflows, toast]);
+    }, [canManageWorkflows, toast, newWorkflowDepartmentId, newWorkflowParentSectorId, newChildSectorParentId]);
 
 
   useEffect(() => {
@@ -770,6 +866,17 @@ export default function SettingsPage() {
     
     toast({ title: "Workflow Added Locally", description: `"${newWorkflowName}" was added. Save all settings to persist.` });
   };
+  
+  const handleOpenEditDefinitionDialog = (definition: WorkflowDefinition) => {
+    setDefinitionToEdit(definition);
+    setIsEditDefinitionDialogOpen(true);
+  };
+  
+  const handleSaveDefinition = (updatedDefinition: WorkflowDefinition) => {
+    setWorkflowDefinitions(prev => prev.map(def => def.id === updatedDefinition.id ? updatedDefinition : def));
+    toast({title: "Workflow Updated (Local)", description: `Changes for "${updatedDefinition.name}" are staged. Save all settings to persist.`});
+  };
+
 
   const handleAddSector = async (name: string, parentId: string | null) => {
     if (!canManageWorkflows || !name.trim()) {
@@ -1076,7 +1183,7 @@ export default function SettingsPage() {
                                 </div>
                                 <DropdownMenu onOpenChange={(open) => open && (event?.stopPropagation())} >
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={(e) => e.stopPropagation()}><MoreVertical className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}><MoreVertical className="h-4 w-4" /></Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                                         <DropdownMenuItem onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>
@@ -1257,10 +1364,15 @@ export default function SettingsPage() {
                       {workflows.map(def => (
                         <Card key={def.id} className="shadow-sm">
                             <CardHeader>
-                                <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
-                                <div className="flex flex-wrap items-center gap-2 mt-2">
-                                    <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
-                                    <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
+                                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
+                                    </div>
+                                  </div>
+                                  <Button variant="ghost" size="sm" onClick={() => handleOpenEditDefinitionDialog(def)}><Edit className="mr-2 h-4 w-4"/> Edit Definition</Button>
                                 </div>
                                 {def.description && <CardDescription className="pt-2">{def.description}</CardDescription>}
                             </CardHeader>
@@ -1300,6 +1412,8 @@ export default function SettingsPage() {
       )}
       
       <EditWorkflowVersionDialog isOpen={isEditVersionDialogOpen} onOpenChange={setIsEditVersionDialogOpen} workflowDefinition={currentWorkflowDefForEdit} versionToEdit={currentVersionToEdit} departments={departments} onSaveVersion={handleSaveVersion} departmentName={currentWorkflowDefForEdit?.departmentName || ''}/>
+      <EditWorkflowDefinitionDialog isOpen={isEditDefinitionDialogOpen} onOpenChange={setIsEditDefinitionDialogOpen} definitionToEdit={definitionToEdit} onSave={handleSaveDefinition} sectors={sectors} departments={departments} isSaving={isSavingAll || isSavingData} />
+
       <Dialog open={isEditSectorDialogOpen} onOpenChange={setIsEditSectorDialogOpen}>
         <DialogContent>
             <DialogHeader><DialogTitle>Edit Sector</DialogTitle><DialogDescription>Update the name for &quot;{editingSector?.name}&quot;.</DialogDescription></DialogHeader>
@@ -1347,5 +1461,4 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 
