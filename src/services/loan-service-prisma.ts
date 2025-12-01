@@ -167,7 +167,7 @@ export async function addLoanRequest(
             order: 'asc'
         }
     });
-
+    
     if (!firstWorkflowInSequence) {
         return createErrorResult(`No workflow sequence found for the selected Parent Sector.`, "addLoanRequest");
     }
@@ -250,7 +250,7 @@ export async function addLoanRequest(
     });
     return { id: newLoan.id };
   } catch (e: any) {
-    return createErrorResult("Failed to add loan request.", "addLoanRequest", e);
+    return createErrorResult(`Failed to add loan request. ${e.message}`, "addLoanRequest", e);
   }
 }
 
@@ -458,7 +458,7 @@ export async function updateLoanRequest(
             if (!entry.userId) continue;
             await tx.loanHistoryEntry.create({
                 data: {
-                    loan: { connect: { id } },
+                    loanRequest: { connect: { id } },
                     user: { connect: { id: entry.userId } },
                     stageName: entry.stageName,
                     timestamp: parseISO(entry.timestamp),
@@ -1024,4 +1024,3 @@ export async function searchLoanRequests(
     return createErrorResult(`Search failed.`, "searchLoanRequests", e);
   }
 }
-
