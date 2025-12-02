@@ -356,11 +356,11 @@ export default function NewLoanRequestPage() {
                         onSelect={field.onChange}
                         placeholder={isLoading ? "Loading branches..." : "Select a branch"}
                         searchPlaceholder="Search branch..."
-                        notFoundText="No branch found."
+                        notFoundText={error?.includes('Branches') ? "Error loading branches" : "No branch found."}
                         className="w-full"
-                        disabled={isLoading || isSubmitting || branches.length === 0}
+                        disabled={isLoading || isSubmitting}
                       />
-                      {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">{error}</p>}
+                      {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">Could not load branches. Please ensure they are configured in settings.</p>}
                       <FormMessage />
                     </FormItem>
                   )}
