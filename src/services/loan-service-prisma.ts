@@ -1,4 +1,5 @@
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -157,7 +158,9 @@ export async function addLoanRequest(
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
       where: {
-        sectorId: selectedChildSector.id,
+        sector: {
+          parentId: selectedChildSector.parentId
+        }
       },
       orderBy: { order: 'asc' },
     });
