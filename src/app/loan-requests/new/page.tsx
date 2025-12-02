@@ -360,7 +360,7 @@ export default function NewLoanRequestPage() {
                     <FormItem>
                       <FormLabel>Customer Phone</FormLabel>
                       <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1.2 h-4 w-4 text-muted-foreground" />
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
                           <Input type="tel" placeholder="e.g., 0912345678" {...field} className="pl-10" disabled={isSubmitting} />
                         </FormControl>
@@ -561,5 +561,7 @@ export default function NewLoanRequestPage() {
     </div>
   );
 }
+
+    
 
     
