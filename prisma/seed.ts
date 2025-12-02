@@ -101,7 +101,7 @@ async function main() {
     create: {
       name: 'Viewer',
       description: 'Can view loan data but cannot make changes.',
-      permissions: ['VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 'VIEW_LOAN_STATUS_LOOKUP'],
+      permissions: ['VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 'VIEW_LOAN_STATUS_LOOKUP', 'VIEW_CUSTOMERS'],
     },
   });
   console.log(`Created/verified role: ${viewerRole.name}`);
@@ -114,10 +114,10 @@ async function main() {
       description: 'Can manage assigned loan requests.',
       permissions: [
         'VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 
-        'CREATE_LOAN_REQUEST', 'VIEW_OWN_ASSIGNED_CASES', 'EDIT_LOAN_DETAILS',
-        'ADD_LOAN_NOTES', 'LOG_INFO_REQUEST', 'FULFILL_INFO_REQUEST',
+        'CREATE_LOAN_REQUEST', 'VIEW_OWN_ASSIGNED_CASES', 'ADD_LOAN_NOTES',
+        'LOG_INFO_REQUEST', 'FULFILL_INFO_REQUEST',
         'UPLOAD_LOAN_DOCUMENTS', 'VERIFY_LOAN_DOCUMENTS', 'MARK_STAGE_COMPLETE',
-        'ASSIGN_LOAN_TO_STAFF', 'FLAG_URGENT_CASE', 'VIEW_LOAN_STATUS_LOOKUP'
+        'FLAG_URGENT_CASE', 'VIEW_LOAN_STATUS_LOOKUP', 'VIEW_CUSTOMERS'
       ],
     },
   });
@@ -161,10 +161,11 @@ async function main() {
       { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
       { name: 'WF-02 – Valuation', order: 2, purpose: 'Perform asset or collateral valuation for the loan application.' },
       { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Record and review valuation results by the RM team.' },
-      { name: 'WF-04 – Valuation Appeal', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
+      { name: 'WF-04 – Valuation Appeal (Optional Workflow)', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
       { name: 'WF-05 – Appraisal', order: 5, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
-      { name: 'WF-06 – Appraisal Appeal', order: 6, purpose: 'Handle appeals related to the credit appraisal decision.' },
-      { name: 'WF-07 – RM Final Disbursement', order: 7, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
+      { name: 'WF-06 – RM Disbursement', order: 6, purpose: 'Handles the initial disbursement process after appraisal.' },
+      { name: 'WF-07 – Appraisal Appeal (Optional Workflow)', order: 7, purpose: 'Handle appeals related to the credit appraisal decision.' },
+      { name: 'WF-08 – RM Final Disbursement (Optional Workflow)', order: 8, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
     ];
 
     for (const wf of workflowsToSeed) {
