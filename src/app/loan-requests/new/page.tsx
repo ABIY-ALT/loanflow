@@ -19,11 +19,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Building, Network } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
-import { addLoanRequest } from '@/services/loan-service-prisma';
+import { addLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
-import type { Branch } from '@/types/loan';
+import type { Branch, Sector, WorkflowDefinition } from '@/types/loan';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
@@ -31,6 +31,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import Link from 'next/link';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 
 
 const loanRequestFormSchema = z.object({
@@ -46,15 +47,23 @@ const loanRequestFormSchema = z.object({
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
 
+interface WorkflowInfo {
+  parentSectorName?: string;
+  initialDepartmentName?: string;
+}
+
 export default function NewLoanRequestPage() {
   const { toast } = useToast();
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [sectors, setSectors] = useState<ConfigurableListItem[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
+  const [selectedWorkflowInfo, setSelectedWorkflowInfo] = useState<WorkflowInfo | null>(null);
+
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,10 +80,11 @@ export default function NewLoanRequestPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [sectorsResult, requestTypesResult, branchesResult] = await Promise.all([
+        const [sectorsResult, requestTypesResult, branchesResult, wfResult] = await Promise.all([
           getSectors(),
           getRequestTypes(),
           getBranches(),
+          getWorkflowDefinitions(),
         ]);
 
         if (sectorsResult.error) {
@@ -97,6 +107,13 @@ export default function NewLoanRequestPage() {
         } else {
           setBranches(branchesResult.branches || []);
         }
+        
+        if (wfResult.error) {
+            setError(prev => (prev ? `${prev}\n` : '') + `Workflows: ${wfResult.error}`);
+        } else {
+            setWorkflowDefs(wfResult.workflows || []);
+        }
+
       } catch (err: any) {
         setError(err.message || "Failed to fetch required data.");
       } finally {
@@ -116,6 +133,28 @@ export default function NewLoanRequestPage() {
   );
   
   const childSectorOptions = useMemo(() => sectors.filter(s => s.parentId), [sectors]);
+  
+  const handleSectorChange = (sectorId: string) => {
+    form.setValue('sectorId', sectorId);
+    const selectedChildSector = sectors.find(s => s.id === sectorId);
+    if (!selectedChildSector) {
+        setSelectedWorkflowInfo(null);
+        return;
+    }
+
+    const parentSector = sectors.find(s => s.id === selectedChildSector.parentId);
+    
+    // Find the first workflow in the sequence for this parent sector
+    const firstWorkflow = workflowDefs
+        .filter(wf => wf.parentSectorId === parentSector?.id)
+        .sort((a,b) => (a.order ?? 0) - (b.order ?? 0))[0];
+
+    setSelectedWorkflowInfo({
+        parentSectorName: parentSector?.name,
+        initialDepartmentName: firstWorkflow?.departmentName,
+    });
+  };
+
 
   const form = useForm<LoanRequestFormValues>({
     resolver: zodResolver(loanRequestFormSchema),
@@ -289,7 +328,7 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Child Sector</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || sectors.length === 0}>
+                      <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isLoading || isSubmitting || sectors.length === 0}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a sector"} />
@@ -326,6 +365,17 @@ export default function NewLoanRequestPage() {
                     </FormItem>
                   )}
                 />
+
+                {selectedWorkflowInfo && (
+                  <Alert className="md:col-span-2 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+                    <Network className="h-4 w-4 text-blue-600 dark:text-blue-400"/>
+                    <AlertTitle className="text-blue-800 dark:text-blue-300">Workflow Routing Information</AlertTitle>
+                    <div className="text-sm text-blue-700 dark:text-blue-300/90 space-y-1 mt-2">
+                        <p><strong>Parent Sector:</strong> {selectedWorkflowInfo.parentSectorName || 'N/A'}</p>
+                        <p><strong>Initial Department:</strong> {selectedWorkflowInfo.initialDepartmentName || 'Not configured'}</p>
+                    </div>
+                  </Alert>
+                )}
               </div>
 
               <FormField
