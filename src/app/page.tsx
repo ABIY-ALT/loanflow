@@ -13,12 +13,15 @@ import { cn } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
   approvalRate: string;
   overdueTasksCount: number;
+  loansByStage: { stageName: string; count: number }[];
 }
 
 // Default empty stats
@@ -27,6 +30,7 @@ const defaultStats: DashboardStats = {
   newApplicationsCount: 0,
   approvalRate: "N/A",
   overdueTasksCount: 0,
+  loansByStage: [],
 };
 
 export default function DashboardPage() {
@@ -56,7 +60,7 @@ export default function DashboardPage() {
         } else if (result.loans) {
           const loans = result.loans;
           
-          const activeLoans = loans.filter(loan => !loan.isTerminalStage).length;
+          const activeLoans = loans.filter(loan => !loan.isTerminalStage);
 
           const sevenDaysAgo = subDays(new Date(), 7);
           const newApplications = loans.filter(
@@ -78,11 +82,24 @@ export default function DashboardPage() {
           const approvalRateValue = totalCompleted > 0 ? (approvedLoansCount / totalCompleted) * 100 : 0;
           const approvalRateString = totalCompleted > 0 ? `${approvalRateValue.toFixed(1)}%` : "N/A";
 
+          const loansByStageData = activeLoans.reduce((acc, loan) => {
+            const stageName = loan.currentStageName || "Unknown Stage";
+            acc[stageName] = (acc[stageName] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+
+          const loansByStage = Object.entries(loansByStageData).map(([stageName, count]) => ({
+            stageName,
+            count
+          })).sort((a,b) => b.count - a.count);
+
+
           setStats({
-            activeLoansCount: activeLoans,
+            activeLoansCount: activeLoans.length,
             newApplicationsCount: newApplications,
             approvalRate: approvalRateString,
             overdueTasksCount: overdueTasks,
+            loansByStage: loansByStage,
           });
         } else {
           setError("No loan data received for dashboard.");
@@ -211,6 +228,13 @@ export default function DashboardPage() {
     );
   }
 
+  const chartConfig = {
+    loans: {
+      label: "Loans",
+      color: "hsl(var(--primary))",
+    },
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -260,6 +284,39 @@ export default function DashboardPage() {
         />
       </div>
 
+       <Card>
+        <CardHeader>
+          <CardTitle>Active Loans by Stage</CardTitle>
+          <CardDescription>A breakdown of all active loans in their current workflow stage.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stats && stats.loansByStage.length > 0 ? (
+            <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+              <BarChart accessibilityLayer data={stats.loansByStage} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="stageName"
+                  tickLine={false}
+                  tickMargin={10}
+                  axisLine={false}
+                  tickFormatter={(value) => value.length > 15 ? `${value.substring(0, 15)}...` : value}
+                />
+                <YAxis allowDecimals={false} />
+                <Tooltip
+                  cursor={false}
+                  content={<ChartTooltipContent indicator="dot" />}
+                />
+                <Bar dataKey="count" fill="var(--color-loans)" radius={4} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+             <div className="flex items-center justify-center h-48">
+              <p className="text-muted-foreground">No active loans to display in chart.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Quick Access</CardTitle>
@@ -295,3 +352,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
