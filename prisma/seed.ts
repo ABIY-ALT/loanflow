@@ -174,51 +174,45 @@ async function main() {
   console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
   console.log('Custom Roles seeded.');
 
-  // --- Seed Workflows for Institutional Banking & Green Financing ---
-  console.log('Seeding Workflows for Institutional Banking & Green Financing...');
-
-  // Get IDs of necessary entities
-  const ibgfParentSector = await prisma.sector.findUnique({
-    where: { name: 'Institutional Banking & Green Financing' },
-  });
-  const financialInstitutionChildSector = await prisma.sector.findUnique({
-    where: { name: 'Financial Institution' },
-  });
-  const ibgfDepartment = await prisma.department.findUnique({
-    where: { nameLowercase: 'director institutional banking and green financing' },
-  });
-  const newLoanRequestType = await prisma.requestType.findUnique({
-    where: { name: 'New Loan' },
-  });
-
-  if (!ibgfParentSector || !financialInstitutionChildSector || !ibgfDepartment || !newLoanRequestType) {
-    console.error('Could not find necessary parent sector, child sector, department, or request type for workflow seeding. Aborting workflow seed.');
-  } else {
-    const workflowsToSeed = [
-      { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
-      { name: 'WF-02 – Valuation', order: 2, purpose: 'Perform asset or collateral valuation for the loan application.' },
-      { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Record and review valuation results by the RM team.' },
-      { name: 'WF-04 – Valuation Appeal (Optional Workflow)', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
-      { name: 'WF-05 – Appraisal', order: 5, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
-      { name: 'WF-06 – RM Disbursement', order: 6, purpose: 'Handles the initial disbursement process after appraisal.' },
-      { name: 'WF-07 – Appraisal Appeal (Optional Workflow)', order: 7, purpose: 'Handle appeals related to the credit appraisal decision.' },
-      { name: 'WF-08 – RM Final Disbursement (Optional Workflow)', order: 8, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
-    ];
-
-    for (const wf of workflowsToSeed) {
-      // 1. Create the Workflow Definition
+  const standardWorkflowsToSeed = [
+    { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
+    { name: 'WF-02 – Valuation', order: 2, purpose: 'Perform asset or collateral valuation for the loan application.' },
+    { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Record and review valuation results by the RM team.' },
+    { name: 'WF-04 – Valuation Appeal (Optional Workflow)', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
+    { name: 'WF-05 – Appraisal', order: 5, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
+    { name: 'WF-06 – RM Disbursement', order: 6, purpose: 'Handles the initial disbursement process after appraisal.' },
+    { name: 'WF-07 – Appraisal Appeal (Optional Workflow)', order: 7, purpose: 'Handle appeals related to the credit appraisal decision.' },
+    { name: 'WF-08 – RM Final Disbursement (Optional Workflow)', order: 8, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
+  ];
+  
+  const seedWorkflowPath = async (
+    parentSectorName: string,
+    childSectorName: string,
+    departmentName: string
+  ) => {
+    console.log(`--- Seeding Workflows for ${parentSectorName}...`);
+    const parentSector = await prisma.sector.findUnique({ where: { name: parentSectorName } });
+    const childSector = await prisma.sector.findUnique({ where: { name: childSectorName } });
+    const department = await prisma.department.findUnique({ where: { nameLowercase: departmentName.toLowerCase() } });
+  
+    if (!parentSector || !childSector || !department) {
+      console.error(`Could not find necessary entities for ${parentSectorName}. Aborting.`);
+      console.error(`Missing: ${!parentSector ? 'Parent Sector, ' : ''}${!childSector ? 'Child Sector, ' : ''}${!department ? 'Department' : ''}`);
+      return;
+    }
+  
+    for (const wf of standardWorkflowsToSeed) {
       const workflowDefinition = await prisma.workflowDefinition.create({
         data: {
           name: wf.name,
           description: wf.purpose,
           order: wf.order,
-          department: { connect: { id: ibgfDepartment.id } },
-          sector: { connect: { id: financialInstitutionChildSector.id } },
+          department: { connect: { id: department.id } },
+          sector: { connect: { id: childSector.id } },
         },
       });
       console.log(`Created Workflow Definition: ${workflowDefinition.name}`);
-
-      // 2. Create an active version for it
+  
       const workflowVersion = await prisma.workflowVersion.create({
         data: {
           workflowDefinition: { connect: { id: workflowDefinition.id } },
@@ -227,24 +221,41 @@ async function main() {
         },
       });
       console.log(`  - Created active Version 1 for ${workflowDefinition.name}`);
-
-      // 3. Create a single stage for this version
-      const stageName = wf.name.split('–')[1].trim(); // Extract stage name from workflow name
+  
+      const stageName = wf.name.split('–')[1].trim();
       await prisma.workflowStageDefinition.create({
         data: {
           name: stageName,
           order: 0,
-          defaultTimelineDays: 5, // Default timeline
-          percentageWeight: 100 / workflowsToSeed.length, // Distribute weight
+          defaultTimelineDays: 5,
+          percentageWeight: 100 / standardWorkflowsToSeed.length,
           workflowVersion: { connect: { id: workflowVersion.id } },
-          responsibleDepartment: { connect: { id: ibgfDepartment.id } },
-          availableStatuses: { [ibgfDepartment.name]: ['Initiated', 'In Progress', 'Completed'] },
+          responsibleDepartment: { connect: { id: department.id } },
+          availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
         },
       });
       console.log(`    - Created stage "${stageName}" for Version 1`);
     }
-    console.log('Institutional Banking & Green Financing workflows seeded.');
-  }
+    console.log(`${parentSectorName} workflows seeded.`);
+  };
+
+  await seedWorkflowPath(
+    'Institutional Banking & Green Financing',
+    'Financial Institution',
+    'Director Institutional Banking and Green Financing'
+  );
+  
+  await seedWorkflowPath(
+    'Service & Mining Sectors',
+    'Domestic Trade and Service',
+    'Director Service and Mining Sector'
+  );
+
+  await seedWorkflowPath(
+    'Manufacturing & Agriculture Sector',
+    'Manufacturing Industry',
+    'Director Manufacturing and Agricultural Sector'
+  );
 
 
   // Seed Users
