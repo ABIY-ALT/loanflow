@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Building, Network } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Building, Network, CheckCircle, Wallet } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { addLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
@@ -32,6 +32,15 @@ import Link from 'next/link';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Alert, AlertTitle } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 // --- Number to Words Utility ---
 const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
@@ -114,6 +123,8 @@ export default function NewLoanRequestPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [formDataToSubmit, setFormDataToSubmit] = useState<LoanRequestFormValues | null>(null);
   
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
@@ -229,16 +240,24 @@ export default function NewLoanRequestPage() {
 
   const loanAmountValue = form.watch('loanAmount');
 
-  async function onSubmit(data: LoanRequestFormValues) {
+  function onFormSubmit(data: LoanRequestFormValues) {
+    setFormDataToSubmit(data);
+    setIsConfirming(true);
+  }
+
+  async function handleConfirmSubmit() {
+    if (!formDataToSubmit) return;
     setIsSubmitting(true);
+    setIsConfirming(false);
     try {
-      const result = await addLoanRequest(data);
+      const result = await addLoanRequest(formDataToSubmit);
 
       if (result.error) {
         toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
       } else if (result.id) {
-        toast({ title: "Loan Request Submitted", description: `Request for ${data.customerName} submitted successfully.` });
+        toast({ title: "Loan Request Submitted", description: `Request for ${formDataToSubmit.customerName} submitted successfully.` });
         form.reset();
+        setFormDataToSubmit(null);
         router.push('/loan-process');
       } else {
         toast({ title: "Submission Error", description: "An unexpected issue occurred.", variant: "destructive" });
@@ -271,6 +290,13 @@ export default function NewLoanRequestPage() {
       </div>
     );
   }
+  
+  const getLabelForValue = (options: {value: string, label: string}[], value: string) => {
+    return options.find(opt => opt.value === value)?.label || value;
+  };
+  const getSectorName = (id: string) => sectors.find(s => s.id === id)?.name || id;
+  const getRequestTypeName = (id: string) => requestTypes.find(rt => rt.id === id)?.name || id;
+
 
   return (
     <div className="space-y-6">
@@ -289,7 +315,7 @@ export default function NewLoanRequestPage() {
 
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-8">
               <div className="grid md:grid-cols-2 gap-8">
 
                 <FormField
@@ -334,9 +360,9 @@ export default function NewLoanRequestPage() {
                     <FormItem>
                       <FormLabel>Customer Phone</FormLabel>
                       <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1.2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input type="tel" placeholder="e.g., 0912345678" {...field} className="pl-10" disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -358,7 +384,7 @@ export default function NewLoanRequestPage() {
                         searchPlaceholder="Search branch..."
                         notFoundText={error?.includes('Branches') ? "Error loading branches" : "No branch found."}
                         className="w-full"
-                        disabled={isLoading || isSubmitting}
+                        disabled={isSubmitting}
                       />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">Could not load branches. Please ensure they are configured in settings.</p>}
                       <FormMessage />
@@ -398,7 +424,7 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Child Sector</FormLabel>
-                      <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isLoading || isSubmitting || sectors.length === 0}>
+                      <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isSubmitting || sectors.length === 0}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a sector"} />
@@ -421,7 +447,7 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Request Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSubmitting || requestTypes.length === 0}>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting || requestTypes.length === 0}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a request type"} />
@@ -484,6 +510,56 @@ export default function NewLoanRequestPage() {
           </Form>
         </CardContent>
       </Card>
+      
+      {formDataToSubmit && (
+        <Dialog open={isConfirming} onOpenChange={setIsConfirming}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center"><CheckCircle className="mr-2 h-6 w-6 text-primary"/>Confirm Loan Request Details</DialogTitle>
+                    <DialogDescription>Please review the information below before final submission.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto pr-3">
+                    <h4 className="font-semibold text-lg border-b pb-2">Customer Information</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <p><strong className="block text-muted-foreground">Name</strong>{formDataToSubmit.customerName}</p>
+                        <p><strong className="block text-muted-foreground">Email</strong>{formDataToSubmit.customerEmail}</p>
+                        <p><strong className="block text-muted-foreground">Phone</strong>{formDataToSubmit.customerPhone}</p>
+                        <p><strong className="block text-muted-foreground">Branch</strong>{formDataToSubmit.customerBranch}</p>
+                    </div>
+
+                    <h4 className="font-semibold text-lg border-b pb-2 pt-4">Loan Details</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <p><strong className="block text-muted-foreground">Amount</strong>{formDataToSubmit.loanAmount.toLocaleString()} ETB</p>
+                        <p><strong className="block text-muted-foreground">Sector</strong>{getSectorName(formDataToSubmit.sectorId)}</p>
+                        <p><strong className="block text-muted-foreground">Request Type</strong>{getRequestTypeName(formDataToSubmit.requestTypeId)}</p>
+                    </div>
+                    <div>
+                        <strong className="block text-muted-foreground text-sm">Purpose</strong>
+                        <p className="text-sm p-2 bg-muted/50 rounded-md mt-1">{formDataToSubmit.loanPurpose}</p>
+                    </div>
+
+                    <h4 className="font-semibold text-lg border-b pb-2 pt-4">Workflow Routing</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <p><strong className="block text-muted-foreground">Parent Sector</strong>{selectedWorkflowInfo?.parentSectorName || 'N/A'}</p>
+                        <p><strong className="block text-muted-foreground">Initial Department</strong>{selectedWorkflowInfo?.initialDepartmentName || 'N/A'}</p>
+                    </div>
+
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline" disabled={isSubmitting}>Cancel</Button>
+                    </DialogClose>
+                    <Button onClick={handleConfirmSubmit} disabled={isSubmitting}>
+                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Wallet className="mr-2 h-4 w-4"/>}
+                        Confirm & Submit
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+
     </div>
   );
 }
+
+    
