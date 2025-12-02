@@ -1331,7 +1331,7 @@ export default function SettingsPage() {
                    <AccordionContent className="space-y-4 pt-2">
                       <div className="p-4 border rounded-lg">
                         <h5 className="font-medium mb-3">Workflow Sequence</h5>
-                        <div className="flex items-center space-x-4 min-w-max overflow-x-auto pb-2">
+                        <div className="flex flex-wrap items-center gap-4 pb-2">
                           {workflows.map((def, index) => (
                             <React.Fragment key={def.id}>
                               <div className="flex flex-col items-center text-center w-36">
@@ -1419,7 +1419,7 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
-      <Card>
+      {/* <Card>
         <CardHeader><CardTitle>Notification Settings (Conceptual)</CardTitle><CardDescription>Manage how and when notifications are sent for overdue tasks. (Currently UI only).</CardDescription></CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -1437,7 +1437,7 @@ export default function SettingsPage() {
              <div className="flex items-start"><AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-3 mt-0.5 flex-shrink-0" /><div><h5 className="font-semibold text-yellow-700 dark:text-yellow-300">System Note</h5><p className="text-sm text-yellow-600 dark:text-yellow-400">Actual notification delivery needs backend integration. This configures triggers.</p></div></div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
       <div className="flex justify-end"><Button onClick={handleSaveChanges} size="lg" disabled={isSavingAll || isSavingData}>
         {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSavingAll ? "Saving..." : "Save All Settings to Database"}
