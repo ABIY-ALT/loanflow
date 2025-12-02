@@ -161,8 +161,10 @@ async function main() {
       { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
       { name: 'WF-02 – Valuation', order: 2, purpose: 'Perform asset or collateral valuation for the loan application.' },
       { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Record and review valuation results by the RM team.' },
-      { name: 'WF-04 – Appraisal', order: 4, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
-      { name: 'WF-05 – RM Final Disbursement', order: 5, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
+      { name: 'WF-04 – Valuation Appeal', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
+      { name: 'WF-05 – Appraisal', order: 5, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
+      { name: 'WF-06 – Appraisal Appeal', order: 6, purpose: 'Handle appeals related to the credit appraisal decision.' },
+      { name: 'WF-07 – RM Final Disbursement', order: 7, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
     ];
 
     for (const wf of workflowsToSeed) {
