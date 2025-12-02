@@ -13,15 +13,12 @@ import { cn } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { Pie, PieChart, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 
 interface DashboardStats {
   activeLoansCount: number;
   newApplicationsCount: number;
   approvalRate: string;
   overdueTasksCount: number;
-  loansByStage: { stageName: string; count: number }[];
 }
 
 // Default empty stats
@@ -30,10 +27,8 @@ const defaultStats: DashboardStats = {
   newApplicationsCount: 0,
   approvalRate: "N/A",
   overdueTasksCount: 0,
-  loansByStage: [],
 };
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658"];
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -84,24 +79,11 @@ export default function DashboardPage() {
           const approvalRateValue = totalCompleted > 0 ? (approvedLoansCount / totalCompleted) * 100 : 0;
           const approvalRateString = totalCompleted > 0 ? `${approvalRateValue.toFixed(1)}%` : "N/A";
 
-          const loansByStageData = activeLoans.reduce((acc, loan) => {
-            const stageName = loan.currentStageName || "Unknown Stage";
-            acc[stageName] = (acc[stageName] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>);
-
-          const loansByStage = Object.entries(loansByStageData).map(([stageName, count]) => ({
-            stageName,
-            count
-          })).sort((a,b) => b.count - a.count);
-
-
           setStats({
             activeLoansCount: activeLoans.length,
             newApplicationsCount: newApplications,
             approvalRate: approvalRateString,
             overdueTasksCount: overdueTasks,
-            loansByStage: loansByStage,
           });
         } else {
           setError("No loan data received for dashboard.");
@@ -230,16 +212,6 @@ export default function DashboardPage() {
     );
   }
 
-  const chartConfig = {
-    loans: {
-      label: "Loans",
-    },
-    ...stats?.loansByStage.reduce((acc, stage) => {
-        acc[stage.stageName] = { label: stage.stageName };
-        return acc;
-    }, {} as any),
-  };
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -288,53 +260,6 @@ export default function DashboardPage() {
           isErrorSource={!isLoading && !error && stats ? (stats.overdueTasksCount > 0) : false}
         />
       </div>
-
-       <Card>
-        <CardHeader>
-          <CardTitle>Active Loans by Stage</CardTitle>
-          <CardDescription>A breakdown of all active loans in their current workflow stage.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {stats && stats.loansByStage.length > 0 ? (
-            <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-              <PieChart>
-                <Tooltip content={<ChartTooltipContent nameKey="count" hideLabel />} />
-                <Pie
-                  data={stats.loansByStage}
-                  dataKey="count"
-                  nameKey="stageName"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  fill="#8884d8"
-                  labelLine={false}
-                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
-                    const RADIAN = Math.PI / 180;
-                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                    const x = cx + (radius + 20) * Math.cos(-midAngle * RADIAN);
-                    const y = cy + (radius + 20) * Math.sin(-midAngle * RADIAN);
-
-                    return (
-                      <text x={x} y={y} fill="currentColor" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs fill-foreground">
-                        {`${stats.loansByStage[index].stageName} (${(percent * 100).toFixed(0)}%)`}
-                      </text>
-                    );
-                  }}
-                >
-                  {stats.loansByStage.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Legend />
-              </PieChart>
-            </ChartContainer>
-          ) : (
-             <div className="flex items-center justify-center h-48">
-              <p className="text-muted-foreground">No active loans to display in chart.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
