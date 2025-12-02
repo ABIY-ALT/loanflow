@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,63 @@ import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 
+// --- Number to Words Utility ---
+const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+
+function convertGroup(n: number): string {
+    let result = '';
+    if (n >= 100) {
+        result += ones[Math.floor(n / 100)] + ' hundred';
+        n %= 100;
+        if (n > 0) result += ' ';
+    }
+    if (n >= 20) {
+        result += tens[Math.floor(n / 10)];
+        n %= 10;
+        if (n > 0) result += '-';
+    }
+    if (n >= 10) {
+        return result + teens[n - 10];
+    }
+    if (n > 0) {
+        result += ones[n];
+    }
+    return result;
+}
+
+function numberToWords(num: number): string {
+    if (num === 0) return 'zero';
+    if (num < 0) return 'minus ' + numberToWords(Math.abs(num));
+    if (num > 999999999999) return 'Number too large';
+
+    const billions = Math.floor(num / 1000000000);
+    const millions = Math.floor((num % 1000000000) / 1000000);
+    const thousands = Math.floor((num % 1000000) / 1000);
+    const remainder = num % 1000;
+
+    let result = '';
+    if (billions > 0) {
+        result += convertGroup(billions) + ' billion';
+        if (millions > 0 || thousands > 0 || remainder > 0) result += ' ';
+    }
+    if (millions > 0) {
+        result += convertGroup(millions) + ' million';
+        if (thousands > 0 || remainder > 0) result += ' ';
+    }
+    if (thousands > 0) {
+        result += convertGroup(thousands) + ' thousand';
+        if (remainder > 0) result += ' ';
+    }
+    if (remainder > 0) {
+        result += convertGroup(remainder);
+    }
+    
+    // Capitalize first letter and handle hyphenated results
+    return result.trim().charAt(0).toUpperCase() + result.trim().slice(1);
+}
+// --- End of Utility ---
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
@@ -169,6 +226,8 @@ export default function NewLoanRequestPage() {
       loanPurpose: '',
     },
   });
+
+  const loanAmountValue = form.watch('loanAmount');
 
   async function onSubmit(data: LoanRequestFormValues) {
     setIsSubmitting(true);
@@ -307,16 +366,28 @@ export default function NewLoanRequestPage() {
                   )}
                 />
 
-                <FormField
+                 <FormField
                   control={form.control}
                   name="loanAmount"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Loan Amount</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="e.g., 10000" {...field} disabled={isSubmitting} />
+                       <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="e.g., 10000"
+                          {...field}
+                          onChange={e => field.onChange(e.target.valueAsNumber || 0)}
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
-                      <FormDescription>Enter amount in ETB</FormDescription>
+                       {loanAmountValue > 0 && (
+                        <FormDescription>
+                          <span className="font-semibold text-primary">{loanAmountValue.toLocaleString()}</span>
+                          {' - '}
+                          <span className="italic">{numberToWords(loanAmountValue)} ETB</span>
+                        </FormDescription>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
