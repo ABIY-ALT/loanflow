@@ -469,7 +469,7 @@ export default function NewLoanRequestPage() {
               <Button
                 type="submit"
                 className="w-full sm:w-auto"
-                disabled={isSubmitting || isLoading || sectors.length === 0 || requestTypes.length === 0 || branches.length === 0 || (form.formState.isSubmitted && !form.formState.isValid)}
+                disabled={isSubmitting || isLoading || sectors.length === 0 || requestTypes.length === 0 || branches.length === 0}
               >
                 {isSubmitting ? (
                   <>
