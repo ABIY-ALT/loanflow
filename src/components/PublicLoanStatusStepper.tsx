@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import {
@@ -23,8 +24,16 @@ import {
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 
-interface PublicLoanStatusStepperProps {
-  loanData: PublicLoanStatus;
+interface StepperProps {
+  loanData: PublicLoanStatus & {
+    workflowSequence: {
+      stageId: string;
+      stageName: string;
+      stageTimelineDays: number;
+      departmentName: string;
+      entryDate?: string;
+    }[];
+  };
 }
 
 const getStatusIcon = (status: 'completed' | 'current' | 'pending') => {
@@ -40,7 +49,7 @@ const getStatusIcon = (status: 'completed' | 'current' | 'pending') => {
 
 export function PublicLoanStatusStepper({
   loanData,
-}: PublicLoanStatusStepperProps) {
+}: StepperProps) {
   const {
     loanNumber,
     customerName,
@@ -118,6 +127,12 @@ export function PublicLoanStatusStepper({
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1.5"><Building className="h-4 w-4"/> {item.departmentName} Dept.</span>
                     <span className="flex items-center gap-1.5"><Clock className="h-4 w-4"/> Est. {item.stageTimelineDays} days</span>
+                     {item.entryDate && (
+                      <span className="flex items-center gap-1.5 font-medium text-foreground/80">
+                        <CalendarCheck className="h-4 w-4 text-green-600"/>
+                        Entered: {format(parseISO(item.entryDate), 'dd MMM yyyy, HH:mm')}
+                      </span>
+                    )}
                   </div>
                    {isCurrent && loanData.currentStageStatus && (
                       <p className="text-sm pt-1"><span className="font-semibold">Status:</span> {loanData.currentStageStatus}</p>

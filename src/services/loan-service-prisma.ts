@@ -1,4 +1,5 @@
 
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -157,15 +158,13 @@ export async function addLoanRequest(
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
       where: {
-        sector: {
-          parentId: selectedChildSector.parentId
-        }
+        sectorId: selectedChildSector.id,
       },
       orderBy: { order: 'asc' },
     });
     
     if (!firstWorkflowInSequence) {
-        return createErrorResult(`No workflow sequence found for the selected Parent Sector.`, "addLoanRequest");
+        return createErrorResult(`No workflow sequence found for the selected Child Sector.`, "addLoanRequest");
     }
 
     const activeVersion = await prisma.workflowVersion.findFirst({
@@ -1034,7 +1033,7 @@ export async function searchLoanRequests(
 }
 
 
-export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus & { workflowSequence: { stageId: string; stageName: string; stageOrder: number; stageTimelineDays: number; departmentName: string; }[] } | null, error?: string }> {
+export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promise<{ data?: PublicLoanStatus & { workflowSequence: { stageId: string; stageName: string; stageOrder: number; stageTimelineDays: number; departmentName: string; entryDate?: string; }[] } | null, error?: string }> {
   try {
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { loanNumber },
@@ -1051,6 +1050,15 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
             }
           }
         },
+        history: {
+          select: {
+            stageName: true,
+            timestamp: true,
+          },
+          orderBy: {
+            timestamp: 'asc',
+          }
+        }
       }
     });
 
@@ -1079,9 +1087,17 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
                     }
                 }
             },
-            department: { select: { name: true } }
         }
     });
+
+    // Create a map to store the first entry date for each stage name
+    const stageEntryDates = new Map<string, string>();
+    for (const entry of prismaLoan.history) {
+      if (!stageEntryDates.has(entry.stageName)) {
+        stageEntryDates.set(entry.stageName, formatISO(entry.timestamp));
+      }
+    }
+
 
     const workflowSequence = allWorkflowDefinitionsInPath.flatMap(def => 
         def.versions.flatMap(v => v.stages.map(s => ({
@@ -1092,6 +1108,7 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
             departmentName: s.responsibleDepartment.name,
             workflowDefinitionName: def.name,
             workflowOrder: def.order,
+            entryDate: stageEntryDates.get(s.name), // Get the entry date from the map
         })))
     ).sort((a,b) => {
         if(a.workflowOrder !== b.workflowOrder) {
