@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Pie, PieChart, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 
 interface DashboardStats {
@@ -32,6 +32,8 @@ const defaultStats: DashboardStats = {
   overdueTasksCount: 0,
   loansByStage: [],
 };
+
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658"];
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -231,8 +233,11 @@ export default function DashboardPage() {
   const chartConfig = {
     loans: {
       label: "Loans",
-      color: "hsl(var(--primary))",
     },
+    ...stats?.loansByStage.reduce((acc, stage) => {
+        acc[stage.stageName] = { label: stage.stageName };
+        return acc;
+    }, {} as any),
   };
 
   return (
@@ -291,23 +296,37 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {stats && stats.loansByStage.length > 0 ? (
-            <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-              <BarChart accessibilityLayer data={stats.loansByStage} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="stageName"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickFormatter={(value) => value.length > 15 ? `${value.substring(0, 15)}...` : value}
-                />
-                <YAxis allowDecimals={false} />
-                <Tooltip
-                  cursor={false}
-                  content={<ChartTooltipContent indicator="dot" />}
-                />
-                <Bar dataKey="count" fill="var(--color-loans)" radius={4} />
-              </BarChart>
+            <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+              <PieChart>
+                <Tooltip content={<ChartTooltipContent nameKey="count" hideLabel />} />
+                <Pie
+                  data={stats.loansByStage}
+                  dataKey="count"
+                  nameKey="stageName"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  fill="#8884d8"
+                  labelLine={false}
+                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                    const x = cx + (radius + 20) * Math.cos(-midAngle * RADIAN);
+                    const y = cy + (radius + 20) * Math.sin(-midAngle * RADIAN);
+
+                    return (
+                      <text x={x} y={y} fill="currentColor" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs fill-foreground">
+                        {`${stats.loansByStage[index].stageName} (${(percent * 100).toFixed(0)}%)`}
+                      </text>
+                    );
+                  }}
+                >
+                  {stats.loansByStage.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Legend />
+              </PieChart>
             </ChartContainer>
           ) : (
              <div className="flex items-center justify-center h-48">
@@ -352,4 +371,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
