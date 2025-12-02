@@ -209,6 +209,7 @@ export default function ManageBranchesPage() {
                   </AlertDialog>
                 </TableCell></TableRow>
               ))}
+               {districts.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No districts defined.</TableCell></TableRow>}
             </TableBody>
           </Table></CardContent>
         </Card>
@@ -216,13 +217,13 @@ export default function ManageBranchesPage() {
         <Card>
           <CardHeader><CardTitle>Add New Branch</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex gap-2 items-end">
-                <div className="flex-grow"><Label htmlFor="new-branch-name">Branch Name</Label><Input id="new-branch-name" placeholder="e.g., Central Branch" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} disabled={isSaving || districts.length === 0} className="mt-1" /></div>
-            </div>
             <div className="flex-grow"><Label htmlFor="district-select">In District</Label>
                 <Select value={selectedDistrictId} onValueChange={setSelectedDistrictId} disabled={isSaving || districts.length === 0}><SelectTrigger id="district-select" className="mt-1"><SelectValue placeholder="Select a district" /></SelectTrigger>
                     <SelectContent>{districts.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent>
                 </Select>
+            </div>
+            <div className="flex gap-2 items-end">
+                <div className="flex-grow"><Label htmlFor="new-branch-name">Branch Name</Label><Input id="new-branch-name" placeholder="e.g., Central Branch" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} disabled={isSaving || districts.length === 0} className="mt-1" /></div>
             </div>
             <Button onClick={handleAddBranch} disabled={isSaving || !newBranchName.trim() || !selectedDistrictId}><PlusCircle className="mr-2 h-4 w-4" /> Add Branch</Button>
           </CardContent>
@@ -239,6 +240,7 @@ export default function ManageBranchesPage() {
                         </AlertDialog>
                     </TableCell></TableRow>
                 ))}
+                {branches.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No branches defined.</TableCell></TableRow>}
             </TableBody>
           </Table></CardContent>
         </Card>

@@ -93,6 +93,43 @@ async function main() {
   }
   console.log('Departments seeded.');
 
+  // --- Seed Districts and Branches ---
+  console.log('Seeding Districts and Branches...');
+  const districtsToSeed = {
+    'South District': ['Gotera Ibex'],
+    'North District': ['Abinet Adebabay'],
+    'West District': [],
+    'East District': [],
+  };
+
+  for (const districtName of Object.keys(districtsToSeed)) {
+      const district = await prisma.district.upsert({
+          where: { name: districtName },
+          update: {},
+          create: { name: districtName },
+      });
+      console.log(`Created/verified district: ${districtName}`);
+
+      const branchesForDistrict = districtsToSeed[districtName as keyof typeof districtsToSeed];
+      for (const branchName of branchesForDistrict) {
+          await prisma.branch.upsert({
+              where: {
+                  name_districtId: {
+                      name: branchName,
+                      districtId: district.id
+                  }
+              },
+              update: {},
+              create: {
+                  name: branchName,
+                  districtId: district.id,
+              }
+          });
+          console.log(`  - Created/verified branch: ${branchName} in ${districtName}`);
+      }
+  }
+  console.log('Districts and Branches seeded.');
+
   // Seed Roles
   console.log('Seeding Custom Roles...');
   const viewerRole = await prisma.role.upsert({
