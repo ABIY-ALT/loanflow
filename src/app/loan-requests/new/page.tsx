@@ -383,9 +383,8 @@ export default function NewLoanRequestPage() {
                       </FormControl>
                        {loanAmountValue > 0 && (
                         <FormDescription>
-                          <span className="font-semibold text-primary">{loanAmountValue.toLocaleString()}</span>
-                          {' - '}
-                          <span className="italic">{numberToWords(loanAmountValue)} ETB</span>
+                          <div className="font-semibold text-primary">{loanAmountValue.toLocaleString()} ETB</div>
+                          <div className="italic">{numberToWords(loanAmountValue)}</div>
                         </FormDescription>
                       )}
                       <FormMessage />
