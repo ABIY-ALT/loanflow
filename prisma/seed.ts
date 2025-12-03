@@ -383,6 +383,47 @@ async function main() {
             console.log(`      - Added doc requirement: "${doc.name}"`);
           }
         }
+      } else if (wf.name === 'WF-05 – Appraisal') {
+        const wf05Stages = [
+          { name: 'S-01 – Deputy Chief Credit Operation Officer', order: 0, timeline: 1, weight: 1, docs: [] },
+          { name: 'S-02 – Director, Credit Appraisal and Analysis Department', order: 1, timeline: 1, weight: 5, docs: [] },
+          { name: 'S-03 – Manager, Wholesale Credit Appraisal Division', order: 2, timeline: 1, weight: 5, docs: [] },
+          { name: 'S-04 – Manager, Retail Credit Appraisal Division', order: 3, timeline: 1, weight: 5, docs: [] },
+          { name: 'S-05 – Document Verification', order: 4, timeline: 2, weight: 10, docs: [] },
+          { name: 'S-06 – Review Appraisal Analysis', order: 5, timeline: 3, weight: 10, docs: [{ name: 'Annex Report', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+          { name: 'S-07 – Distribute Appraisal Analysis', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-08 – Submit to Committee Secretary', order: 7, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-09 – Distribute to Committee Members', order: 8, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-10 – Credit Approval Committee Review', order: 9, timeline: 5, weight: 30, docs: [] },
+          { name: 'S-11 – Submit to Appraisal Officer', order: 10, timeline: 3, weight: 4, docs: [{ name: 'LAF Signed by All Committee Members', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+        ];
+      
+        for (const stageInfo of wf05Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+      
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
       } else {
         // --- Default single-stage seeding for other WFs ---
         const stageName = wf.name.split('–')[1].trim();
