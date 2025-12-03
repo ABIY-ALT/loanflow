@@ -83,7 +83,7 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   documentRequirements: [],
   percentageWeight: weight,
   order: order,
-  availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed'] }, // Default statuses
+  availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] }, // Default statuses
 });
 
 const createNewDocumentRequirement = (name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
@@ -243,7 +243,7 @@ function EditWorkflowVersionDialog({
   const [newStageWeight, setNewStageWeight] = useState(10);
   
   const [newStageDocReqs, setNewStageDocReqs] = useState<DocumentRequirement[]>([]);
-  const [newStageStatuses, setNewStageStatuses] = useState<string[]>(['Initiated', 'In Progress', 'Completed']);
+  const [newStageStatuses, setNewStageStatuses] = useState<string[]>(['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned']);
   
   const [newDocReqName, setNewDocReqName] = useState('');
   const [newDocReqIsMandatory, setNewDocReqIsMandatory] = useState(true);
@@ -313,7 +313,7 @@ function EditWorkflowVersionDialog({
     setNewStageTimeline(3);
     setNewStageWeight(10);
     setNewStageDocReqs([]);
-    setNewStageStatuses(['Initiated', 'In Progress', 'Completed']);
+    setNewStageStatuses(['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned']);
   };
 
   const handleInternalReorderStages = (event: DragEndEvent) => {

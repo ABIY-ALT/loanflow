@@ -236,10 +236,10 @@ async function main() {
       if (wf.name === 'WF-01 – RM Request Registration (Acceptance)') {
         // --- Special multi-stage seeding for WF-01 ---
         const wf01Stages = [
-          { name: 'S-01 – RM Submit Checklist', order: 0, timeline: 1, weight: 5, docs: [] },
-          { name: 'S-02 – Submit Acknowledgement Letter', order: 1, timeline: 1, weight: 20, docs: [] },
+          { name: 'RM Submit Checklist', order: 0, timeline: 1, weight: 5, docs: [] },
+          { name: 'Submit Acknowledgement Letter', order: 1, timeline: 1, weight: 20, docs: [] },
           {
-            name: 'S-03 – Submit to Property Valuation', order: 2, timeline: 1, weight: 10,
+            name: 'Submit to Property Valuation', order: 2, timeline: 1, weight: 10,
             docs: [
               { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Property Valuation Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -258,7 +258,7 @@ async function main() {
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -278,7 +278,7 @@ async function main() {
       } else if (wf.name === 'WF-02 – Valuation') {
         const wf02Stages = [
           {
-            name: 'S-01 – Valuation Maker', order: 0, timeline: 2, weight: 1,
+            name: 'Valuation Maker', order: 0, timeline: 2, weight: 1,
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -287,7 +287,7 @@ async function main() {
             ],
           },
           {
-            name: 'S-02 – Valuation 01-A', order: 1, timeline: 8, weight: 10,
+            name: 'Valuation 01-A', order: 1, timeline: 8, weight: 10,
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -296,7 +296,7 @@ async function main() {
             ],
           },
           {
-            name: 'S-03 – Valuation Checker', order: 2, timeline: 2, weight: 1,
+            name: 'Valuation Checker', order: 2, timeline: 2, weight: 1,
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -305,7 +305,7 @@ async function main() {
             ],
           },
           {
-            name: 'S-04 – Valuation 02-A', order: 3, timeline: 2, weight: 10,
+            name: 'Valuation 02-A', order: 3, timeline: 2, weight: 10,
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -313,7 +313,11 @@ async function main() {
               { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
             ],
           },
-          { name: 'S-05 – Valuation Finalization', order: 4, timeline: 1, weight: 10, docs: [] },
+          { name: 'Valuation Finalization', order: 4, timeline: 1, weight: 10, 
+            docs: [
+              { name: 'Property Estimation Result', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+           },
         ];
 
         for (const stageInfo of wf02Stages) {
@@ -325,7 +329,7 @@ async function main() {
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -345,7 +349,7 @@ async function main() {
       } else if (wf.name === 'WF-03 – RM Valuation Result') {
         const wf03Stages = [
           {
-            name: 'S-01 – Major Requirements Document', order: 0, timeline: 1, weight: 15,
+            name: 'Major Requirements Document', order: 0, timeline: 1, weight: 15,
             docs: [
               { name: 'Financial Statements Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Property Valuation Results Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -355,7 +359,7 @@ async function main() {
               { name: 'Other Related Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
             ],
           },
-          { name: 'S-02 – Prepare DDR and LAF', order: 1, timeline: 3, weight: 10, docs: [] },
+          { name: 'Prepare DDR and LAF', order: 1, timeline: 3, weight: 10, docs: [] },
         ];
       
         for (const stageInfo of wf03Stages) {
@@ -367,7 +371,7 @@ async function main() {
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -386,17 +390,17 @@ async function main() {
         }
       } else if (wf.name === 'WF-05 – Appraisal') {
         const wf05Stages = [
-          { name: 'S-01 – Deputy Chief Credit Operation Officer', order: 0, timeline: 1, weight: 1, docs: [] },
-          { name: 'S-02 – Director, Credit Appraisal and Analysis Department', order: 1, timeline: 1, weight: 5, docs: [] },
-          { name: 'S-03 – Manager, Wholesale Credit Appraisal Division', order: 2, timeline: 1, weight: 5, docs: [] },
-          { name: 'S-04 – Manager, Retail Credit Appraisal Division', order: 3, timeline: 1, weight: 5, docs: [] },
-          { name: 'S-05 – Document Verification', order: 4, timeline: 2, weight: 10, docs: [] },
-          { name: 'S-06 – Review Appraisal Analysis', order: 5, timeline: 3, weight: 10, docs: [{ name: 'Annex Report', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
-          { name: 'S-07 – Distribute Appraisal Analysis', order: 6, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-08 – Submit to Committee Secretary', order: 7, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-09 – Distribute to Committee Members', order: 8, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-10 – Credit Approval Committee Review', order: 9, timeline: 5, weight: 30, docs: [] },
-          { name: 'S-11 – Submit to Appraisal Officer', order: 10, timeline: 3, weight: 4, docs: [{ name: 'LAF Signed by All Committee Members', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+          { name: 'Deputy Chief Credit Operation Officer', order: 0, timeline: 1, weight: 1, docs: [] },
+          { name: 'Director, Credit Appraisal and Analysis Department', order: 1, timeline: 1, weight: 5, docs: [] },
+          { name: 'Manager, Wholesale Credit Appraisal Division', order: 2, timeline: 1, weight: 5, docs: [] },
+          { name: 'Manager, Retail Credit Appraisal Division', order: 3, timeline: 1, weight: 5, docs: [] },
+          { name: 'Document Verification', order: 4, timeline: 2, weight: 10, docs: [] },
+          { name: 'Review Appraisal Analysis', order: 5, timeline: 3, weight: 10, docs: [{ name: 'Annex Report', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+          { name: 'Distribute Appraisal Analysis', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'Submit to Committee Secretary', order: 7, timeline: 3, weight: 10, docs: [] },
+          { name: 'Distribute to Committee Members', order: 8, timeline: 3, weight: 10, docs: [] },
+          { name: 'Credit Approval Committee Review', order: 9, timeline: 5, weight: 30, docs: [] },
+          { name: 'Submit to Appraisal Officer', order: 10, timeline: 3, weight: 4, docs: [{ name: 'LAF Signed by All Committee Members', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
         ];
       
         for (const stageInfo of wf05Stages) {
@@ -408,7 +412,7 @@ async function main() {
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -427,17 +431,17 @@ async function main() {
         }
       } else if (wf.name === 'WF-06 – RM Disbursement') {
         const wf06Stages = [
-          { name: 'S-01 – Submit Loan Decision Letter to Customer', order: 0, timeline: 5, weight: 12, docs: [] },
-          { name: 'S-02 – Preparation of Loan and Mortgage Contract', order: 1, timeline: 1, weight: 3, docs: [] },
-          { name: 'S-03 – Contract Signing', order: 2, timeline: 3, weight: 3, docs: [] },
-          { name: 'S-04 – Collateral Registration Process', order: 3, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-05 – Collection of Security Documents', order: 4, timeline: 3, weight: 10, docs: [
+          { name: 'Submit Loan Decision Letter to Customer', order: 0, timeline: 5, weight: 12, docs: [] },
+          { name: 'Preparation of Loan and Mortgage Contract', order: 1, timeline: 1, weight: 3, docs: [] },
+          { name: 'Contract Signing', order: 2, timeline: 3, weight: 3, docs: [] },
+          { name: 'Collateral Registration Process', order: 3, timeline: 3, weight: 10, docs: [] },
+          { name: 'Collection of Security Documents', order: 4, timeline: 3, weight: 10, docs: [
               { name: 'Conditions stated on LAF fulfilled', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Insurance Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
           ]},
-          { name: 'S-06 – Disbursement Approval Form', order: 5, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-07 – Disbursement Approval Committee', order: 6, timeline: 3, weight: 10, docs: [] },
-          { name: 'S-08 – Final Disbursement', order: 7, timeline: 3, weight: 42, docs: [] },
+          { name: 'Disbursement Approval Form', order: 5, timeline: 3, weight: 10, docs: [] },
+          { name: 'Disbursement Approval Committee', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'Final Disbursement', order: 7, timeline: 3, weight: 42, docs: [] },
         ];
 
         for (const stageInfo of wf06Stages) {
@@ -449,7 +453,7 @@ async function main() {
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -477,7 +481,7 @@ async function main() {
             percentageWeight: 100,
             workflowVersion: { connect: { id: workflowVersion.id } },
             responsibleDepartment: { connect: { id: department.id } },
-            availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
           },
         });
         console.log(`    - Created stage "${stageName}" for Version 1`);
