@@ -275,7 +275,73 @@ async function main() {
              console.log(`      - Added doc requirement: "${doc.name}"`);
           }
         }
+      } else if (wf.name === 'WF-02 – Valuation') {
+        const wf02Stages = [
+          {
+            name: 'S-01 – Valuation Maker', order: 0, timeline: 2, weight: 1,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'S-02 – Valuation 01-A', order: 1, timeline: 8, weight: 10,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'S-03 – Valuation Checker', order: 2, timeline: 2, weight: 1,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'S-04 – Valuation 02-A', order: 3, timeline: 2, weight: 10,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          { name: 'S-05 – Valuation Finalization', order: 4, timeline: 1, weight: 10, docs: [] },
+        ];
 
+        for (const stageInfo of wf02Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
       } else {
         // --- Default single-stage seeding for other WFs ---
         const stageName = wf.name.split('–')[1].trim();
