@@ -1,12 +1,12 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save } from 'lucide-react';
+import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save, Search, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,9 @@ import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getUsersForAssignment, getAssignableData, updateUserAssignments, type UserForAssignment, type AssignableData, type UserAssignmentUpdatePayload } from './actions';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
+const ITEMS_PER_PAGE = 10;
 
 export default function ManageUserAssignmentsPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -39,6 +41,12 @@ export default function ManageUserAssignmentsPage() {
 
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null | undefined>(undefined);
   const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string | null | undefined>(undefined);
+  
+  // State for filtering and pagination
+  const [searchTerm, setSearchTerm] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const canManageAssignments = currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
@@ -76,6 +84,31 @@ export default function ManageUserAssignmentsPage() {
       fetchPageData();
     }
   }, [authLoading, fetchPageData]);
+  
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      const searchTermLower = searchTerm.toLowerCase();
+      const nameMatch = user.name?.toLowerCase().includes(searchTermLower);
+      const emailMatch = user.email.toLowerCase().includes(searchTermLower);
+      
+      const deptMatch = departmentFilter === 'all' || user.departmentId === departmentFilter || (departmentFilter === 'unassigned' && !user.departmentId);
+      const roleMatch = roleFilter === 'all' || user.customRoleId === roleFilter || (roleFilter === 'unassigned' && !user.customRoleId);
+
+      return (nameMatch || emailMatch) && deptMatch && roleMatch;
+    });
+  }, [users, searchTerm, departmentFilter, roleFilter]);
+
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredUsers, currentPage]);
+
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, departmentFilter, roleFilter]);
+
 
   const handleOpenEditDialog = (userToEdit: UserForAssignment) => {
     if (!canManageAssignments) return;
@@ -111,7 +144,6 @@ export default function ManageUserAssignmentsPage() {
     if (result.success && result.user) {
       toast({ title: "Assignments Updated", description: `Assignments for ${result.user.name} saved. Refreshing to apply changes.` });
       setIsFormDialogOpen(false);
-      // Force a reload to reflect permission changes for the current user
       window.location.reload();
     } else {
       toast({ title: "Update Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -157,11 +189,44 @@ export default function ManageUserAssignmentsPage() {
           <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Settings</Button>
         </Link>
       </div>
-
-      <Card>
+      
+       <Card>
         <CardHeader>
-          <CardTitle>Users ({users.length})</CardTitle>
-          <CardDescription>List of all users. Click Edit to modify their department and role assignments.</CardDescription>
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div>
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger><SelectValue placeholder="Filter by Department" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {assignableData?.departments.map(dept => (
+                    <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger><SelectValue placeholder="Filter by Role" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                   <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {assignableData?.customRoles.map(role => (
+                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoadingData && (
@@ -176,14 +241,8 @@ export default function ManageUserAssignmentsPage() {
               Error loading users: {error}
             </div>
           )}
-          {!isLoadingData && !error && users.length === 0 && (
-            <div className="text-center text-muted-foreground py-10">
-              <Users className="mx-auto h-12 w-12 mb-4 text-gray-400" />
-              <p className="font-semibold">No users found.</p>
-              <p>Ensure users are registered in the system.</p>
-            </div>
-          )}
-          {!isLoadingData && !error && users.length > 0 && (
+          {!isLoadingData && !error && (
+            <>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -196,7 +255,13 @@ export default function ManageUserAssignmentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                   {paginatedUsers.length === 0 ? (
+                     <TableRow>
+                        <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
+                            No users found matching your criteria.
+                        </TableCell>
+                    </TableRow>
+                   ) : paginatedUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.name}</TableCell>
                       <TableCell>{user.email}</TableCell>
@@ -216,8 +281,30 @@ export default function ManageUserAssignmentsPage() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
+         {totalPages > 1 && (
+          <CardFooter className="flex items-center justify-between border-t pt-4">
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                >Previous</Button>
+                <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                >Next</Button>
+              </div>
+          </CardFooter>
+        )}
       </Card>
 
       {editingUser && assignableData && (
@@ -261,7 +348,7 @@ export default function ManageUserAssignmentsPage() {
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None (Unassign</SelectItem>
+                      <SelectItem value="none">None (Unassign)</SelectItem>
                       {assignableData.customRoles.map(cRole => (
                         <SelectItem key={cRole.id} value={cRole.id}>{cRole.name}</SelectItem>
                       ))}
@@ -288,5 +375,3 @@ export default function ManageUserAssignmentsPage() {
     </div>
   );
 }
-
-    
