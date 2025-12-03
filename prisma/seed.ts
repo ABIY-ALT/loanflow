@@ -342,6 +342,47 @@ async function main() {
             console.log(`      - Added doc requirement: "${doc.name}"`);
           }
         }
+      } else if (wf.name === 'WF-03 – RM Valuation Result') {
+        const wf03Stages = [
+          {
+            name: 'S-01 – Major Requirements Document', order: 0, timeline: 1, weight: 15,
+            docs: [
+              { name: 'Financial Statements Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Property Valuation Results Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Tax Clearance Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Business License Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Other Related Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          { name: 'S-02 – Prepare DDR and LAF', order: 1, timeline: 3, weight: 10, docs: [] },
+        ];
+      
+        for (const stageInfo of wf03Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+      
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
       } else {
         // --- Default single-stage seeding for other WFs ---
         const stageName = wf.name.split('–')[1].trim();
