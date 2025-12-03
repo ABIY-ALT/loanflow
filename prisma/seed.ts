@@ -1,5 +1,5 @@
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, DocumentRequirementType } from '@prisma/client';
 import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
 import type { Department as AppDepartment } from '../src/types/loan';
 import { ALL_PERMISSIONS } from '../src/lib/permissions'; // Import all permissions
@@ -200,13 +200,24 @@ async function main() {
       console.error(`Missing: ${!parentSector ? 'Parent Sector, ' : ''}${!childSector ? 'Child Sector, ' : ''}${!department ? 'Department' : ''}`);
       return;
     }
+
+    // Find the current max order for this parent sector
+    const maxOrderResult = await prisma.workflowDefinition.aggregate({
+      _max: { order: true },
+      where: {
+        sector: {
+          parentId: parentSector.id
+        }
+      }
+    });
+    let currentMaxOrder = maxOrderResult._max.order ?? -1;
   
     for (const wf of standardWorkflowsToSeed) {
       const workflowDefinition = await prisma.workflowDefinition.create({
         data: {
           name: wf.name,
           description: wf.purpose,
-          order: wf.order,
+          order: ++currentMaxOrder,
           department: { connect: { id: department.id } },
           sector: { connect: { id: childSector.id } },
         },
@@ -221,20 +232,66 @@ async function main() {
         },
       });
       console.log(`  - Created active Version 1 for ${workflowDefinition.name}`);
-  
-      const stageName = wf.name.split('–')[1].trim();
-      await prisma.workflowStageDefinition.create({
-        data: {
-          name: stageName,
-          order: 0,
-          defaultTimelineDays: 5,
-          percentageWeight: 100 / standardWorkflowsToSeed.length,
-          workflowVersion: { connect: { id: workflowVersion.id } },
-          responsibleDepartment: { connect: { id: department.id } },
-          availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
-        },
-      });
-      console.log(`    - Created stage "${stageName}" for Version 1`);
+      
+      if (wf.name === 'WF-01 – RM Request Registration (Acceptance)') {
+        // --- Special multi-stage seeding for WF-01 ---
+        const wf01Stages = [
+          { name: 'S-01 – RM Submit Checklist', order: 0, timeline: 1, weight: 5, docs: [] },
+          { name: 'S-02 – Submit Acknowledgement Letter', order: 1, timeline: 1, weight: 20, docs: [] },
+          {
+            name: 'S-03 – Submit to Property Valuation', order: 2, timeline: 1, weight: 10,
+            docs: [
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Property Valuation Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC Copy / Booklet Copy', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Application Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+        ];
+
+        for (const stageInfo of wf01Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } }
+              }
+            });
+             console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+
+      } else {
+        // --- Default single-stage seeding for other WFs ---
+        const stageName = wf.name.split('–')[1].trim();
+        await prisma.workflowStageDefinition.create({
+          data: {
+            name: stageName,
+            order: 0,
+            defaultTimelineDays: 5,
+            percentageWeight: 100,
+            workflowVersion: { connect: { id: workflowVersion.id } },
+            responsibleDepartment: { connect: { id: department.id } },
+            availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+          },
+        });
+        console.log(`    - Created stage "${stageName}" for Version 1`);
+      }
     }
     console.log(`${parentSectorName} workflows seeded.`);
   };
