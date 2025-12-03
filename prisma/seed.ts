@@ -2,7 +2,7 @@
 import { PrismaClient, DocumentRequirementType } from '@prisma/client';
 import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
 import type { Department as AppDepartment } from '../src/types/loan';
-import { ALL_PERMISSIONS } from '../src/lib/permissions'; // Import all permissions
+import { ALL_PERMISSIONS, PERMISSIONS } from '../src/lib/permissions'; // Import all permissions
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -132,47 +132,110 @@ async function main() {
 
   // Seed Roles
   console.log('Seeding Custom Roles...');
-  const viewerRole = await prisma.role.upsert({
-    where: { name: 'Viewer' },
-    update: {},
-    create: {
-      name: 'Viewer',
-      description: 'Can view loan data but cannot make changes.',
-      permissions: ['VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 'VIEW_LOAN_STATUS_LOOKUP', 'VIEW_CUSTOMERS'],
+  const rolesToSeed = [
+    {
+      name: "Administrator",
+      description: "Full access to all system features and settings.",
+      permissions: ALL_PERMISSIONS
     },
-  });
-  console.log(`Created/verified role: ${viewerRole.name}`);
-
-  const loanOfficerRole = await prisma.role.upsert({
-    where: { name: 'Loan Officer' },
-    update: {},
-    create: {
-      name: 'Loan Officer',
-      description: 'Can manage assigned loan requests.',
+    {
+      name: "Chief",
+      description: "High-level management with broad oversight and administrative capabilities.",
       permissions: [
-        'VIEW_DASHBOARD', 'VIEW_LOAN_PIPELINE', 'VIEW_LOAN_DETAILS', 
-        'CREATE_LOAN_REQUEST', 'VIEW_OWN_ASSIGNED_CASES', 'ADD_LOAN_NOTES',
-        'LOG_INFO_REQUEST', 'FULFILL_INFO_REQUEST',
-        'UPLOAD_LOAN_DOCUMENTS', 'VERIFY_LOAN_DOCUMENTS', 'MARK_STAGE_COMPLETE',
-        'FLAG_URGENT_CASE', 'VIEW_LOAN_STATUS_LOOKUP', 'VIEW_CUSTOMERS'
-      ],
+        "VIEW_DASHBOARD", "VIEW_LOAN_DETAILS", "VIEW_LOAN_PIPELINE", "VIEW_CUSTOMERS",
+        "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK", "VIEW_MANAGER_REVIEW_QUEUE",
+        "VIEW_UNASSIGNED_CASES_QUEUE", "VIEW_REPORTS", "VIEW_OVERDUE_TASKS_REPORT",
+        "MANUAL_STAGE_TRANSITION", "TERMINATE_LOAN_PROCESS", "MANAGE_SETTINGS_WORKFLOWS",
+        "MANAGE_SETTINGS_BRANCHES", "MANAGE_SETTINGS_DEPARTMENTS", "MANAGE_SETTINGS_ROLES",
+        "MANAGE_USERS", "VIEW_SYSTEM_AUDIT_LOGS"
+      ]
     },
-  });
-  console.log(`Created/verified role: ${loanOfficerRole.name}`);
+    {
+      name: "Credit Analysis & Appraisal Officer",
+      description: "Responsible for analyzing credit and appraisal data.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "EDIT_LOAN_DETAILS",
+        "VERIFY_LOAN_DOCUMENTS", "ADD_LOAN_NOTES", "MARK_STAGE_COMPLETE"
+      ]
+    },
+    {
+      name: "CRM",
+      description: "Customer Relationship Manager, handles client-facing interactions and initial requests.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
+        "CREATE_LOAN_REQUEST", "EDIT_LOAN_DETAILS", "UPLOAD_LOAN_DOCUMENTS",
+        "LOG_INFO_REQUEST", "FULFILL_INFO_REQUEST", "ADD_LOAN_NOTES", "FLAG_URGENT_CASE"
+      ]
+    },
+    {
+      name: "Deputy Chief",
+      description: "Senior management with review and reporting capabilities.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK", "VIEW_REPORTS"
+      ]
+    },
+    {
+      name: "Director",
+      description: "Departmental leadership with review and approval authority.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK"
+      ]
+    },
+    {
+      name: "Division Manager",
+      description: "Manages a division and can promote loans through stages.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE"
+      ]
+    },
+    {
+      name: "Loan Officer",
+      description: "Manages assigned loan requests and related documentation.",
+      permissions: [
+        "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS",
+        "VIEW_OWN_ASSIGNED_CASES", "EDIT_LOAN_DETAILS",
+        "UPLOAD_LOAN_DOCUMENTS", "ADD_LOAN_NOTES"
+      ]
+    },
+    {
+      name: "Viewer",
+      description: "Can view loan data but cannot make changes.",
+      permissions: ["VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS"]
+    }
+  ];
 
-  const adminRole = await prisma.role.upsert({
-    where: { name: 'Administrator' },
-    update: {
-      permissions: ALL_PERMISSIONS,
-    },
-    create: {
-      name: 'Administrator',
-      description: 'Full access to all system features and settings.',
-      permissions: ALL_PERMISSIONS,
-    },
-  });
-  console.log(`Created/verified role: ${adminRole.name} with all permissions.`);
+  // Mapping from provided permission names to system permission names
+  const permissionMap: { [key: string]: keyof typeof PERMISSIONS } = {
+    'VIEW_KANBAN': 'VIEW_LOAN_PIPELINE',
+    'VIEW_ALL_CUSTOMERS': 'VIEW_CUSTOMERS',
+    'VIEW_UNASSIGNED_CASES': 'VIEW_UNASSIGNED_CASES_QUEUE',
+  };
+
+  for (const roleData of rolesToSeed) {
+    // Map permissions to ensure they exist in the system
+    const mappedPermissions = Array.isArray(roleData.permissions)
+      ? roleData.permissions.map(p => permissionMap[p] || p).filter(p => p in PERMISSIONS)
+      : roleData.permissions; // 'ALL' case
+
+    const role = await prisma.role.upsert({
+      where: { name: roleData.name },
+      update: {
+        description: roleData.description,
+        permissions: mappedPermissions,
+      },
+      create: {
+        name: roleData.name,
+        description: roleData.description,
+        permissions: mappedPermissions,
+      },
+    });
+    console.log(`Created/verified role: ${role.name}`);
+  }
   console.log('Custom Roles seeded.');
+
 
   const standardWorkflowsToSeed = [
     { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
@@ -600,3 +663,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+
