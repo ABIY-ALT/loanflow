@@ -351,6 +351,7 @@ async function main() {
               { name: 'Property Valuation Results Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Tax Clearance Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Business License Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'CRB Report Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'Other Related Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
             ],
           },
