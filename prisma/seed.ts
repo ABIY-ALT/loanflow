@@ -425,6 +425,47 @@ async function main() {
             console.log(`      - Added doc requirement: "${doc.name}"`);
           }
         }
+      } else if (wf.name === 'WF-06 – RM Disbursement') {
+        const wf06Stages = [
+          { name: 'S-01 – Submit Loan Decision Letter to Customer', order: 0, timeline: 5, weight: 12, docs: [] },
+          { name: 'S-02 – Preparation of Loan and Mortgage Contract', order: 1, timeline: 1, weight: 3, docs: [] },
+          { name: 'S-03 – Contract Signing', order: 2, timeline: 3, weight: 3, docs: [] },
+          { name: 'S-04 – Collateral Registration Process', order: 3, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-05 – Collection of Security Documents', order: 4, timeline: 3, weight: 10, docs: [
+              { name: 'Conditions stated on LAF fulfilled', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Insurance Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+          ]},
+          { name: 'S-06 – Disbursement Approval Form', order: 5, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-07 – Disbursement Approval Committee', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'S-08 – Final Disbursement', order: 7, timeline: 3, weight: 42, docs: [] },
+        ];
+
+        for (const stageInfo of wf06Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed'] },
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
       } else {
         // --- Default single-stage seeding for other WFs ---
         const stageName = wf.name.split('–')[1].trim();
