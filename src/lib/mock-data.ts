@@ -534,8 +534,271 @@ export const mockUsers: MockAppUser[] = [
   firstName: 'Dawit',
   lastName: 'Zenebe',
   phoneNumber: '0924699536'
+},
+{
+  id: '00000047-aaaa-4b0b-a81f-000000000047',
+  userId: '1111113f-bbbb-49f0-b7c2-000000000047',
+  name: 'Wondwossen Enko',
+  email: 'wondwossen.enko@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Wondwossen',
+  lastName: 'Enko',
+  phoneNumber: '0922577300'
+},
+{
+  id: '00000048-aaaa-4b0b-a81f-000000000048',
+  userId: '11111140-bbbb-49f0-b7c2-000000000048',
+  name: 'Natnael Bereded',
+  email: 'natnael.bereded@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Natnael',
+  lastName: 'Bereded',
+  phoneNumber: '0911658056'
+},
+{
+  id: '00000049-aaaa-4b0b-a81f-000000000049',
+  userId: '11111141-bbbb-49f0-b7c2-000000000049',
+  name: 'Daniel Andualem',
+  email: 'daniel.andualem@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Daniel',
+  lastName: 'Andualem',
+  phoneNumber: '0911156151'
+},
+{
+  id: '00000050-aaaa-4b0b-a81f-000000000050',
+  userId: '11111142-bbbb-49f0-b7c2-000000000050',
+  name: 'Yidnekachew Awraris',
+  email: 'yidnekachew.awraris@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yidnekachew',
+  lastName: 'Awraris',
+  phoneNumber: '0913001100'
+},
+{
+  id: '00000051-aaaa-4b0b-a81f-000000000051',
+  userId: '11111143-bbbb-49f0-b7c2-000000000051',
+  name: 'Michael Abate',
+  email: 'michael.abate@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Michael',
+  lastName: 'Abate',
+  phoneNumber: '0913597100'
+},
+{
+  id: '00000052-aaaa-4b0b-a81f-000000000052',
+  userId: '11111144-bbbb-49f0-b7c2-000000000052',
+  name: 'Frezer Endalkachew',
+  email: 'frezer.endalkachew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Frezer',
+  lastName: 'Endalkachew',
+  phoneNumber: '0911079216'
+},
+{
+  id: '00000053-aaaa-4b0b-a81f-000000000053',
+  userId: '11111145-bbbb-49f0-b7c2-000000000053',
+  name: 'Hanna Hinsene',
+  email: 'hanna.hinsene@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hanna',
+  lastName: 'Hinsene',
+  phoneNumber: '0923434306'
+},
+{
+  id: '00000054-aaaa-4b0b-a81f-000000000054',
+  userId: '11111146-bbbb-49f0-b7c2-000000000054',
+  name: 'Kalkidan Sesay',
+  email: 'kalkidan.sesay@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Kalkidan',
+  lastName: 'Sesay',
+  phoneNumber: '0912419445'
+},
+{
+  id: '00000055-aaaa-4b0b-a81f-000000000055',
+  userId: '11111147-bbbb-49f0-b7c2-000000000055',
+  name: 'Selamawit Tamirat',
+  email: 'selamawit.tamirat@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Selamawit',
+  lastName: 'Tamirat',
+  phoneNumber: '0912830335'
+},
+{
+  id: '00000056-aaaa-4b0b-a81f-000000000056',
+  userId: '11111148-bbbb-49f0-b7c2-000000000056',
+  name: 'Elim Tesfaye',
+  email: 'elim.tesfaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Elim',
+  lastName: 'Tesfaye',
+  phoneNumber: '0929091153'
+},
+{
+  id: '00000057-aaaa-4b0b-a81f-000000000057',
+  userId: '11111149-bbbb-49f0-b7c2-000000000057',
+  name: 'Yonas Dereje',
+  email: 'yonas.dereje@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yonas',
+  lastName: 'Dereje',
+  phoneNumber: '0910321545'
+},
+{
+  id: '00000058-aaaa-4b0b-a81f-000000000058',
+  userId: '1111114a-bbbb-49f0-b7c2-000000000058',
+  name: 'Yoseph Wondimu',
+  email: 'yoseph.wondimu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yoseph',
+  lastName: 'Wondimu',
+  phoneNumber: '0922945657'
+},
+{
+  id: '00000059-aaaa-4b0b-a81f-000000000059',
+  userId: '1111114b-bbbb-49f0-b7c2-000000000059',
+  name: 'Eleni Belay',
+  email: 'eleni.belay@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Eleni',
+  lastName: 'Belay',
+  phoneNumber: '0948216838'
+},
+{
+  id: '00000060-aaaa-4b0b-a81f-000000000060',
+  userId: '1111114c-bbbb-49f0-b7c2-000000000060',
+  name: 'Meron Argaw',
+  email: 'meron.argaw@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Meron',
+  lastName: 'Argaw',
+  phoneNumber: '0921081371'
+},
+{
+  id: '00000061-aaaa-4b0b-a81f-000000000061',
+  userId: '1111114d-bbbb-49f0-b7c2-000000000061',
+  name: 'Meron Fantu',
+  email: 'meron.fantu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Meron',
+  lastName: 'Fantu',
+  phoneNumber: '0975690773'
+},
+{
+  id: '00000062-aaaa-4b0b-a81f-000000000062',
+  userId: '1111114e-bbbb-49f0-b7c2-000000000062',
+  name: 'Eyuel Moges',
+  email: 'eyuel.moges@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Eyuel',
+  lastName: 'Moges',
+  phoneNumber: '0922586666'
+},
+{
+  id: '00000063-aaaa-4b0b-a81f-000000000063',
+  userId: '1111114f-bbbb-49f0-b7c2-000000000063',
+  name: 'Tsigab Kube',
+  email: 'tsigab.kube@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Tsigab',
+  lastName: 'Kube',
+  phoneNumber: '0904185695'
+},
+{
+  id: '00000064-aaaa-4b0b-a81f-000000000064',
+  userId: '11111150-bbbb-49f0-b7c2-000000000064',
+  name: 'Alazar Eliyas',
+  email: 'alazar.eliyas@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Alazar',
+  lastName: 'Eliyas',
+  phoneNumber: '0920893000'
+},
+{
+  id: '00000065-aaaa-4b0b-a81f-000000000065',
+  userId: '11111151-bbbb-49f0-b7c2-000000000065',
+  name: 'Bezawit Desalegn',
+  email: 'bezawit.desalegn@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Bezawit',
+  lastName: 'Desalegn',
+  phoneNumber: '0977442751'
+},
+{
+  id: '00000066-aaaa-4b0b-a81f-000000000066',
+  userId: '11111152-bbbb-49f0-b7c2-000000000066',
+  name: 'Hailemariam Sewale',
+  email: 'hailemariam.sewale@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hailemariam',
+  lastName: 'Sewale',
+  phoneNumber: '0927686103'
+},
+{
+  id: '00000067-aaaa-4b0b-a81f-000000000067',
+  userId: '11111153-bbbb-49f0-b7c2-000000000067',
+  name: 'Natnael Tesfaye',
+  email: 'natnael.tesfaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Natnael',
+  lastName: 'Tesfaye',
+  phoneNumber: '0910133800'
+},
+{
+  id: '00000068-aaaa-4b0b-a81f-000000000068',
+  userId: '11111154-bbbb-49f0-b7c2-000000000068',
+  name: 'Abinet Getahun',
+  email: 'abinet.getahun@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abinet',
+  lastName: 'Getahun',
+  phoneNumber: '0910979074'
+},
+{
+  id: '00000069-aaaa-4b0b-a81f-000000000069',
+  userId: '11111155-bbbb-49f0-b7c2-000000000069',
+  name: 'Abrham Tilaye',
+  email: 'abrham.tilaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abrham',
+  lastName: 'Tilaye',
+  phoneNumber: '0923560536'
+},
+{
+  id: '00000070-aaaa-4b0b-a81f-000000000070',
+  userId: '11111156-bbbb-49f0-b7c2-000000000070',
+  name: 'Hagos G/medhin',
+  email: 'hagos.g/medhin@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hagos',
+  lastName: 'G/medhin',
+  phoneNumber: '0910349069'
 }
-
 ];
 
 
