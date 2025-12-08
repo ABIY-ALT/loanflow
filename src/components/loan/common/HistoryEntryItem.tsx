@@ -64,7 +64,7 @@ export function HistoryEntryItem({
               ) : (
                 <MessageSquare className="mr-2 h-4 w-4" />
               )}
-              {isFulfilled ? 'Mark as Pending' : 'Mark Information Received'}
+              {isFulfilled ? 'Mark as Received' : 'Mark Information Received'}
             </Button>
           ) : isFulfilled && (
              <Badge className="bg-green-600 hover:bg-green-600 text-white">
