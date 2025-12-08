@@ -1,5 +1,4 @@
 
-
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -359,6 +358,12 @@ export async function updateLoanRequest(
         return createErrorResult("Unauthorized: No user session found.", "updateLoanRequest");
     }
 
+    // Determine the primary intent of the update
+    const isStageChange = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== (await prisma.loanRequest.findUnique({ where: { id } }))?.currentStageIdMirror;
+    const isTerminating = dataToUpdate.isTerminalStage === true;
+    const isPromoting = isStageChange && user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
+    const isManualTransition = isStageChange && user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION);
+
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
       const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true, assignedToUsers: true, stageCompletedBy: true } });
 
@@ -400,7 +405,10 @@ export async function updateLoanRequest(
 
 
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
-        if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign staff.");
+        // Allow unassignment as part of higher-level actions
+        if (!isManualTransition && !isTerminating && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
+            throw new Error("Unauthorized to assign staff.");
+        }
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
         updatePayload.stageCompletedBy = { set: [] };
@@ -414,12 +422,12 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
-          if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
+          if (!isManualTransition && !isTerminating && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
           updatePayload.assignedDepartment = dataToUpdate.assignedDepartmentId ? { connect: { id: dataToUpdate.assignedDepartmentId } } : { disconnect: true };
       }
 
-      if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
-        if (!user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE) && !user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) throw new Error("Unauthorized to change loan stage.");
+      if (isStageChange) {
+        if (!isPromoting && !isManualTransition) throw new Error("Unauthorized to change loan stage.");
         
         const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionIdMirror;
         if (!wfVerId) throw new Error("Workflow version context missing.");
@@ -449,16 +457,10 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
-        // Broader check for any action that generates a history entry
         const canModifyHistory = [
-            PERMISSIONS.ADD_LOAN_NOTES,
-            PERMISSIONS.FULFILL_INFO_REQUEST,
-            PERMISSIONS.MARK_STAGE_COMPLETE,
-            PERMISSIONS.PROMOTE_LOAN_STAGE,
-            PERMISSIONS.RETURN_LOAN_FOR_REWORK,
-            PERMISSIONS.TERMINATE_LOAN_PROCESS,
-            PERMISSIONS.MANUAL_STAGE_TRANSITION,
-            PERMISSIONS.ASSIGN_LOAN_TO_STAFF // Also an action that logs history
+            PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.FULFILL_INFO_REQUEST, PERMISSIONS.MARK_STAGE_COMPLETE,
+            PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.TERMINATE_LOAN_PROCESS,
+            PERMISSIONS.MANUAL_STAGE_TRANSITION, PERMISSIONS.ASSIGN_LOAN_TO_STAFF
         ].some(p => user.permissions.includes(p));
 
         if (!canModifyHistory) {
@@ -472,12 +474,10 @@ export async function updateLoanRequest(
 
           if (existingHistoryIds.has(entry.id)) {
             // This is an update to an existing entry (e.g., fulfilling a request)
-             if (!user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
+             if (!isTerminating && !user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
             await tx.loanHistoryEntry.update({
               where: { id: entry.id },
-              data: {
-                notes: entry.notes
-              }
+              data: { notes: entry.notes }
             });
           } else {
             // This is a new history entry (e.g., adding a note, promoting, etc.)
@@ -1167,5 +1167,3 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
-
-    
