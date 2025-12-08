@@ -1,4 +1,5 @@
 
+
 import { PrismaClient, DocumentRequirementType } from '@prisma/client';
 import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
 import type { Department as AppDepartment } from '../src/types/loan';
@@ -636,6 +637,7 @@ async function main() {
         isPasswordChanged: false, // Set to true so they don't need to change password
         failedLoginAttempts: 0,
         lockoutUntil: null,
+        isActive: true,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
@@ -649,6 +651,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
         isPasswordChanged: false, // Set to true so they don't need to change password
+        isActive: true,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
