@@ -358,7 +358,7 @@ export async function updateLoanRequest(
         return createErrorResult("Unauthorized: No user session found.", "updateLoanRequest");
     }
 
-    const existingLoan = await prisma.loanRequest.findUnique({ where: { id } });
+    const existingLoan = await prisma.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true } });
     if (!existingLoan) {
       throw new Error(`Loan with ID "${id}" not found.`);
     }
@@ -367,10 +367,14 @@ export async function updateLoanRequest(
     
     let primaryAction: AppPermission | null = null;
     
-    if (isStageChange && user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) {
-        primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
-    } else if (isStageChange && user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
-        primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
+    if (isStageChange) {
+        if (user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) {
+            primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
+        } else if (user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
+            primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
+        } else {
+            throw new Error("Unauthorized to change loan stage.");
+        }
     } else if (dataToUpdate.isTerminalStage === true) {
         primaryAction = PERMISSIONS.TERMINATE_LOAN_PROCESS;
     } else if (dataToUpdate.history && dataToUpdate.history.length > (existingLoan.history?.length || 0)) {
@@ -384,6 +388,15 @@ export async function updateLoanRequest(
         }
     } else if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         primaryAction = PERMISSIONS.ASSIGN_LOAN_TO_STAFF;
+    } else if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
+        primaryAction = PERMISSIONS.MARK_STAGE_COMPLETE;
+    } else if (dataToUpdate.history && dataToUpdate.history.length === (existingLoan.history?.length || 0) && dataToUpdate.history.some((h, i) => h.notes !== existingLoan.history[i]?.notes)) {
+        primaryAction = PERMISSIONS.FULFILL_INFO_REQUEST;
+    }
+
+
+    if (primaryAction && !user.permissions.includes(primaryAction)) {
+      throw new Error(`Unauthorized action: ${primaryAction}`);
     }
 
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
@@ -425,8 +438,10 @@ export async function updateLoanRequest(
         }
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
-        updatePayload.stageCompletedBy = { set: [] };
-        updatePayload.isReadyForManagerReview = false;
+        if (primaryAction === PERMISSIONS.ASSIGN_LOAN_TO_STAFF) {
+          updatePayload.stageCompletedBy = { set: [] };
+          updatePayload.isReadyForManagerReview = false;
+        }
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
@@ -457,17 +472,19 @@ export async function updateLoanRequest(
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
-        updatePayload.isReadyForManagerReview = false;
-        updatePayload.stageCompletedBy = { set: [] }; 
+        
+        if (primaryAction === PERMISSIONS.MANUAL_STAGE_TRANSITION) {
+            updatePayload.isReadyForManagerReview = false;
+            updatePayload.stageCompletedBy = { set: [] };
+            updatePayload.assignedToUsers = { set: [] };
+            updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
+        }
         
         const availableStatusesForDept = newStageDef.availableStatuses && typeof newStageDef.availableStatuses === 'object' && !Array.isArray(newStageDef.availableStatuses) ? (newStageDef.availableStatuses as Record<string, string[]>)[newStageDef.responsibleDepartment.name] : [];
         updatePayload.currentStageStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
         const isTerminal = newStageDef.name.toLowerCase().includes("closed") || newStageDef.name.toLowerCase().includes("rejected") || newStageDef.name.toLowerCase().includes("funded") || dataToUpdate.isTerminalStage === true;
         updatePayload.isTerminalStage = isTerminal;
-
-        if (!dataToUpdate.hasOwnProperty('assignedToUsers')) updatePayload.assignedToUsers = { set: [] };
-        if (!dataToUpdate.hasOwnProperty('assignedDepartmentId')) updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
       }
 
       if (dataToUpdate.history) {
@@ -481,7 +498,7 @@ export async function updateLoanRequest(
             throw new Error("Unauthorized to modify history.");
         }
         
-        const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
+        const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
         
         for (const entry of dataToUpdate.history) {
           if (!entry.userId) continue;
@@ -1182,3 +1199,5 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
+
+    
