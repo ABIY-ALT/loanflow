@@ -52,6 +52,7 @@ const mapPrismaUserToAppUser = (
     customRoleName: prismaUser.customRole?.name || undefined,
     permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
     isPasswordChanged: prismaUser.isPasswordChanged,
+    isActive: prismaUser.isActive,
   };
 };
 
@@ -139,7 +140,7 @@ const mapPrismaLoanToAppLoan = (
 
 
 export async function addLoanRequest(
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName' | 'parentSectorId' | 'parentSectorName'>
+  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName' | 'parentSectorId' | 'parentSectorName' | 'isActive'>
   & { sectorId: string; requestTypeId: string; }
 ): Promise<{ id?: string; error?: string }> {
   try {
@@ -983,7 +984,7 @@ export interface PublicLoanStatus {
   loanNumber: string;
   customerName: string;
   submittedDate: string;
-  currentStageId: string;
+  currentStageId: string | null;
   currentStageStatus: string | null;
   isTerminalStage: boolean;
   // workflowSequence is removed as it's not needed for the simple table view
@@ -1155,5 +1156,3 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
-
-    
