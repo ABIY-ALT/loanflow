@@ -214,7 +214,7 @@ export default function ManageUserAssignmentsPage() {
       }
     }
     
-    if (!result.success) {
+    if (result && !result.success) {
       toast({ title: "Action Failed", description: result.message, variant: "destructive" });
     }
 
