@@ -1,4 +1,3 @@
-
 import { PrismaClient, DocumentRequirementType } from '@prisma/client';
 import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data'; // Using app-level mock users
 import type { Department as AppDepartment } from '../src/types/loan';
