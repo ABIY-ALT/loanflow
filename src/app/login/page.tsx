@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -35,16 +36,12 @@ export default function LoginPage() {
     } else {
       const friendlyMessage = result.error || "Login failed. Please check your credentials and try again.";
       setError(friendlyMessage);
-      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive" });
+      toast({ title: "Login Failed", description: friendlyMessage, variant: "destructive", duration: 9000 });
     }
     setIsSubmitting(false);
   };
 
-  // Handled by AuthProvider's loading screen or redirect logic
-  // if (authContext.isLoading && !isSubmitting) {
-  //    return ( /* ... loading spinner or minimal layout ... */ );
-  // }
-
+  const isProcessing = isSubmitting || authContext.isLoading;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
@@ -67,11 +64,11 @@ export default function LoginPage() {
               <Input
                 id="phoneNumber"
                 type="tel"
-                placeholder="e.g., +251912345678"
+                placeholder="e.g., 0912345678"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 required
-                disabled={isSubmitting || authContext.isLoading}
+                disabled={isProcessing}
                 className="text-base"
               />
             </div>
@@ -84,15 +81,15 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={isSubmitting || authContext.isLoading}
+                disabled={isProcessing}
                 className="text-base"
               />
             </div>
             {error && (
               <p className="text-sm text-destructive text-center">{error}</p>
             )}
-            <Button type="submit" className="w-full text-lg py-3" disabled={isSubmitting || authContext.isLoading}>
-              {isSubmitting ? (
+            <Button type="submit" className="w-full text-lg py-3" disabled={isProcessing}>
+              {isProcessing ? (
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               ) : (
                 <LogIn className="mr-2 h-5 w-5" />

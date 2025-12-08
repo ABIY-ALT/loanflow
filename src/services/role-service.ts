@@ -1,15 +1,17 @@
 
+
 'use server';
 
 import prisma from '@/lib/prisma';
 import type { Role as PrismaRole } from '@prisma/client';
-import type { AppPermission } from '@/lib/permissions'; // Import AppPermission
+import { PERMISSIONS, type AppPermission } from '@/lib/permissions'; 
+import { getCurrentUser } from '@/app/auth/actions';
 
 export interface AppRole {
   id: string;
   name: string;
   description?: string | null;
-  permissions: AppPermission[]; // Changed from string[] to AppPermission[]
+  permissions: AppPermission[];
   createdAt: string;
   updatedAt: string;
 }
@@ -18,7 +20,7 @@ const mapPrismaRoleToAppRole = (prismaRole: PrismaRole): AppRole => ({
   id: prismaRole.id,
   name: prismaRole.name,
   description: prismaRole.description,
-  permissions: prismaRole.permissions as AppPermission[], // Cast to AppPermission[]
+  permissions: prismaRole.permissions as AppPermission[],
   createdAt: prismaRole.createdAt.toISOString(),
   updatedAt: prismaRole.updatedAt.toISOString(),
 });
@@ -28,23 +30,35 @@ interface RoleServiceResult<T> {
   error?: string;
 }
 
+const createErrorResult = <T>(message: string, context?: string, originalError?: any): RoleServiceResult<T> => {
+  const genericMessage = 'An unexpected error occurred in the role service.';
+  console.error(`[RoleService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  return { error: genericMessage };
+};
+
+const hasPermission = async (): Promise<boolean> => {
+    const { user } = await getCurrentUser();
+    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES);
+}
+
 export async function getRoles(): Promise<RoleServiceResult<AppRole[]>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   try {
     const roles = await prisma.role.findMany({
       orderBy: { name: 'asc' },
     });
     return { data: roles.map(mapPrismaRoleToAppRole) };
   } catch (e: any) {
-    console.error("Error fetching roles:", e);
-    return { error: e.message || "Failed to fetch roles." };
+    return createErrorResult("Failed to fetch roles.", "getRoles", e);
   }
 }
 
 export async function addRole(
   name: string,
   description?: string,
-  permissions?: AppPermission[] // Changed from string[]
+  permissions?: AppPermission[]
 ): Promise<RoleServiceResult<AppRole>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   if (!name.trim()) {
     return { error: "Role name cannot be empty." };
   }
@@ -60,13 +74,12 @@ export async function addRole(
       data: {
         name: name.trim(),
         description: description?.trim() || null,
-        permissions: permissions || [], // Store permissions
+        permissions: permissions || [],
       },
     });
     return { data: mapPrismaRoleToAppRole(newRole) };
   } catch (e: any) {
-    console.error("Error adding role:", e);
-    return { error: e.message || "Failed to add role." };
+    return createErrorResult("Failed to add role.", "addRole", e);
   }
 }
 
@@ -76,11 +89,11 @@ export async function updateRole(
   description?: string | null,
   permissions?: AppPermission[]
 ): Promise<RoleServiceResult<AppRole>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   if (!name.trim()) {
     return { error: "Role name cannot be empty." };
   }
   try {
-    // Check if another role with the new name already exists (if name is being changed)
     const existingRoleWithNewName = await prisma.role.findFirst({
       where: {
         name: name.trim(),
@@ -95,28 +108,27 @@ export async function updateRole(
       where: { id },
       data: {
         name: name.trim(),
-        description: description === undefined ? undefined : (description?.trim() || null), // Handle undefined vs null/empty
+        description: description === undefined ? undefined : (description?.trim() || null),
         permissions: permissions || [],
         updatedAt: new Date(),
       },
     });
     return { data: mapPrismaRoleToAppRole(updatedRole) };
   } catch (e: any) {
-    console.error(`Error updating role ${id}:`, e);
     if ((e as any).code === 'P2025') {
-        return { error: `Role with ID "${id}" not found for update.`};
+        return createErrorResult(`Role not found.`, "updateRole", e);
     }
-    return { error: e.message || `Failed to update role ${id}.` };
+    return createErrorResult(`Failed to update role.`, "updateRole", e);
   }
 }
 
 
 export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>> {
+  if (!await hasPermission()) return { error: "Unauthorized access." };
   try {
-    // Check if any users are assigned to this role
     const usersWithRole = await prisma.user.count({ where: { customRoleId: id } });
     if (usersWithRole > 0) {
-      return { error: `Cannot delete role. It is currently assigned to ${usersWithRole} user(s). Please reassign users before deleting.` };
+      return { error: `Cannot delete: Role is assigned to ${usersWithRole} user(s).` };
     }
 
     await prisma.role.delete({
@@ -125,10 +137,9 @@ export async function deleteRole(id: string): Promise<RoleServiceResult<boolean>
     return { data: true };
   } catch (e: any)
    {
-    console.error("Error deleting role:", e);
     if ((e as any).code === 'P2025') {
         return { data: true }; 
     }
-    return { error: e.message || `Failed to delete role with ID ${id}.` };
+    return createErrorResult(`Failed to delete role.`, "deleteRole", e);
   }
 }

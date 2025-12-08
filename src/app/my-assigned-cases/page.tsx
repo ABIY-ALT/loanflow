@@ -1,107 +1,97 @@
 
+
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import type { LoanRequest, User, WorkflowDefinition } from '@/types/loan';
+import { getLoanRequests } from '@/services/loan-service-prisma';
+import type { LoanRequest } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context'; // Import useAuth
+import { cn } from '@/lib/utils';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export default function MyAssignedCasesPage() {
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
   const [assignedLoans, setAssignedLoans] = useState<LoanRequest[]>([]);
-  const [fetchedWorkflowDefinitions, setFetchedWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const getStageName = useCallback((workflowVersionId?: string, stageId?: string): string => {
-    if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "Unknown Stage";
-    for (const def of fetchedWorkflowDefinitions) {
-      const version = def.versions.find(v => v.id === workflowVersionId);
-      if (version) {
-        const stage = version.stages.find(s => s.id === stageId);
-        if (stage) return stage.name;
-      }
-    }
-    return "Unknown Stage";
-  }, [fetchedWorkflowDefinitions]);
-
-  const getDepartmentFromStage = useCallback((workflowVersionId?: string, stageId?: string): string => {
-    if (!workflowVersionId || !stageId || !fetchedWorkflowDefinitions) return "N/A";
-    for (const def of fetchedWorkflowDefinitions) {
-      const version = def.versions.find(v => v.id === workflowVersionId);
-      if (version) {
-        const stage = version.stages.find(s => s.id === stageId);
-        if (stage) return stage.responsibleDepartment;
-      }
-    }
-    return "N/A";
-  }, [fetchedWorkflowDefinitions]);
-
+  const canViewPage = useMemo(() => currentUser?.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES), [currentUser]);
 
   useEffect(() => {
-    async function fetchPageData() {
-      if (!currentUser || authIsLoading) { // Wait for user and auth to settle
-        if(!authIsLoading) setIsLoading(false); // If auth is done but no user, stop loading
+    if (authIsLoading || !canViewPage || !currentUser) {
+        if (!authIsLoading) setIsLoading(false);
         return;
-      }
+    }
+    
+    async function fetchPageData() {
       setIsLoading(true);
       setError(null);
       try {
-        const [loansResult, wfResult] = await Promise.all([
-          getLoanRequests(),
-          getWorkflowDefinitions()
-        ]);
+        const loansResult = await getLoanRequests();
 
         if (loansResult.error) {
-          setError(prev => (prev ? `${prev}\nLoans: ${loansResult.error}` : `Loans: ${loansResult.error}`));
+          setError(loansResult.error);
           setAssignedLoans([]);
         } else if (loansResult.loans) {
+          // The filtering logic is now handled on the server, but an extra client-side check is fine as a fallback.
           const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedTo === currentUser.id && !loan.isReadyForManagerReview
+            loan.assignedToUsers.some(u => u.id === currentUser.id) && !loan.isReadyForManagerReview
           );
           setAssignedLoans(filteredLoans);
         } else {
-           setError(prev => (prev ? `${prev}\nLoans: No loan data received.` : `Loans: No loan data received.`));
+           setError("No loan data received.");
            setAssignedLoans([]);
-        }
-
-        if (wfResult.error) {
-          setError(prev => (prev ? `${prev}\nWorkflows: ${wfResult.error}` : `Workflows: ${wfResult.error}`));
-          setFetchedWorkflowDefinitions([]);
-        } else if (wfResult.workflows) {
-          setFetchedWorkflowDefinitions(wfResult.workflows);
-        } else {
-           setError(prev => (prev ? `${prev}\nWorkflows: No workflow data received.` : `Workflows: No workflow data received.`));
-           setFetchedWorkflowDefinitions([]);
         }
 
       } catch (err: any) {
         const errorMessage = err.message || "An unknown error occurred fetching page data.";
         setError(errorMessage);
         setAssignedLoans([]);
-        setFetchedWorkflowDefinitions([]);
       } finally {
         setIsLoading(false);
       }
     }
     fetchPageData();
-  }, [currentUser, authIsLoading]);
+  }, [currentUser, authIsLoading, canViewPage]);
+
+  const sortedLoans = useMemo(() => {
+    return [...assignedLoans].sort((a, b) => {
+      if (a.isUrgent && !b.isUrgent) return -1;
+      if (!a.isUrgent && b.isUrgent) return 1;
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
+    });
+  }, [assignedLoans]);
 
 
-  if (authIsLoading || (isLoading && !currentUser)) {
+  if (authIsLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <p className="ml-3 text-lg">Loading your assigned cases...</p>
       </div>
+    );
+  }
+  
+  if (!canViewPage) {
+     return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view your assigned cases.</p>
+             <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
     );
   }
   
@@ -118,7 +108,7 @@ export default function MyAssignedCasesPage() {
     );
   }
 
-  if (error && (assignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0)) {
+  if (error && assignedLoans.length === 0) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -156,11 +146,11 @@ export default function MyAssignedCasesPage() {
           <AlertCircle className="h-4 w-4 !text-blue-600 dark:!text-blue-400" />
           <AlertTitleShadCN>Viewing as: {currentUser?.fullName || currentUser?.name || 'Current User'}</AlertTitleShadCN>
           <AlertDescriptionShadCN>
-            This page displays cases assigned to you.
+            This page displays cases assigned to you. Urgent cases are prioritized at the top.
           </AlertDescriptionShadCN>
       </Alert>
 
-      {error && !(assignedLoans.length === 0 || fetchedWorkflowDefinitions.length === 0) && (
+      {error && assignedLoans.length > 0 && (
          <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap">
             <AlertCircle className="h-5 w-5" />
             <AlertTitleShadCN>Partial Data Error</AlertTitleShadCN>
@@ -176,7 +166,7 @@ export default function MyAssignedCasesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {assignedLoans.length === 0 && !isLoading && !authIsLoading ? (
+          {sortedLoans.length === 0 && !isLoading && !authIsLoading ? (
             <div className="py-10 text-center text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-folder-check"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg>
               <p className="text-lg font-semibold">No Cases Currently Assigned to You</p>
@@ -186,6 +176,7 @@ export default function MyAssignedCasesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Urgent</TableHead>
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Loan Number</TableHead>
                   <TableHead>Current Stage</TableHead>
@@ -195,14 +186,17 @@ export default function MyAssignedCasesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignedLoans.map((loan: LoanRequest) => (
-                  <TableRow key={loan.id} className="hover:bg-muted/50">
+                {sortedLoans.map((loan: LoanRequest) => (
+                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isUrgent && "bg-red-50 dark:bg-red-900/20")}>
+                     <TableCell className="text-center">
+                      {loan.isUrgent && <Flame className="h-5 w-5 text-red-500" />}
+                    </TableCell>
                     <TableCell className="font-medium">{loan.customerName}</TableCell>
                     <TableCell>{loan.loanNumber}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{getStageName(loan.workflowVersionId, loan.currentStageId)}</Badge>
+                      <Badge variant="outline">{loan.currentStageName}</Badge>
                     </TableCell>
-                    <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{getDepartmentFromStage(loan.workflowVersionId, loan.currentStageId)}</TableCell>
+                    <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{loan.assignedDepartment}</TableCell>
                     <TableCell>
                         {loan.stageDeadline ? (
                              <span className={loan.isOverdue ? "text-destructive font-semibold flex items-center" : "flex items-center"}>
@@ -227,5 +221,3 @@ export default function MyAssignedCasesPage() {
     </div>
   );
 }
-
-    

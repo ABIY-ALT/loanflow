@@ -4,6 +4,7 @@ import './globals.css';
 import AppLayout from '@/components/layout/app-layout';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/auth-context'; 
+import { headers } from 'next/headers'; // Import headers
 
 export const metadata: Metadata = {
   title: 'LoanFlow - Loan Management System',
@@ -11,15 +12,19 @@ export const metadata: Metadata = {
   icons: null, 
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get('x-nonce') || ''; // Get the nonce from the headers
+
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+      </head>
       <body className="antialiased">
-        <AuthProvider> {/* Ensure AuthProvider wraps AppLayout and children */}
+        <AuthProvider>
           <AppLayout>
             {children}
           </AppLayout>
@@ -29,4 +34,3 @@ export default function RootLayout({
     </html>
   );
 }
-

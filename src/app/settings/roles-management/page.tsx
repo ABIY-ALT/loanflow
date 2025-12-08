@@ -59,6 +59,10 @@ export default function ManageRolesPage() {
   const canManageRoles = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES);
 
   const fetchRolesCallback = useCallback(async () => {
+    if (!canManageRoles) {
+      setIsLoadingData(false);
+      return;
+    }
     setIsLoadingData(true);
     setError(null);
     const result = await getRoles();
@@ -70,13 +74,13 @@ export default function ManageRolesPage() {
       setRoles(result.data || []);
     }
     setIsLoadingData(false);
-  }, [toast]);
+  }, [toast, canManageRoles]);
 
   useEffect(() => {
-    if (canManageRoles) {
+    if (!authLoading) {
       fetchRolesCallback();
     }
-  }, [currentUser, fetchRolesCallback, canManageRoles]);
+  }, [authLoading, fetchRolesCallback]);
 
   const resetFormDialog = () => {
     setEditingRole(null);
@@ -132,9 +136,10 @@ export default function ManageRolesPage() {
     if (result.error) {
       toast({ title: `Error ${editingRole ? 'Updating' : 'Adding'} Role`, description: result.error, variant: "destructive" });
     } else {
-      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" ${editingRole ? 'updated' : 'created'} successfully.` });
+      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" ${editingRole ? 'updated' : 'created'} successfully. Refreshing to apply changes.` });
       resetFormDialog();
-      await fetchRolesCallback(); 
+      // Force a reload to reflect permission changes for the current user
+      window.location.reload();
     }
     setIsSubmitting(false);
   };
@@ -152,7 +157,7 @@ export default function ManageRolesPage() {
     setIsDeleting(null);
   };
   
-  if (authLoading) {
+  if (authLoading || isLoadingData) {
     return (
       <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -368,3 +373,4 @@ export default function ManageRolesPage() {
 }
     
 
+    

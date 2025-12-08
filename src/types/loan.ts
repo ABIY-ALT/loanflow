@@ -1,8 +1,40 @@
 
+
 import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
 export type Department = string;
+
+// Represents a configurable sector, e.g., "Agriculture", "Manufacturing"
+export interface Sector {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Represents a configurable request type, e.g., "New Loan", "Restructuring"
+export interface RequestType {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+
+export interface District {
+  id: string;
+  name: string;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  districtId: string;
+  districtName: string;
+}
+
 
 // Application-level User type, populated from Prisma after token validation
 export interface User {
@@ -12,6 +44,8 @@ export interface User {
   fullName: string; // Typically derived if firstName/lastName exist, or from a 'name' claim
   email: string;
   phoneNumber?: string;
+  isPasswordChanged: boolean; // Flag for forced password change
+  isActive: boolean; // Added to manage user status
 
   departmentId?: string;
   department?: Department; // Name of the department
@@ -21,6 +55,32 @@ export interface User {
   permissions: AppPermission[]; // All permissions granted by the custom role
 }
 
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  branch?: string;
+  loanRequests: Pick<LoanRequest, 'id' | 'loanNumber' | 'loanAmount' | 'submittedDate' | 'currentStageName'>[];
+}
+
+export interface CustomerWithDepartment extends Customer {
+    mostRecentDepartment?: Department;
+    mostRecentStageName?: string;
+}
+
+
+export enum DocumentRequirementType {
+  UPLOAD = "UPLOAD",
+  CHECKBOX = "CHECKBOX",
+}
+
+export interface DocumentRequirement {
+  id: string;
+  name:string;
+  isMandatory: boolean;
+  type: DocumentRequirementType;
+}
 
 // Represents a configurable stage within a workflow version
 export interface WorkflowStageDefinition {
@@ -28,9 +88,10 @@ export interface WorkflowStageDefinition {
   name: string;
   responsibleDepartment: Department;
   defaultTimelineDays: number;
-  requiredDocumentNames: string[];
+  documentRequirements: DocumentRequirement[];
   percentageWeight: number;
   order: number;
+  availableStatuses?: Record<Department, string[]>; // Department-specific statuses
   createdAt?: string;
   updatedAt?: string;
 }
@@ -46,13 +107,19 @@ export interface WorkflowVersion {
   updatedAt?: string;
 }
 
-// Represents a workflow template for a specific loan type
+// Represents a workflow template for a specific combination
 export interface WorkflowDefinition {
   id: string;
   name: string;
-  loanType: string;
+  departmentId: string;
+  departmentName: string;
+  sectorId: string;
+  sectorName: string;
+  parentSectorId?: string;
+  parentSectorName?: string;
   description?: string;
   versions: WorkflowVersion[];
+  order: number; // Added for ordering
   createdAt?: string;
   updatedAt?: string;
 }
@@ -67,7 +134,8 @@ export enum LoanDocumentStatus {
 
 export interface LoanDocument {
   id: string;
-  name: string;
+  name: string; // Name of the requirement
+  requirementId: string | null; // Foreign key to the DocumentRequirement
   status: LoanDocumentStatus;
   filePath?: string;
   notes?: string;
@@ -91,29 +159,39 @@ export interface LoanHistoryEntry {
 export interface LoanRequest {
   id: string;
   loanNumber: string;
-  customerNumber: string;
+  customerId: string;
   customerName: string;
   customerEmail: string;
-  customerPhone: string;
+  customerPhone?: string;
   customerBranch?: string;
   loanAmount: number;
-  loanType: string;
+  sectorId: string;
+  sectorName: string;
+  parentSectorId?: string;
+  parentSectorName?: string;
+  requestTypeId: string;
+  requestTypeName: string;
   loanPurpose: string;
 
-  workflowDefinitionId: string;
-  workflowVersionId: string;
-  currentStageId: string;
+  workflowVersionId?: string; 
+  currentStageId?: string;
+  currentStageStatus?: string; 
 
   submittedDate: string; // ISO date string
   lastUpdatedDate: string; // ISO date string
+  stageEntryDate?: string; // ISO date string
 
+  assignedDepartmentId?: string;
   assignedDepartment?: string;
-  assignedTo?: string; // User ID (Prisma User ID)
+  
+  assignedToUsers: User[]; // Now an array for multiple assignees
+  stageCompletedBy: User[]; // Users who have marked this stage as complete
 
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
 
   stageDeadline?: string; // ISO date string
+  isUrgent: boolean;
   isOverdue?: boolean;
   isReadyForManagerReview?: boolean;
 
@@ -122,4 +200,11 @@ export interface LoanRequest {
 
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ActiveWorkflow {
+  id: string; // The ID of the workflow *version*
+  name: string; // A combined name, e.g., "Standard Personal Loan (v2)"
+  sectorName: string;
+  departmentName: string;
 }

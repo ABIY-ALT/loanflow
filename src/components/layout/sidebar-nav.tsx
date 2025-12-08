@@ -16,6 +16,11 @@ import {
   ClipboardList,
   Drama,
   Users2 as UsersIcon,
+  BarChartBig,
+  Users,
+  Map,
+  FileSearch,
+  ChevronDown,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -25,6 +30,8 @@ import {
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
+import { cn } from '@/lib/utils';
+import { Button } from '../ui/button';
 
 interface NavItemConfig {
   href: string;
@@ -54,6 +61,12 @@ const navItemsConfig: NavItemConfig[] = [
     requiredPermissions: [PERMISSIONS.CREATE_LOAN_REQUEST]
   },
   {
+    href: '/customers',
+    label: 'Customers',
+    icon: Users,
+    requiredPermissions: [PERMISSIONS.VIEW_CUSTOMERS]
+  },
+  {
     href: '/my-assigned-cases',
     label: 'My Assigned Cases',
     icon: ClipboardList,
@@ -73,9 +86,21 @@ const navItemsConfig: NavItemConfig[] = [
   },
   { 
     href: '/loan-status', 
-    label: 'Loan Status Lookup', 
+    label: 'Internal Status Lookup', 
     icon: SearchCheck,
     requiredPermissions: [PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP]
+  },
+   {
+    href: '/track-loan',
+    label: 'Public Loan Tracker',
+    icon: FileSearch,
+    requiredPermissions: [] // Public page, but shown to logged-in users for convenience
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: BarChartBig,
+    requiredPermissions: [PERMISSIONS.VIEW_REPORTS]
   },
   {
     href: '/overdue-tasks',
@@ -87,12 +112,12 @@ const navItemsConfig: NavItemConfig[] = [
     href: '/settings',
     label: 'Settings',
     icon: SettingsIcon,
-    // A user needs at least one settings-related permission to see the main Settings link
     requiredPermissions: [
         PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS, 
         PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS,
+        PERMISSIONS.MANAGE_SETTINGS_BRANCHES,
         PERMISSIONS.MANAGE_SETTINGS_ROLES,
-        PERMISSIONS.MANAGE_USERS, // Added for register user link if it's inside settings
+        PERMISSIONS.MANAGE_USERS,
     ], 
     subItems: [
       {
@@ -100,6 +125,12 @@ const navItemsConfig: NavItemConfig[] = [
         label: 'Manage Departments',
         icon: Building,
         requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS]
+      },
+      {
+        href: '/settings/branches',
+        label: 'Manage Branches',
+        icon: Map,
+        requiredPermissions: [PERMISSIONS.MANAGE_SETTINGS_BRANCHES]
       },
       {
         href: '/settings/roles-management',
@@ -111,13 +142,13 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/settings/user-assignments',
         label: 'Manage User Assignments',
         icon: UsersIcon,
-        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Or a more specific one if created
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS]
       },
       {
-        href: '/settings/register-user', // Added link for user registration page
+        href: '/settings/register-user',
         label: 'Register New User',
-        icon: FilePlus2, // Reusing icon, consider a UserPlus icon if available
-        requiredPermissions: [PERMISSIONS.MANAGE_USERS] // Typically admin/user manager
+        icon: FilePlus2,
+        requiredPermissions: [PERMISSIONS.MANAGE_USERS]
       }
     ],
   },
@@ -127,10 +158,18 @@ export default function SidebarNav() {
   const [isClient, setIsClient] = useState(false);
   const currentPathname = usePathname();
   const { user, isLoading: authLoading } = useAuth();
+  const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    // Auto-open parent menu if on a sub-item page
+    const parentMenu = navItemsConfig.find(item => 
+        item.subItems?.some(sub => currentPathname.startsWith(sub.href))
+    );
+    if (parentMenu) {
+        setOpenMenus(prev => new Set(prev).add(parentMenu.href));
+    }
+  }, [currentPathname]);
 
   if (!isClient || authLoading) {
     return (
@@ -144,16 +183,23 @@ export default function SidebarNav() {
     );
   }
 
-  if (!user) {
-    return null; 
+  // Hide nav if user is not logged in and not on a public page
+  const publicPaths = ['/track-loan'];
+  const isPublicPage = publicPaths.some(p => currentPathname.startsWith(p));
+  if (!user && !isPublicPage) {
+    return null;
+  }
+  
+  if (!user && isPublicPage) {
+     return null; // Don't show sidebar on public pages for non-logged in users
   }
 
-  const userPermissions = new Set(user.permissions || []);
+
+  const userPermissions = new Set(user?.permissions || []);
 
   const canView = (itemRequiredPermissions?: AppPermission[]): boolean => {
-    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public item or no specific permission needed beyond login
-
-    // Check if user has AT LEAST ONE of the required permissions for the item
+    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public items
+    if (!user) return false; // Must be logged in for permissioned items
     return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
   
@@ -164,54 +210,69 @@ export default function SidebarNav() {
       subItems: item.subItems?.filter(sub => canView(sub.requiredPermissions))
   }));
 
+  const toggleMenu = (href: string) => {
+    setOpenMenus(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(href)) {
+            newSet.delete(href);
+        } else {
+            newSet.add(href);
+        }
+        return newSet;
+    });
+  };
 
   return (
     <SidebarMenu>
       {visibleNavItems.map((item) => {
         const Icon = item.icon;
-        
+        const hasSubItems = item.subItems && item.subItems.length > 0;
         const isActiveDirectly = currentPathname === item.href;
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
+        const isMenuOpen = openMenus.has(item.href);
 
-        // Open sub-menu if the current path starts with the main item's href,
-        // it has sub-items, and it's not the root dashboard page (which has no settings sub-menu).
-        const openSubMenu = item.subItems && item.subItems.length > 0 && 
-                            currentPathname.startsWith(item.href) && item.href !== '/';
+        const buttonContent = (
+          <SidebarMenuButton
+            isActive={mainButtonIsActive}
+            className="justify-start w-full pr-0"
+            tooltip={item.label}
+          >
+            <Link href={item.href} className="flex items-center gap-2 flex-grow" passHref>
+              <Icon className="h-5 w-5" />
+              <span>{item.label}</span>
+            </Link>
+            {hasSubItems && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 ml-auto shrink-0"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(item.href); }}
+              >
+                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-200", isMenuOpen && "rotate-180")} />
+              </Button>
+            )}
+          </SidebarMenuButton>
+        );
 
         return (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href} legacyBehavior passHref>
-              <SidebarMenuButton
-                asChild
-                isActive={mainButtonIsActive}
-                className="justify-start"
-                tooltip={item.label}
-              >
-                <a>
-                  <Icon className="h-5 w-5" />
-                  <span>{item.label}</span>
-                </a>
-              </SidebarMenuButton>
-            </Link>
-            {openSubMenu && item.subItems && item.subItems.length > 0 && (
+            {buttonContent}
+            {hasSubItems && isMenuOpen && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
-                {item.subItems.map(subItem => {
+                {item.subItems?.map(subItem => {
                   const SubIcon = subItem.icon;
-                  const subItemIsActive = currentPathname === subItem.href;
+                  const subItemIsActive = currentPathname.startsWith(subItem.href);
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
-                       <Link href={subItem.href} legacyBehavior passHref>
+                       <Link href={subItem.href} passHref>
                          <SidebarMenuButton
-                            asChild
                             isActive={subItemIsActive}
                             className="justify-start text-sm h-8"
                             tooltip={subItem.label}
                          >
-                            <a>
-                                <SubIcon className="h-4 w-4 mr-2.5" />
-                                <span>{subItem.label}</span>
-                            </a>
+                            <SubIcon className="h-4 w-4 mr-2.5" />
+                            <span>{subItem.label}</span>
                          </SidebarMenuButton>
                        </Link>
                     </SidebarMenuItem>

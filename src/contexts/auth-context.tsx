@@ -2,12 +2,11 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { User } from '@/types/loan';
 import { Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { loginUser as serverLoginUser, logoutUser as serverLogoutUser, getCurrentUser as serverGetCurrentUser, refreshAccessToken } from '@/app/auth/actions';
-import { useToast } from '@/hooks/use-toast';
+import { loginUser as serverLoginUser, logoutUser as serverLogoutUser, getCurrentUser as serverGetCurrentUser } from '@/app/auth/actions';
 
 interface AuthContextType {
   user: User | null;
@@ -18,129 +17,89 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const REFRESH_INTERVAL_MS = 13 * 60 * 1000; // 12 minutes
+const publicPaths = ['/login', '/force-password-change', '/track-loan'];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isInitialLoadingUser, setIsInitialLoadingUser] = useState(true);
-  const [isProcessingAuthAction, setIsProcessingAuthAction] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const { toast } = useToast();
-  const refreshTokenIntervalIdRef = useRef<NodeJS.Timeout | null>(null);
-
-  const clearRefreshTokenInterval = useCallback(() => {
-    if (refreshTokenIntervalIdRef.current) {
-      clearInterval(refreshTokenIntervalIdRef.current);
-      refreshTokenIntervalIdRef.current = null;
-      console.log('Refresh token interval cleared.');
-    }
-  }, []);
-
-  const logoutContext = useCallback(async (showToast = true, toastMessage?: string) => {
-    setIsProcessingAuthAction(true);
-    clearRefreshTokenInterval();
-    await serverLogoutUser();
-    setUser(null);
-    setIsProcessingAuthAction(false);
-    if (showToast) {
-      toast({
-        title: toastMessage ? 'Session Ended' : 'Signed Out',
-        description: toastMessage || 'You have been successfully signed out.',
-        variant: toastMessage ? 'destructive' : 'default',
-      });
-    }
-    // Navigation to /login is handled by the other useEffect
-  }, [clearRefreshTokenInterval, toast]);
 
   const fetchAndSetCurrentUser = useCallback(async () => {
-    setIsInitialLoadingUser(true);
+    setIsInitialLoading(true);
     try {
       const { user: currentUserData } = await serverGetCurrentUser();
       setUser(currentUserData);
-      if (!currentUserData) { // If no user, ensure interval is cleared
-        clearRefreshTokenInterval();
-      }
     } catch (error) {
       console.error("Error fetching current user:", error);
       setUser(null);
-      clearRefreshTokenInterval();
     } finally {
-      setIsInitialLoadingUser(false);
+      setIsInitialLoading(false);
     }
-  }, [clearRefreshTokenInterval]);
+  }, []);
 
   useEffect(() => {
     fetchAndSetCurrentUser();
   }, [fetchAndSetCurrentUser]);
 
   const loginContext = async (phoneNumberInput: string, passwordInput: string = ''): Promise<{ success: boolean; error?: string; user?: User }> => {
-    setIsProcessingAuthAction(true);
+    setIsProcessingAuth(true);
     const result = await serverLoginUser(phoneNumberInput, passwordInput);
     if (result.success && result.user) {
       setUser(result.user);
     } else {
       setUser(null);
-      clearRefreshTokenInterval();
     }
-    setIsProcessingAuthAction(false);
+    setIsProcessingAuth(false);
     return result;
   };
 
-  useEffect(() => {
-    if (user && !isProcessingAuthAction) {
-      const handleAutoRefreshToken = async () => {
-        console.log('Attempting automatic token refresh...');
-        try {
-          const response = await refreshAccessToken()
-          if (!response.success) {
-            await logoutContext(true, 'Your session has expired. Please log in again.');
-          }
-          console.log('Token refresh successful via API route.');
-          // New tokens are set in HttpOnly cookies by the API route.
-          // Subsequent calls to getCurrentUser (e.g., on page navigation or by fetchAndSetCurrentUser) will pick them up.
-        } catch (error: any) {
-          await logoutContext(true, 'Your session has expired. Please log in again.');
-        }
-      };
-
-      clearRefreshTokenInterval(); // Clear any existing interval
-      refreshTokenIntervalIdRef.current = setInterval(handleAutoRefreshToken, REFRESH_INTERVAL_MS);
-      console.log('Refresh token interval started.');
-
-    } else if (!user) { // If user becomes null (e.g. after logout or initial load with no session)
-      clearRefreshTokenInterval();
-    }
-
-    return () => { // Cleanup function for when the component unmounts or dependencies change
-      clearRefreshTokenInterval();
-    };
-  }, [user, isProcessingAuthAction, clearRefreshTokenInterval, logoutContext, toast]);
-
+  const logoutContext = useCallback(async () => {
+    setIsProcessingAuth(true);
+    await serverLogoutUser();
+    setUser(null);
+    router.replace('/login');
+    setIsProcessingAuth(false);
+  }, [router]);
 
   useEffect(() => {
-    if (isInitialLoadingUser || isProcessingAuthAction) {
+    if (isInitialLoading) {
       return;
     }
-    if (user && pathname === '/login') {
-      router.replace('/');
-    } else if (!user && pathname !== '/login') {
+
+    const isPublicPage = publicPaths.some(p => pathname.startsWith(p));
+    const isAuthPage = pathname === '/login' || pathname === '/force-password-change';
+    const isPasswordChangePage = pathname === '/force-password-change';
+
+    if (!user && !isPublicPage) {
       router.replace('/login');
+    } else if (user) {
+      if (!user.isPasswordChanged && !isPasswordChangePage) {
+        router.replace('/force-password-change');
+      } else if (user.isPasswordChanged && isAuthPage) {
+        router.replace('/');
+      }
     }
-  }, [user, pathname, router, isInitialLoadingUser, isProcessingAuthAction]);
+  }, [user, pathname, router, isInitialLoading]);
 
-  const isLoadingOverall = isInitialLoadingUser || isProcessingAuthAction;
+  const isLoadingOverall = isInitialLoading || isProcessingAuth;
+  const isPublicPage = publicPaths.some(p => pathname.startsWith(p));
 
-  if (isLoadingOverall && pathname !== '/login') {
-    return (
+  // While initially loading, or if we are processing a login/logout, show a full-page loader.
+  if (isLoadingOverall) {
+     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-lg text-muted-foreground">
-          {isInitialLoadingUser ? "Loading user session..." : "Processing authentication..."}
+          {isInitialLoading ? "Loading user session..." : "Processing authentication..."}
         </p>
       </div>
     );
-  } else if (!isInitialLoadingUser && !isProcessingAuthAction && !user && pathname !== '/login') {
+  }
+  
+  // If we have finished loading but there's no user, and we are not on an auth-exempt page, show a redirecting state.
+  if (!user && !isPublicPage) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -148,9 +107,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       </div>
     );
   }
+  
+  // If user must change password and is not on the correct page, redirect.
+  if (user && !user.isPasswordChanged && pathname !== '/force-password-change') {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen w-full fixed inset-0 bg-background/80 z-50">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Redirecting to password change...</p>
+        </div>
+      );
+  }
 
+  // Render children if all checks pass
   return (
-    <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: () => logoutContext(true) }}>
+    <AuthContext.Provider value={{ user, isLoading: isLoadingOverall, login: loginContext, logout: logoutContext }}>
       {children}
     </AuthContext.Provider>
   );

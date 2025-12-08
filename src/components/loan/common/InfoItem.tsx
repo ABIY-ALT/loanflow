@@ -1,19 +1,19 @@
 
 'use client';
 
-import React from 'react'; // Changed to full import
+import React from 'react';
 
 interface InfoItemProps {
-  icon: React.ReactNode;
+  icon: React.ElementType; // Changed to ElementType
   label: string;
   value: string | number | undefined;
 }
 
-export function InfoItem({ icon, label, value }: InfoItemProps) {
+export function InfoItem({ icon: Icon, label, value }: InfoItemProps) { // Destructure as Icon
   return (
     <div className="flex items-start space-x-3">
       <div className="flex-shrink-0 text-primary pt-1">
-        {React.cloneElement(icon as React.ReactElement, { className: 'h-5 w-5' })}
+        <Icon className="h-5 w-5" />
       </div>
       <div>
         <p className="text-sm font-medium text-muted-foreground">{label}</p>

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { LoanRequest, LoanHistoryEntry } from '@/types/loan';
@@ -8,16 +9,14 @@ import { HistoryEntryItem } from '@/components/loan/common/HistoryEntryItem';
 
 interface LoanHistoryTimelineProps {
   loan: LoanRequest;
-  onFulfillInfoRequest?: (entryId: string, requirementText: string) => Promise<void>; // Made optional
+  onFulfillInfoRequest?: (entryId: string, requirementText: string, isFulfilling: boolean) => Promise<void>; // Made optional
   isSavingGlobal: boolean;
-  isViewOnly: boolean; // New prop
 }
 
-export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal, isViewOnly }: LoanHistoryTimelineProps) {
-  // Find the latest history entry that has a 'requiredFulfilment' and is not yet marked as fulfilled.
-  const activeInfoRequestEntry = [...loan.history]
-    .reverse()
-    .find(entry => entry.requiredFulfilment && (!entry.notes || !entry.notes.includes("[FULFILLED MOCK]")));
+export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal }: LoanHistoryTimelineProps) {
+  // Logic to find active request is now handled inside HistoryEntryItem based on its own fulfilled status
+    
+  const isActionable = !loan.isTerminalStage;
 
   return (
     <div>
@@ -28,10 +27,8 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
             <HistoryEntryItem
               key={entry.id}
               entry={entry}
-              isActiveInfoRequest={activeInfoRequestEntry?.id === entry.id}
-              onFulfillInfoRequest={onFulfillInfoRequest} // Pass it down; button inside HistoryEntryItem will handle its presence
+              onFulfillInfoRequest={onFulfillInfoRequest && isActionable ? onFulfillInfoRequest : undefined}
               isSaving={isSavingGlobal}
-              isViewOnly={isViewOnly} // Pass down view-only status
             />
           ))}
         </div>
@@ -41,4 +38,3 @@ export function LoanHistoryTimeline({ loan, onFulfillInfoRequest, isSavingGlobal
     </div>
   );
 }
-

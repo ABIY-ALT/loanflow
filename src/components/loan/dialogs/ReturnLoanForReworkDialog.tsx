@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 import type { LoanRequest, User as UserType } from '@/types/loan';
 import { UNASSIGNED_DIALOG_OPTION_VALUE } from './EditLoanDetailsDialog';
@@ -25,7 +26,7 @@ interface ReturnLoanForReworkDialogProps {
   loan: LoanRequest | null;
   users: UserType[]; // Should be filtered by current department
   currentDepartment?: string;
-  onSubmit: (reworkNote: string, assigneeId?: string) => Promise<void>;
+  onSubmit: (reworkNote: string, assigneeIds: string[]) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -39,20 +40,29 @@ export function ReturnLoanForReworkDialog({
   isSaving,
 }: ReturnLoanForReworkDialogProps) {
   const [reworkNote, setReworkNote] = useState('');
-  const [reworkAssigneeId, setReworkAssigneeId] = useState<string>('');
+  const [reworkAssigneeIds, setReworkAssigneeIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen && loan) {
       setReworkNote('');
-      // Default to current assignee or unassigned if none
-      setReworkAssigneeId(loan.assignedTo || UNASSIGNED_DIALOG_OPTION_VALUE);
+      // Default to current assignees or empty array
+      setReworkAssigneeIds(loan.assignedToUsers.map(u => u.id));
     }
   }, [isOpen, loan]);
+  
+  const handleCheckboxChange = (userId: string, checked: boolean) => {
+    setReworkAssigneeIds(prev => {
+        if (checked) {
+            return [...prev, userId];
+        } else {
+            return prev.filter(id => id !== userId);
+        }
+    });
+  };
 
   const handleConfirm = async () => {
     if (!loan) return;
-    const finalAssigneeId = reworkAssigneeId === UNASSIGNED_DIALOG_OPTION_VALUE ? undefined : reworkAssigneeId;
-    await onSubmit(reworkNote, finalAssigneeId);
+    await onSubmit(reworkNote, reworkAssigneeIds);
   };
 
   if (!loan) return null;
@@ -60,13 +70,13 @@ export function ReturnLoanForReworkDialog({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
         onOpenChange(open);
-        if(!open) { setReworkNote(''); setReworkAssigneeId(''); }
+        if(!open) { setReworkNote(''); setReworkAssigneeIds([]); }
     }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Return Loan for Rework: {loan.customerName}</DialogTitle>
           <DialogDescription>
-            Explain why this case is being returned to staff for further work. Department: {currentDepartment || 'N/A'}.
+            Explain why this case is being returned to staff for further work. Department: {currentDepartment || 'N/A'}. This will reset any "stage complete" sign-offs.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -83,24 +93,23 @@ export function ReturnLoanForReworkDialog({
             />
           </div>
           <div>
-            <Label htmlFor="rework-assignee-dialog">Re-assign Rework To (within {currentDepartment || 'current'} Dept)</Label>
-            <Select
-              value={reworkAssigneeId}
-              onValueChange={setReworkAssigneeId}
-              disabled={isSaving}
-            >
-              <SelectTrigger id="rework-assignee-dialog" className="mt-1">
-                <SelectValue placeholder="Select staff for rework" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={UNASSIGNED_DIALOG_OPTION_VALUE}>Unassigned to Staff</SelectItem>
-                {users.map(user => ( 
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''}
-                  </SelectItem>
+            <Label>Re-assign Rework To (within {currentDepartment || 'current'} Dept)</Label>
+             <div className="space-y-2 p-3 border rounded-md max-h-48 overflow-y-auto mt-1">
+                {users.map(user => (
+                    <div key={user.id} className="flex items-center space-x-2">
+                        <Checkbox
+                            id={`rework-assignee-${user.id}`}
+                            checked={reworkAssigneeIds.includes(user.id)}
+                            onCheckedChange={(checked) => handleCheckboxChange(user.id, !!checked)}
+                            disabled={isSaving}
+                        />
+                        <Label htmlFor={`rework-assignee-${user.id}`} className="text-sm font-normal">
+                            {user.fullName} {user.customRoleName ? `(${user.customRoleName})` : ''}
+                        </Label>
+                    </div>
                 ))}
-              </SelectContent>
-            </Select>
+                 {users.length === 0 && <p className="text-sm text-muted-foreground text-center">No staff found for this department.</p>}
+            </div>
           </div>
         </div>
         <DialogFooter>
@@ -121,4 +130,3 @@ export function ReturnLoanForReworkDialog({
     </Dialog>
   );
 }
-

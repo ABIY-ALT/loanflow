@@ -16,23 +16,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { uploadDocumentAction } from '@/app/loan-requests/[id]/actions'; // Assuming loanId is available or passed
+import { uploadDocumentAction } from '@/app/loan-requests/[id]/actions';
+import type { DocumentRequirement } from '@/types/loan';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface UploadLoanDocumentDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  loanId: string; // Need loanId for the upload action path
-  conceptualDocumentName: string | null; // e.g., "Passport", "ID Card"
-  // This onSubmit is called by the PARENT page after this dialog successfully uploads the file via server action
-  onSubmitAfterUpload: (conceptualDocName: string, uploadedFilePath: string, originalFileName: string) => Promise<void>;
-  isParentSaving: boolean; // To disable if the parent page is saving the overall loan
+  loanId: string;
+  documentRequirement: DocumentRequirement | null;
+  onSubmitAfterUpload: (requirement: DocumentRequirement, uploadedFilePath: string, originalFileName: string) => Promise<void>;
+  isParentSaving: boolean;
 }
 
 export function UploadLoanDocumentDialog({
   isOpen,
   onOpenChange,
   loanId,
-  conceptualDocumentName,
+  documentRequirement,
   onSubmitAfterUpload,
   isParentSaving,
 }: UploadLoanDocumentDialogProps) {
@@ -42,7 +44,19 @@ export function UploadLoanDocumentDialog({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      setSelectedFile(event.target.files[0]);
+      const file = event.target.files[0];
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "File Too Large",
+          description: `The selected file exceeds the 5MB size limit. Please choose a smaller file.`,
+          variant: "destructive",
+          duration: 7000,
+        });
+        event.target.value = ''; // Reset file input
+        setSelectedFile(null);
+      } else {
+        setSelectedFile(file);
+      }
     } else {
       setSelectedFile(null);
     }
@@ -50,8 +64,8 @@ export function UploadLoanDocumentDialog({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!selectedFile || !conceptualDocumentName) {
-      toast({ title: "No File", description: "Please select a file to upload.", variant: "destructive" });
+    if (!selectedFile || !documentRequirement) {
+      toast({ title: "No File or Requirement", description: "Please select a file and ensure a requirement is set.", variant: "destructive" });
       return;
     }
     if (!loanId) {
@@ -64,16 +78,15 @@ export function UploadLoanDocumentDialog({
     formData.append('file', selectedFile);
 
     try {
-      const result = await uploadDocumentAction(loanId, conceptualDocumentName, formData);
+      const result = await uploadDocumentAction(loanId, documentRequirement.name, formData);
 
       if (result.success && result.filePath && result.originalFileName) {
         toast({ title: "File Uploaded to Server", description: `${result.originalFileName} saved. Now updating loan record.` });
-        // Now call the parent's onSubmit to update the database record
-        await onSubmitAfterUpload(conceptualDocumentName, result.filePath, result.originalFileName);
-        onOpenChange(false); // Close dialog on successful DB update (handled by parent)
-        setSelectedFile(null); // Reset file input
+        await onSubmitAfterUpload(documentRequirement, result.filePath, result.originalFileName);
+        onOpenChange(false);
+        setSelectedFile(null);
       } else {
-        toast({ title: "Upload Failed", description: result.error || "Could not upload file to server.", variant: "destructive" });
+        toast({ title: "Upload Failed", description: result.error || "Could not upload file to server.", variant: "destructive", duration: 7000 });
       }
     } catch (error: any) {
       toast({ title: "Upload Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
@@ -87,10 +100,10 @@ export function UploadLoanDocumentDialog({
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Upload Document: {conceptualDocumentName || "General Upload"}</DialogTitle>
+            <DialogTitle>Upload Document: {documentRequirement?.name || "General Upload"}</DialogTitle>
             <DialogDescription>
-              {conceptualDocumentName ? `Select the file for "${conceptualDocumentName}".` : "Select a file to upload."}
-              The file will be saved to the server.
+              {documentRequirement ? `Select the file for "${documentRequirement.name}".` : "Select a file to upload."}
+              The maximum file size is 5MB.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -103,13 +116,13 @@ export function UploadLoanDocumentDialog({
               disabled={isUploading || isParentSaving}
               required
             />
-            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
+            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name} ({(selectedFile.size / (1024*1024)).toFixed(2)} MB)</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={isUploading || isParentSaving}>Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={isUploading || isParentSaving || !selectedFile || !conceptualDocumentName}>
+            <Button type="submit" disabled={isUploading || isParentSaving || !selectedFile || !documentRequirement}>
               {(isUploading || isParentSaving) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Upload & Save
             </Button>

@@ -1,7 +1,8 @@
 
+
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,8 @@ import type { LoanRequest } from '@/types/loan';
 import { subDays, parseISO, isAfter } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
 
 interface DashboardStats {
   activeLoansCount: number;
@@ -27,12 +30,21 @@ const defaultStats: DashboardStats = {
   overdueTasksCount: 0,
 };
 
+
 export default function DashboardPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null); // Initialize to null to show loading
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
+  const canViewDashboard = useMemo(() => user?.permissions.includes(PERMISSIONS.VIEW_DASHBOARD), [user]);
+
   useEffect(() => {
+    if (authLoading || !canViewDashboard) {
+      if(!authLoading && !canViewDashboard) setIsLoading(false);
+      return;
+    }
+
     async function fetchDashboardData() {
       setIsLoading(true);
       setError(null);
@@ -46,7 +58,7 @@ export default function DashboardPage() {
         } else if (result.loans) {
           const loans = result.loans;
           
-          const activeLoans = loans.filter(loan => !loan.isTerminalStage).length;
+          const activeLoans = loans.filter(loan => !loan.isTerminalStage);
 
           const sevenDaysAgo = subDays(new Date(), 7);
           const newApplications = loans.filter(
@@ -56,10 +68,22 @@ export default function DashboardPage() {
           
           const overdueTasks = loans.filter(loan => loan.isOverdue).length;
 
+          const terminalLoans = loans.filter(loan => loan.isTerminalStage);
+          const approvedLoansCount = terminalLoans.filter(loan => 
+            loan.currentStageName?.toLowerCase().includes('funded') || loan.currentStageName?.toLowerCase().includes('approved')
+          ).length;
+          const rejectedLoansCount = terminalLoans.filter(loan => 
+            loan.currentStageName?.toLowerCase().includes('rejected') || loan.currentStageName?.toLowerCase().includes('terminated')
+          ).length;
+
+          const totalCompleted = approvedLoansCount + rejectedLoansCount;
+          const approvalRateValue = totalCompleted > 0 ? (approvedLoansCount / totalCompleted) * 100 : 0;
+          const approvalRateString = totalCompleted > 0 ? `${approvalRateValue.toFixed(1)}%` : "N/A";
+
           setStats({
-            activeLoansCount: activeLoans,
+            activeLoansCount: activeLoans.length,
             newApplicationsCount: newApplications,
-            approvalRate: "78.5%", // Placeholder, calculate if possible
+            approvalRate: approvalRateString,
             overdueTasksCount: overdueTasks,
           });
         } else {
@@ -76,7 +100,7 @@ export default function DashboardPage() {
       }
     }
     fetchDashboardData();
-  }, []);
+  }, [authLoading, canViewDashboard]);
 
 
   const StatCard = ({ title, value, icon: Icon, description, link, isErrorSource }: { title: string, value: string | number, icon: React.ElementType, description?: string, link?: string, isErrorSource?: boolean }) => {
@@ -108,6 +132,25 @@ export default function DashboardPage() {
     }
     return content;
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  if (!canViewDashboard) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the dashboard.</p>
+        </div>
+    );
+  }
 
 
   if (error && !stats && isLoading) { 
@@ -207,7 +250,7 @@ export default function DashboardPage() {
           title="Approval Rate"
           value={isLoading ? "-" : (stats?.approvalRate ?? "N/A")}
           icon={TrendingUp}
-          description={isLoading ? "Loading..." : "vs last month (placeholder)"}
+          description={isLoading ? "Loading..." : "Based on all completed loans"}
         />
         <StatCard
           title="Overdue Tasks"

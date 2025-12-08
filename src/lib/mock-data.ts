@@ -1,5 +1,9 @@
 
-import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department } from '@/types/loan';
+
+import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement } from '@/types/loan';
+import { DocumentRequirementType } from '@/types/loan';
+import { randomUUID } from "crypto";
+
 // UserRole enum is removed from types/loan.ts, so it should not be imported or used here.
 // We will assign custom role names directly in the mock user data if needed.
 
@@ -16,305 +20,810 @@ interface MockAppUser {
   phoneNumber?: string;
   department?: Department;
   customRoleName?: string; // Assign custom role by name
-  password?: string; // For identity server mock, not stored in Prisma User directly
 }
 
 
 export const mockUsers: MockAppUser[] = [
-  { id: 'user-jane-doe', userId: 'identity-jane-doe', name: 'Jane Doe', email: 'jane@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
-  { id: 'user-john-smith', userId: 'identity-john-smith', name: 'John Smith', email: 'john@example.com', customRoleName: "Loan Officer", department: "Origination", password: 'password' },
-  { id: 'user-manager-mike', userId: 'identity-manager-mike', name: 'Mike Manager (Origination)', email: 'mike.manager@example.com', customRoleName: "Administrator", department: "Origination", password: 'password' }, // Example admin
-  { id: 'user-admin-alice', userId: 'identity-admin-alice', name: 'Alice Admin', email: 'alice.admin@example.com', customRoleName: "Administrator", password: 'password' },
-  { id: 'user-underwriter-bob', userId: 'identity-underwriter-bob', name: 'Bob Underwriter', email: 'bob.uw@example.com', customRoleName: "Loan Officer", department: "Underwriting", password: 'password' }, // Example role
-  { id: 'user-uw-manager-sara', userId: 'identity-uw-manager-sara', name: 'Sara UW Manager (Underwriting)', email: 'sara.uwmanager@example.com', customRoleName: "Administrator", department: "Underwriting", password: 'password' },
-  { id: 'user-staff-carol', userId: 'identity-staff-carol', name: 'Carol Staff (Closing)', email: 'carol.staff@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
-  { id: 'user-closing-manager-dave', userId: 'identity-closing-manager-dave', name: 'Dave Closing Mgr (Closing)', email: 'dave.clmanager@example.com', customRoleName: "Loan Officer", department: "Closing", password: 'password' },
-  { id: 'user-credit-analyst', userId: 'identity-credit-analyst', name: 'Chris Analyst', email: 'chris.ca@example.com', customRoleName: "Loan Officer", department: "Credit Analysis", password: 'password' },
-  { id: 'user-victor-viewer', userId: 'identity-victor-viewer', name: 'Victor Viewer', email: 'victor@example.com', customRoleName: "Viewer", password: 'password' },
-  {
-    id: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Prisma User ID
-    userId: '97ae8737-0d58-48c6-9014-d76184ed67ac', // Identity Server User ID (using same for consistency)
-    name: 'Getaye Temesgen',
-    email: 'tgech71@gmail.com',
-    firstName: 'Getaye',
-    lastName: 'Temesgen',
-    phoneNumber: '0912345678',
-    customRoleName: "Administrator", // This role should grant all permissions
-    department: undefined, // Or assign a default department if needed
-    password: 'password' // Default password for mock identity server
-  },
-  // System user for Prisma seeding (already handled in seed.ts)
-  // { id: 'system-prisma', name: 'System Process', email: 'system@loanflow.app', customRoleName: "Administrator", password: 'systempassword' },
+
+{
+  id: '00000001-aaaa-4b0b-a81f-000000000001',
+  userId: '11111111-bbbb-49f0-b7c2-000000000001',
+  name: 'Mihretu Mengistu',
+  email: 'mihretu.mengistu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Mihretu',
+  lastName: 'Mengistu',
+  phoneNumber: '0962992535'
+},
+{
+  id: '00000002-aaaa-4b0b-a81f-000000000002',
+  userId: '11111112-bbbb-49f0-b7c2-000000000002',
+  name: 'Abinet Wondimu',
+  email: 'abinet.wondimu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abinet',
+  lastName: 'Wondimu',
+  phoneNumber: '0938027756'
+},
+{
+  id: '00000003-aaaa-4b0b-a81f-000000000003',
+  userId: '11111113-bbbb-49f0-b7c2-000000000003',
+  name: 'Zelalem Ashenafi',
+  email: 'zelalem.ashenafi@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Zelalem',
+  lastName: 'Ashenafi',
+  phoneNumber: '0913046524'
+},
+{
+  id: '00000004-aaaa-4b0b-a81f-000000000004',
+  userId: '11111114-bbbb-49f0-b7c2-000000000004',
+  name: 'Belsti Abatihun',
+  email: 'belsti.abatihun@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Belsti',
+  lastName: 'Abatihun',
+  phoneNumber: '0913731763'
+},
+{
+  id: '00000005-aaaa-4b0b-a81f-000000000005',
+  userId: '11111115-bbbb-49f0-b7c2-000000000005',
+  name: 'Endalemaw Mekuanint',
+  email: 'endalemaw.mekuanint@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Endalemaw',
+  lastName: 'Mekuanint',
+  phoneNumber: '0913832999'
+},
+{
+  id: '00000006-aaaa-4b0b-a81f-000000000006',
+  userId: '11111116-bbbb-49f0-b7c2-000000000006',
+  name: 'Fikadu Zerga Lassa',
+  email: 'firew.zerfo@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Fikadu',
+  lastName: 'Zerga',
+  phoneNumber: '0930800098'
+},
+{
+  id: '00000007-aaaa-4b0b-a81f-000000000007',
+  userId: '11111117-bbbb-49f0-b7c2-000000000007',
+  name: 'Mekonnen Ephrem',
+  email: 'mekonnen.ephrem@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Mekonnen',
+  lastName: 'Ephrem',
+  phoneNumber: '0911939422'
+},
+{
+  id: '00000008-aaaa-4b0b-a81f-000000000008',
+  userId: '11111118-bbbb-49f0-b7c2-000000000008',
+  name: 'Kirubel Solomon',
+  email: 'kirubel.solomon@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Kirubel',
+  lastName: 'Solomon',
+  phoneNumber: '0913593997'
+},
+{
+  id: '00000009-aaaa-4b0b-a81f-000000000009',
+  userId: '11111119-bbbb-49f0-b7c2-000000000009',
+  name: 'Matewos Legesse',
+  email: 'matewos.legesse@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Matewos',
+  lastName: 'Legesse',
+  phoneNumber: '0913561298'
+},
+{
+  id: '00000010-aaaa-4b0b-a81f-000000000010',
+  userId: '1111111a-bbbb-49f0-b7c2-000000000010',
+  name: 'Ephrem Tadesse',
+  email: 'ephrem.tadesse@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Ephrem',
+  lastName: 'Tadesse',
+  phoneNumber: '0911428127'
+},
+{
+  id: '00000011-aaaa-4b0b-a81f-000000000011',
+  userId: '1111111b-bbbb-49f0-b7c2-000000000011',
+  name: 'H/Michael Getachew',
+  email: 'hmichael.getachew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'H/Michael',
+  lastName: 'Getachew',
+  phoneNumber: '0913752501'
+},
+{
+  id: '00000012-aaaa-4b0b-a81f-000000000012',
+  userId: '1111111c-bbbb-49f0-b7c2-000000000012',
+  name: 'Belchew Meda',
+  email: 'belchew.meda@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Belchew',
+  lastName: 'Meda',
+  phoneNumber: '0911661927'
+},
+{
+  id: '00000013-aaaa-4b0b-a81f-000000000013',
+  userId: '1111111d-bbbb-49f0-b7c2-000000000013',
+  name: 'Endahsaw Bekele',
+  email: 'endahsaw.bekele@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Endahsaw',
+  lastName: 'Bekele',
+  phoneNumber: '0910324818'
+},
+{
+  id: '00000014-aaaa-4b0b-a81f-000000000014',
+  userId: '1111111e-bbbb-49f0-b7c2-000000000014',
+  name: 'Abiy Fisseha',
+  email: 'abiy.fisseha@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abiy',
+  lastName: 'Fisseha',
+  phoneNumber: '0911618268'
+},
+{
+  id: '00000015-aaaa-4b0b-a81f-000000000015',
+  userId: '1111111f-bbbb-49f0-b7c2-000000000015',
+  name: 'Getachew Argaw',
+  email: 'getachew.argaw@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Getachew',
+  lastName: 'Argaw',
+  phoneNumber: '0911035604'
+},
+
+{
+  id: '00000016-aaaa-4b0b-a81f-000000000016',
+  userId: '11111120-bbbb-49f0-b7c2-000000000016',
+  name: 'Abel Atlabachew',
+  email: 'abel.atlabachew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abel',
+  lastName: 'Atlabachew',
+  phoneNumber: '0911622817'
+},
+{
+  id: '00000017-aaaa-4b0b-a81f-000000000017',
+  userId: '11111121-bbbb-49f0-b7c2-000000000017',
+  name: 'Surafel Aregahagn',
+  email: 'surafel.aregahagn@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Surafel',
+  lastName: 'Aregahagn',
+  phoneNumber: '0911619652'
+},
+{
+  id: '00000018-aaaa-4b0b-a81f-000000000018',
+  userId: '11111122-bbbb-49f0-b7c2-000000000018',
+  name: 'Biruk G/Meskel',
+  email: 'biruk.g/meskel@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Biruk',
+  lastName: 'G/Meskel',
+  phoneNumber: '0913050796'
+},
+{
+  id: '00000019-aaaa-4b0b-a81f-000000000019',
+  userId: '11111123-bbbb-49f0-b7c2-000000000019',
+  name: 'Fekadu Biyadgilgn',
+  email: 'fekadu.biyadgilgn@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Fekadu',
+  lastName: 'Biyadgilgn',
+  phoneNumber: '0911930349'
+},
+{
+  id: '00000020-aaaa-4b0b-a81f-000000000020',
+  userId: '11111124-bbbb-49f0-b7c2-000000000020',
+  name: 'Zegeye Walle',
+  email: 'zegeye.walle@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Zegeye',
+  lastName: 'Walle',
+  phoneNumber: '0911434360'
+},
+{
+  id: '00000021-aaaa-4b0b-a81f-000000000021',
+  userId: '11111125-bbbb-49f0-b7c2-000000000021',
+  name: 'Elias Eshetu',
+  email: 'elias.eshetu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Elias',
+  lastName: 'Eshetu',
+  phoneNumber: '0910088978'
+},
+
+{
+  id: '00000022-aaaa-4b0b-a81f-000000000022',
+  userId: '11111126-bbbb-49f0-b7c2-000000000022',
+  name: 'Abraham Beyene',
+  email: 'abraham.beyene@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abraham',
+  lastName: 'Beyene',
+  phoneNumber: '0913835523'
+},
+{
+  id: '00000023-aaaa-4b0b-a81f-000000000023',
+  userId: '11111127-bbbb-49f0-b7c2-000000000023',
+  name: 'Amsalu Dagnew Amenu',
+  email: 'amsalu.dagnew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Amsalu',
+  lastName: 'Dagnew',
+  phoneNumber: '0910055853'
+},
+{
+  id: '00000024-aaaa-4b0b-a81f-000000000024',
+  userId: '11111128-bbbb-49f0-b7c2-000000000024',
+  name: 'Getahun Assefa Alemu',
+  email: 'getahun.assefa@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Getahun',
+  lastName: 'Alemu',
+  phoneNumber: '0916121119'
+},
+{
+  id: '00000025-aaaa-4b0b-a81f-000000000025',
+  userId: '11111129-bbbb-49f0-b7c2-000000000025',
+  name: 'Yalew Genana Gulema',
+  email: 'yalew.genana@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yalew',
+  lastName: 'Gulema',
+  phoneNumber: '0913876990'
+},
+
+{
+  id: '00000026-aaaa-4b0b-a81f-000000000026',
+  userId: '1111112a-bbbb-49f0-b7c2-000000000026',
+  name: 'Fasil Baraki',
+  email: 'fasil.baraki@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Fasil',
+  lastName: 'Baraki',
+  phoneNumber: '0912096087'
+},
+{
+  id: '00000027-aaaa-4b0b-a81f-000000000027',
+  userId: '1111112b-bbbb-49f0-b7c2-000000000027',
+  name: 'Helen Mamo Ayele',
+  email: 'helen.mamo@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Helen',
+  lastName: 'Ayele',
+  phoneNumber: '0926792997'
+},
+{
+  id: '00000028-aaaa-4b0b-a81f-000000000028',
+  userId: '1111112c-bbbb-49f0-b7c2-000000000028',
+  name: 'Yonas Ejersa',
+  email: 'yonas.ejersa@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yonas',
+  lastName: 'Ejersa',
+  phoneNumber: '0913938919'
+},
+{
+  id: '00000029-aaaa-4b0b-a81f-000000000029',
+  userId: '1111112d-bbbb-49f0-b7c2-000000000029',
+  name: 'Menbere Mengist Alehegn',
+  email: 'menbere.mengist@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Menbere',
+  lastName: 'Alehegn',
+  phoneNumber: '0922868694'
+},
+{
+  id: '00000030-aaaa-4b0b-a81f-000000000030',
+  userId: '1111112e-bbbb-49f0-b7c2-000000000030',
+  name: 'Hana Mulugeta Fekadu',
+  email: 'hana.mulugeta@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hana',
+  lastName: 'Fekadu',
+  phoneNumber: '0946661246'
+},
+{
+  id: '00000031-aaaa-4b0b-a81f-000000000031',
+  userId: '1111112f-bbbb-49f0-b7c2-000000000031',
+  name: 'Tamiru Demis Trbis',
+  email: 'tamiru.demis@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Tamiru',
+  lastName: 'Trbis',
+  phoneNumber: '0905060617'
+},
+{
+  id: '00000032-aaaa-4b0b-a81f-000000000032',
+  userId: '11111130-bbbb-49f0-b7c2-000000000032',
+  name: 'Andinet Yifru Mengistu',
+  email: 'andinet.yifru@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Andinet',
+  lastName: 'Mengistu',
+  phoneNumber: '0911897579'
+},
+{
+  id: '00000033-aaaa-4b0b-a81f-000000000033',
+  userId: '11111131-bbbb-49f0-b7c2-000000000033',
+  name: 'Birtukan Kuliche',
+  email: 'birtukan.kuliche@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Birtukan',
+  lastName: 'Kuliche',
+  phoneNumber: '0911026688'
+},
+{
+  id: '00000034-aaaa-4b0b-a81f-000000000034',
+  userId: '11111132-bbbb-49f0-b7c2-000000000034',
+  name: 'Tariku Dagnew Zeleke',
+  email: 'tariku.dagnew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Tariku',
+  lastName: 'Zeleke',
+  phoneNumber: '0929403387'
+},
+{
+  id: '00000035-aaaa-4b0b-a81f-000000000035',
+  userId: '11111133-bbbb-49f0-b7c2-000000000035',
+  name: 'Zinash Tadesse',
+  email: 'zinash.tadesse@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Zinash',
+  lastName: 'Tadesse',
+  phoneNumber: '0912040540'
+},
+{
+  id: '00000036-aaaa-4b0b-a81f-000000000036',
+  userId: '11111134-bbbb-49f0-b7c2-000000000036',
+  name: 'Estalu Mengist Tesema',
+  email: 'estalu.mengist@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Estalu',
+  lastName: 'Tesema',
+  phoneNumber: '0946792489'
+},
+{
+  id: '00000037-aaaa-4b0b-a81f-000000000037',
+  userId: '11111135-bbbb-49f0-b7c2-000000000037',
+  name: 'Yoseph Alemu Haile',
+  email: 'yoseph.alemu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yoseph',
+  lastName: 'Haile',
+  phoneNumber: '0911115733'
+},
+
+{
+  id: '00000038-aaaa-4b0b-a81f-000000000038',
+  userId: '11111136-bbbb-49f0-b7c2-000000000038',
+  name: 'Temesgen Teklay Berhe',
+  email: 'temesgen.teklay@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Temesgen',
+  lastName: 'Berhe',
+  phoneNumber: '0911568475'
+},
+{
+  id: '00000039-aaaa-4b0b-a81f-000000000039',
+  userId: '11111137-bbbb-49f0-b7c2-000000000039',
+  name: 'Daniel Dagne Tadesse',
+  email: 'daniel.dagne@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Daniel',
+  lastName: 'Tadesse',
+  phoneNumber: '0966930921'
+},
+{
+  id: '00000040-aaaa-4b0b-a81f-000000000040',
+  userId: '11111138-bbbb-49f0-b7c2-000000000040',
+  name: 'Mulualem Feleke Ayele',
+  email: 'mulualem.feleke@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Mulualem',
+  lastName: 'Ayele',
+  phoneNumber: '0911752034'
+},
+{
+  id: '00000041-aaaa-4b0b-a81f-000000000041',
+  userId: '11111139-bbbb-49f0-b7c2-000000000041',
+  name: 'Abenezer Abraham Tadesse',
+  email: 'abenezer.abraham@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abenezer',
+  lastName: 'Tadesse',
+  phoneNumber: '0911698289'
+},
+{
+  id: '00000042-aaaa-4b0b-a81f-000000000042',
+  userId: '1111113a-bbbb-49f0-b7c2-000000000042',
+  name: 'Belaynew Berhanu Tesfaye',
+  email: 'belaynew.berhanu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Belaynew',
+  lastName: 'Tesfaye',
+  phoneNumber: '0932293297'
+},
+{
+  id: '00000043-aaaa-4b0b-a81f-000000000043',
+  userId: '1111113b-bbbb-49f0-b7c2-000000000043',
+  name: 'Berhanu Alemayehu Gudeta',
+  email: 'birhanu.alemayehu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Berhanu',
+  lastName: 'Gudeta',
+  phoneNumber: '0911460915'
+},
+{
+  id: '00000044-aaaa-4b0b-a81f-000000000044',
+  userId: '1111113c-bbbb-49f0-b7c2-000000000044',
+  name: 'Sintayehu Zewude Assefa',
+  email: 'sintayehu.zewude@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Sintayehu',
+  lastName: 'Assefa',
+  phoneNumber: '0922867676'
+},
+{
+  id: '00000045-aaaa-4b0b-a81f-000000000045',
+  userId: '1111113d-bbbb-49f0-b7c2-000000000045',
+  name: 'Simachew Bizuayehu Assefa',
+  email: 'simachew.bizuayehu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Simachew',
+  lastName: 'Assefa',
+  phoneNumber: '0912049144'
+},
+{
+  id: '00000046-aaaa-4b0b-a81f-000000000046',
+  userId: '1111113e-bbbb-49f0-b7c2-000000000046',
+  name: 'Dawit Zenebe W/Semayat',
+  email: 'dawit.zenebe@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Dawit',
+  lastName: 'Zenebe',
+  phoneNumber: '0924699536'
+},
+{
+  id: '00000047-aaaa-4b0b-a81f-000000000047',
+  userId: '1111113f-bbbb-49f0-b7c2-000000000047',
+  name: 'Wondwossen Enko',
+  email: 'wondwossen.enko@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Wondwossen',
+  lastName: 'Enko',
+  phoneNumber: '0922577300'
+},
+{
+  id: '00000048-aaaa-4b0b-a81f-000000000048',
+  userId: '11111140-bbbb-49f0-b7c2-000000000048',
+  name: 'Natnael Bereded',
+  email: 'natnael.bereded@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Natnael',
+  lastName: 'Bereded',
+  phoneNumber: '0911658056'
+},
+{
+  id: '00000049-aaaa-4b0b-a81f-000000000049',
+  userId: '11111141-bbbb-49f0-b7c2-000000000049',
+  name: 'Daniel Andualem',
+  email: 'daniel.andualem@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Daniel',
+  lastName: 'Andualem',
+  phoneNumber: '0911156151'
+},
+{
+  id: '00000050-aaaa-4b0b-a81f-000000000050',
+  userId: '11111142-bbbb-49f0-b7c2-000000000050',
+  name: 'Yidnekachew Awraris',
+  email: 'yidnekachew.awraris@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yidnekachew',
+  lastName: 'Awraris',
+  phoneNumber: '0913001100'
+},
+{
+  id: '00000051-aaaa-4b0b-a81f-000000000051',
+  userId: '11111143-bbbb-49f0-b7c2-000000000051',
+  name: 'Michael Abate',
+  email: 'michael.abate@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Michael',
+  lastName: 'Abate',
+  phoneNumber: '0913597100'
+},
+{
+  id: '00000052-aaaa-4b0b-a81f-000000000052',
+  userId: '11111144-bbbb-49f0-b7c2-000000000052',
+  name: 'Frezer Endalkachew',
+  email: 'frezer.endalkachew@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Frezer',
+  lastName: 'Endalkachew',
+  phoneNumber: '0911079216'
+},
+{
+  id: '00000053-aaaa-4b0b-a81f-000000000053',
+  userId: '11111145-bbbb-49f0-b7c2-000000000053',
+  name: 'Hanna Hinsene',
+  email: 'hanna.hinsene@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hanna',
+  lastName: 'Hinsene',
+  phoneNumber: '0923434306'
+},
+{
+  id: '00000054-aaaa-4b0b-a81f-000000000054',
+  userId: '11111146-bbbb-49f0-b7c2-000000000054',
+  name: 'Kalkidan Sesay',
+  email: 'kalkidan.sesay@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Kalkidan',
+  lastName: 'Sesay',
+  phoneNumber: '0912419445'
+},
+{
+  id: '00000055-aaaa-4b0b-a81f-000000000055',
+  userId: '11111147-bbbb-49f0-b7c2-000000000055',
+  name: 'Selamawit Tamirat',
+  email: 'selamawit.tamirat@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Selamawit',
+  lastName: 'Tamirat',
+  phoneNumber: '0912830335'
+},
+{
+  id: '00000056-aaaa-4b0b-a81f-000000000056',
+  userId: '11111148-bbbb-49f0-b7c2-000000000056',
+  name: 'Elim Tesfaye',
+  email: 'elim.tesfaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Elim',
+  lastName: 'Tesfaye',
+  phoneNumber: '0929091153'
+},
+{
+  id: '00000057-aaaa-4b0b-a81f-000000000057',
+  userId: '11111149-bbbb-49f0-b7c2-000000000057',
+  name: 'Yonas Dereje',
+  email: 'yonas.dereje@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yonas',
+  lastName: 'Dereje',
+  phoneNumber: '0910321545'
+},
+{
+  id: '00000058-aaaa-4b0b-a81f-000000000058',
+  userId: '1111114a-bbbb-49f0-b7c2-000000000058',
+  name: 'Yoseph Wondimu',
+  email: 'yoseph.wondimu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Yoseph',
+  lastName: 'Wondimu',
+  phoneNumber: '0922945657'
+},
+{
+  id: '00000059-aaaa-4b0b-a81f-000000000059',
+  userId: '1111114b-bbbb-49f0-b7c2-000000000059',
+  name: 'Eleni Belay',
+  email: 'eleni.belay@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Eleni',
+  lastName: 'Belay',
+  phoneNumber: '0948216838'
+},
+{
+  id: '00000060-aaaa-4b0b-a81f-000000000060',
+  userId: '1111114c-bbbb-49f0-b7c2-000000000060',
+  name: 'Meron Argaw',
+  email: 'meron.argaw@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Meron',
+  lastName: 'Argaw',
+  phoneNumber: '0921081371'
+},
+{
+  id: '00000061-aaaa-4b0b-a81f-000000000061',
+  userId: '1111114d-bbbb-49f0-b7c2-000000000061',
+  name: 'Meron Fantu',
+  email: 'meron.fantu@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Meron',
+  lastName: 'Fantu',
+  phoneNumber: '0975690773'
+},
+{
+  id: '00000062-aaaa-4b0b-a81f-000000000062',
+  userId: '1111114e-bbbb-49f0-b7c2-000000000062',
+  name: 'Eyuel Moges',
+  email: 'eyuel.moges@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Eyuel',
+  lastName: 'Moges',
+  phoneNumber: '0922586666'
+},
+{
+  id: '00000063-aaaa-4b0b-a81f-000000000063',
+  userId: '1111114f-bbbb-49f0-b7c2-000000000063',
+  name: 'Tsigab Kube',
+  email: 'tsigab.kube@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Tsigab',
+  lastName: 'Kube',
+  phoneNumber: '0904185695'
+},
+{
+  id: '00000064-aaaa-4b0b-a81f-000000000064',
+  userId: '11111150-bbbb-49f0-b7c2-000000000064',
+  name: 'Alazar Eliyas',
+  email: 'alazar.eliyas@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Alazar',
+  lastName: 'Eliyas',
+  phoneNumber: '0920893000'
+},
+{
+  id: '00000065-aaaa-4b0b-a81f-000000000065',
+  userId: '11111151-bbbb-49f0-b7c2-000000000065',
+  name: 'Bezawit Desalegn',
+  email: 'bezawit.desalegn@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Bezawit',
+  lastName: 'Desalegn',
+  phoneNumber: '0977442751'
+},
+{
+  id: '00000066-aaaa-4b0b-a81f-000000000066',
+  userId: '11111152-bbbb-49f0-b7c2-000000000066',
+  name: 'Hailemariam Sewale',
+  email: 'hailemariam.sewale@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hailemariam',
+  lastName: 'Sewale',
+  phoneNumber: '0927686103'
+},
+{
+  id: '00000067-aaaa-4b0b-a81f-000000000067',
+  userId: '11111153-bbbb-49f0-b7c2-000000000067',
+  name: 'Natnael Tesfaye',
+  email: 'natnael.tesfaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Natnael',
+  lastName: 'Tesfaye',
+  phoneNumber: '0910133800'
+},
+{
+  id: '00000068-aaaa-4b0b-a81f-000000000068',
+  userId: '11111154-bbbb-49f0-b7c2-000000000068',
+  name: 'Abinet Getahun',
+  email: 'abinet.getahun@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abinet',
+  lastName: 'Getahun',
+  phoneNumber: '0910979074'
+},
+{
+  id: '00000069-aaaa-4b0b-a81f-000000000069',
+  userId: '11111155-bbbb-49f0-b7c2-000000000069',
+  name: 'Abrham Tilaye',
+  email: 'abrham.tilaye@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Abrham',
+  lastName: 'Tilaye',
+  phoneNumber: '0923560536'
+},
+{
+  id: '00000070-aaaa-4b0b-a81f-000000000070',
+  userId: '11111156-bbbb-49f0-b7c2-000000000070',
+  name: 'Hagos G/medhin',
+  email: 'hagos.g/medhin@nibbank.com.et',
+  customRoleName: undefined,
+  department: undefined,
+  firstName: 'Hagos',
+  lastName: 'G/medhin',
+  phoneNumber: '0910349069'
+}
 ];
+
 
 export const mockDepartments: Department[] = [
-  "Origination",
-  "Underwriting",
-  "Credit Analysis",
-  "Closing",
-  "Compliance",
-  "Servicing"
+  "Chief Retail and SME Banking Office",
+  "Chief WholeSale Banking Office",
+  "Deputy Chief Credit Operation Office",
+  "Director Credit Analysis and Appraisal",
+  "Director Credit Monitoring and Portfolio Management",
+  "Director Institutional Banking and Green Financing",
+  "Director Legal Service",
+  "Director Manufacturing and Agricultural Sector",
+  "Director Property Valuation",
+  "Director Service and Mining Sector"
 ];
 
-// --- Workflow Mock Data (remains the same) ---
-const personalLoan_v1_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v1_s1', name: 'Application Intake (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 2, requiredDocumentNames: ['Identification Card', 'Application Form'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v1_s2', name: 'Initial Document Review (PL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Proof of Income', 'Bank Statement'], percentageWeight: 20, order: 1 },
-  { id: 'pl_v1_s3', name: 'Credit Check (PL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Credit Report Consent'], percentageWeight: 20, order: 2 },
-  { id: 'pl_v1_s4', name: 'Basic Underwriting (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 3, requiredDocumentNames: [], percentageWeight: 30, order: 3 },
-  { id: 'pl_v1_s5', name: 'Final Approval Review (PL V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Signed Offer Letter'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v1_s6', name: 'Funds Disbursement Prep (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 2, requiredDocumentNames: ['Payment Instructions'], percentageWeight: 0, order: 5 },
-  { id: 'pl_v1_s7', name: 'Loan Closed - Disbursed (PL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 6 },
-];
-const personalLoan_v2_stages: WorkflowStageDefinition[] = [
-  { id: 'pl_v2_s1', name: 'Online Application Intake (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Online Application Summary'], percentageWeight: 10, order: 0 },
-  { id: 'pl_v2_s2', name: 'Automated Document Verification (PL V2)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Digital ID Upload', 'Income API Consent'], percentageWeight: 15, order: 1 },
-  { id: 'pl_v2_s3', name: 'AI-Assisted Credit Scoring (PL V2)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 25, order: 2 },
-  { id: 'pl_v2_s4', name: 'Underwriter Review (PL V2)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Risk Assessment Report'], percentageWeight: 30, order: 3 },
-  { id: 'pl_v2_s5', name: 'E-Signature & Closing Prep (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Final Agreement E-sign'], percentageWeight: 15, order: 4 },
-  { id: 'pl_v2_s6', name: 'Loan Closed - Disbursed (PL V2)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 5 },
-];
-
-const mortgageLoan_v1_stages: WorkflowStageDefinition[] = [
-    { id: 'ml_v1_s1', name: 'Pre-qualification Application (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 3, requiredDocumentNames: ['Pre-qual Form', 'ID'], percentageWeight: 5, order: 0 },
-    { id: 'ml_v1_s2', name: 'Full Application & Doc Collection (ML V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 7, requiredDocumentNames: ['Full Application', 'Income Proof', 'Asset Statements'], percentageWeight: 15, order: 1 },
-    { id: 'ml_v1_s3', name: 'Property Appraisal Ordered (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 2, requiredDocumentNames: ['Appraisal Request'], percentageWeight: 5, order: 2 },
-    { id: 'ml_v1_s4', name: 'Appraisal Review & Credit Analysis (ML V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 5, requiredDocumentNames: ['Appraisal Report', 'Credit Report'], percentageWeight: 25, order: 3 },
-    { id: 'ml_v1_s5', name: 'Underwriting Decision (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 5, requiredDocumentNames: ['Underwriting Worksheet'], percentageWeight: 30, order: 4 },
-    { id: 'ml_v1_s6', name: 'Conditional Approval Issued (ML V1)', responsibleDepartment: 'Underwriting', defaultTimelineDays: 1, requiredDocumentNames: ['Conditional Approval Letter'], percentageWeight: 5, order: 5 },
-    { id: 'ml_v1_s7', name: 'Closing Disclosure & Final Docs (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 3, requiredDocumentNames: ['Closing Disclosure', 'Insurance Binder'], percentageWeight: 10, order: 6 },
-    { id: 'ml_v1_s8', name: 'Loan Closed - Funded (ML V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: [], percentageWeight: 5, order: 7 },
-];
-
-
-export const mockWorkflowDefinitions: WorkflowDefinition[] = [
-  {
-    id: 'wf_def_personal_loan',
-    name: 'Standard Personal Loan Process',
-    loanType: 'Personal Loan',
-    description: 'Default workflow for processing personal loan applications.',
-    versions: [
-      {
-        id: 'pl_v_1',
-        workflowDefinitionId: 'wf_def_personal_loan',
-        versionNumber: 1,
-        createdAt: new Date(MOCK_REFERENCE_DATE - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        stages: personalLoan_v1_stages,
-        isActive: false,
-      },
-      {
-        id: 'pl_v_2',
-        workflowDefinitionId: 'wf_def_personal_loan',
-        versionNumber: 2,
-        createdAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        stages: personalLoan_v2_stages,
-        isActive: true,
-      }
-    ],
-  },
-  {
-    id: 'wf_def_auto_loan',
-    name: 'Standard Auto Loan Process',
-    loanType: 'Auto Loan',
-    description: 'Workflow for auto loan applications.',
-    versions: [{
-      id: 'al_v_1',
-      workflowDefinitionId: 'wf_def_auto_loan',
-      versionNumber: 1,
-      createdAt: new Date(MOCK_REFERENCE_DATE - 45 * 24 * 60 * 60 * 1000).toISOString(),
-      stages: [
-        { id: 'al_v1_s1', name: 'Application & Vehicle Info (AL V1)', responsibleDepartment: 'Origination', defaultTimelineDays: 1, requiredDocumentNames: ['Application Form', 'Vehicle Purchase Agreement'], percentageWeight: 20, order: 0 },
-        { id: 'al_v1_s2', name: 'Credit & Affordability Check (AL V1)', responsibleDepartment: 'Credit Analysis', defaultTimelineDays: 2, requiredDocumentNames: ['Income Proof'], percentageWeight: 40, order: 1 },
-        { id: 'al_v1_s3', name: 'Final Review & Funding (AL V1)', responsibleDepartment: 'Closing', defaultTimelineDays: 1, requiredDocumentNames: ['Insurance Proof', 'Signed Loan Agreement'], percentageWeight: 40, order: 2 },
-      ],
-      isActive: true,
-    }],
-  },
-  {
-    id: 'wf_def_mortgage_loan',
-    name: 'Standard Mortgage Process',
-    loanType: 'Mortgage',
-    description: 'Workflow for mortgage applications.',
-    versions: [{
-      id: 'ml_v_1',
-      workflowDefinitionId: 'wf_def_mortgage_loan',
-      versionNumber: 1,
-      createdAt: new Date(MOCK_REFERENCE_DATE - 60 * 24 * 60 * 60 * 1000).toISOString(),
-      stages: mortgageLoan_v1_stages,
-      isActive: true,
-    }],
-  },
-];
-
-const getActiveVersionForLoanTypeForMock = (loanType: string): { definitionId: string, versionId: string, stages: WorkflowStageDefinition[] } | null => {
-  const definition = mockWorkflowDefinitions.find(def => def.loanType === loanType);
-  if (!definition) return null;
-  const activeVersion = definition.versions.find(v => v.isActive);
-  if (activeVersion) {
-    return { definitionId: definition.id, versionId: activeVersion.id, stages: activeVersion.stages };
-  }
-  if (definition.versions.length > 0) {
-    const latestVersion = [...definition.versions].sort((a,b) => b.versionNumber - a.versionNumber)[0];
-    console.warn(`No active version for loan type "${loanType}". Falling back to latest version ${latestVersion.versionNumber}.`);
-    return { definitionId: definition.id, versionId: latestVersion.id, stages: latestVersion.stages };
-  }
-  return null;
-};
-
-
-const personalLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Personal Loan');
-const autoLoanActiveWfInfo = getActiveVersionForLoanTypeForMock('Auto Loan');
-
-// LoanRequest mock data remains mostly the same, assignedTo will use Prisma User IDs
-export let mockLoanRequests: LoanRequest[] = [
-  {
-    id: 'loan-001',
-    loanNumber: 'LN00001',
-    customerNumber: 'CUST001',
-    customerName: 'Alice Wonderland (Unassigned Personal Loan)',
-    customerEmail: 'alice@example.com',
-    customerPhone: '555-0101',
-    loanAmount: 10000,
-    loanType: 'Personal Loan',
-    loanPurpose: 'Home Renovation',
-    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
-    currentStageId: personalLoanActiveWfInfo?.stages[0].id || '',
-    assignedDepartment: personalLoanActiveWfInfo?.stages[0].responsibleDepartment,
-    assignedTo: undefined, 
-    submittedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [],
-    history: [
-      {
-        id: 'hist-1',
-        stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A',
-        timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        userId: 'system-prisma', // System user ID
-        userName: 'System Process',
-        notes: `Loan application submitted. Workflow Version ID: ${personalLoanActiveWfInfo?.versionId}. Initial stage: ${personalLoanActiveWfInfo?.stages[0].name}. Awaiting assignment in ${personalLoanActiveWfInfo?.stages[0].responsibleDepartment}.`,
-      },
-    ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[0].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
-    isReadyForManagerReview: false,
-  },
-  {
-    id: 'loan-002',
-    loanNumber: 'LN00002',
-    customerNumber: 'CUST002',
-    customerName: 'Bob The Builder (Unassigned Auto Loan)',
-    customerEmail: 'bob@example.com',
-    customerPhone: '555-0102',
-    loanAmount: 25000,
-    loanType: 'Auto Loan',
-    loanPurpose: 'New Truck Purchase',
-    workflowDefinitionId: autoLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: autoLoanActiveWfInfo?.versionId || '',
-    currentStageId: autoLoanActiveWfInfo?.stages[0].id || '',
-    assignedDepartment: autoLoanActiveWfInfo?.stages[0].responsibleDepartment,
-    assignedTo: undefined,
-    submittedDate: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-po', name: 'Purchase Order', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 4 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/po.pdf' } ],
-    history: [
-      { id: 'hist-2a', stageName: autoLoanActiveWfInfo?.stages[0].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 5 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: `Auto loan submitted. Workflow Version ID: ${autoLoanActiveWfInfo?.versionId}` },
-    ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((autoLoanActiveWfInfo?.stages[0].defaultTimelineDays || 1) ) * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
-    isReadyForManagerReview: false,
-  },
-   {
-    id: 'loan-003',
-    loanNumber: 'LN00003',
-    customerNumber: 'CUST003',
-    customerName: 'Charlie Brown (Personal Loan - For Manager Review)',
-    customerEmail: 'charlie@example.com',
-    customerPhone: '555-0103',
-    loanAmount: 5000,
-    loanType: 'Personal Loan',
-    loanPurpose: 'Debt Consolidation',
-    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
-    currentStageId: personalLoanActiveWfInfo?.stages[3].id || '',
-    assignedDepartment: personalLoanActiveWfInfo?.stages[3].responsibleDepartment,
-    assignedTo: 'user-underwriter-bob', // Prisma User ID for Bob
-    submittedDate: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-risk', name: 'Risk Assessment Report', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/risk.pdf' } ],
-    history: [
-      { id: 'hist-3prev', stageName: personalLoanActiveWfInfo?.stages[2].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-credit-analyst', userName: 'Chris Analyst', notes: 'Credit Scoring complete. Promoted to Underwriting for final review.'},
-      { id: 'hist-3', stageName: personalLoanActiveWfInfo?.stages[3].name || '', timestamp: new Date(MOCK_REFERENCE_DATE - 1 * 24 * 60 * 60 * 1000).toISOString(), userId: 'user-underwriter-bob', userName: 'Bob Underwriter', notes: 'Detailed review complete. Ready for manager final sign-off.'},
-    ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[3].defaultTimelineDays || 2) -1) * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
-    isReadyForManagerReview: true,
-  },
-  {
-    id: 'loan-004',
-    loanNumber: 'LN00004',
-    customerNumber: 'CUST004',
-    customerName: 'Diana Prince (Personal Loan - Old Inactive V1 Workflow)',
-    customerEmail: 'diana@example.com',
-    customerPhone: '555-0104',
-    loanAmount: 15000,
-    loanType: 'Personal Loan',
-    loanPurpose: 'Travel',
-    workflowDefinitionId: 'wf_def_personal_loan',
-    workflowVersionId: 'pl_v_1', 
-    currentStageId: personalLoan_v1_stages[1].id,
-    assignedDepartment: personalLoan_v1_stages[1].responsibleDepartment,
-    assignedTo: 'user-jane-doe', // Prisma User ID for Jane
-    submittedDate: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 18 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ { id: 'doc-id-card-diana', name: 'Identification Card', status: 'VERIFIED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 19 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/id_diana.pdf' } ],
-    history: [
-      { id: 'hist-4a', stageName: personalLoan_v1_stages[0].name, timestamp: new Date(MOCK_REFERENCE_DATE - 20 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Application submitted (V1 Workflow). Promoted to Initial Doc Review.' },
-    ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: true,
-    isReadyForManagerReview: false,
-  },
-   {
-    id: 'loan-005',
-    loanNumber: 'LN00005',
-    customerNumber: 'CUST005',
-    customerName: 'Edward Nigma (Unassigned Personal Loan, V2)',
-    customerEmail: 'edward@example.com',
-    customerPhone: '555-0105',
-    loanAmount: 7500,
-    loanType: 'Personal Loan',
-    loanPurpose: 'Education',
-    workflowDefinitionId: personalLoanActiveWfInfo?.definitionId || '',
-    workflowVersionId: personalLoanActiveWfInfo?.versionId || '',
-    currentStageId: personalLoanActiveWfInfo?.stages[1].id || '',
-    assignedDepartment: personalLoanActiveWfInfo?.stages[1].responsibleDepartment,
-    assignedTo: undefined,
-    submittedDate: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    lastUpdatedDate: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    documents: [ {id: 'doc-digi-id', name: 'Digital ID Upload', status: 'SUBMITTED', uploadedAt: new Date(MOCK_REFERENCE_DATE - 2 * 24 * 60 * 60 * 1000).toISOString(), filePath: '/uploads/mock/digi_id_edward.png'}],
-    history: [
-      { id: 'hist-5a', stageName: personalLoanActiveWfInfo?.stages[0].name || 'N/A', timestamp: new Date(MOCK_REFERENCE_DATE - 3 * 24 * 60 * 60 * 1000).toISOString(), userId: 'system-prisma', userName: 'System Process', notes: 'Online application submitted. Moved to Automated Doc Verification.'},
-    ],
-    stageDeadline: new Date(MOCK_REFERENCE_DATE + ((personalLoanActiveWfInfo?.stages[1].defaultTimelineDays || 1) - 2) * 24 * 60 * 60 * 1000).toISOString(),
-    isOverdue: false,
-    isReadyForManagerReview: false,
-  },
-];
-
-// Update mockUsers to include firstName and lastName if name is a fullName
-mockUsers.forEach(user => {
-  if (user.name && (!user.firstName || !user.lastName)) {
-    const nameParts = user.name.split(' ');
-    user.firstName = nameParts[0];
-    user.lastName = nameParts.slice(1).join(' ');
-  }
+const createDocReq = (id: string, name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
+  id,
+  name,
+  isMandatory,
+  type,
 });
 
-mockUsers.forEach(user => {
-  if (user.password === undefined) {
-    user.password = 'password'; 
-  }
-});
+// This file is now largely superseded by the Prisma seed script.
+// The workflow and loan request mock data is kept for reference or potential future use in non-DB environments, but it is not actively used by the application which now relies on the database.
+// The primary exports used by the seeding process are mockUsers and mockDepartments.
 
-    
+
