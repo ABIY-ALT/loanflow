@@ -159,9 +159,7 @@ export async function addLoanRequest(
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
       where: {
-        sector: {
-          parentId: selectedChildSector.parentId
-        }
+        sectorId: selectedChildSector.id
       },
       orderBy: { order: 'asc' },
     });
@@ -455,11 +453,12 @@ export async function updateLoanRequest(
         const canModifyHistory = [
             PERMISSIONS.ADD_LOAN_NOTES,
             PERMISSIONS.FULFILL_INFO_REQUEST,
+            PERMISSIONS.MARK_STAGE_COMPLETE,
             PERMISSIONS.PROMOTE_LOAN_STAGE,
             PERMISSIONS.RETURN_LOAN_FOR_REWORK,
             PERMISSIONS.TERMINATE_LOAN_PROCESS,
             PERMISSIONS.MANUAL_STAGE_TRANSITION,
-            PERMISSIONS.MARK_STAGE_COMPLETE
+            PERMISSIONS.ASSIGN_LOAN_TO_STAFF // Also an action that logs history
         ].some(p => user.permissions.includes(p));
 
         if (!canModifyHistory) {
@@ -497,7 +496,9 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.documents !== undefined) {
-          if (!user.permissions.includes(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS)) throw new Error("Unauthorized to manage documents.");
+          if (!user.permissions.includes(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && !user.permissions.includes(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) {
+            throw new Error("Unauthorized to manage documents.");
+          }
           const incomingDocIds = new Set(dataToUpdate.documents.map(d => d.id));
           const docsToDelete = existingLoan.documents.filter(d => !incomingDocIds.has(d.id));
 
@@ -1166,3 +1167,5 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
+
+    
