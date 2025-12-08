@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import type { LoanHistoryEntry } from '@/types/loan';
@@ -70,4 +69,3 @@ export function HistoryEntryItem({
     </div>
   );
 }
-
