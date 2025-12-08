@@ -62,7 +62,7 @@ export function HistoryEntryItem({
               ) : (
                 <MessageSquare className="mr-2 h-4 w-4" />
               )}
-              {isFulfilled ? 'Mark as Pending' : 'Mark as Fulfilled'}
+              {isFulfilled ? 'Mark as Pending' : 'Mark Information Received'}
             </Button>
           )}
         </div>
