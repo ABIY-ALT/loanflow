@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save, Search, X, MoreVertical, RefreshCw, Trash2, Copy } from 'lucide-react';
+import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save, Search, X, MoreVertical, RefreshCw, Copy, UserCheck, UserX } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,9 +38,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { getUsersForAssignment, getAssignableData, updateUserAssignments, resetUserPasswordAction, deleteUserAction, type UserForAssignment, type AssignableData, type UserAssignmentUpdatePayload } from './actions';
+import { getUsersForAssignment, getAssignableData, updateUserAssignments, resetUserPasswordAction, toggleUserStatusAction, type UserForAssignment, type AssignableData, type UserAssignmentUpdatePayload } from './actions';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -73,7 +74,7 @@ export default function ManageUserAssignmentsPage() {
   const [editingUser, setEditingUser] = useState<UserForAssignment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [actionToConfirm, setActionToConfirm] = useState<{ action: 'reset' | 'delete'; user: UserForAssignment; } | null>(null);
+  const [actionToConfirm, setActionToConfirm] = useState<{ action: 'reset' | 'activate' | 'deactivate'; user: UserForAssignment; } | null>(null);
 
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null | undefined>(undefined);
   const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string | null | undefined>(undefined);
@@ -206,11 +207,12 @@ export default function ManageUserAssignmentsPage() {
         });
       }
 
-    } else { // 'delete'
-      result = await deleteUserAction(actionToConfirm.user.id);
+    } else { // 'activate' or 'deactivate'
+      const newStatus = actionToConfirm.action === 'activate';
+      result = await toggleUserStatusAction(actionToConfirm.user.id, newStatus);
       if (result.success) {
         toast({ title: "Success", description: result.message });
-        fetchPageData(); // Refresh list after deletion
+        fetchPageData(); // Refresh list after status change
       }
     }
     
@@ -318,6 +320,7 @@ export default function ManageUserAssignmentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Status</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email / Phone</TableHead>
                     <TableHead>Department</TableHead>
@@ -328,22 +331,29 @@ export default function ManageUserAssignmentsPage() {
                 <TableBody>
                    {paginatedUsers.length === 0 ? (
                      <TableRow>
-                        <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
                             No users found matching your criteria.
                         </TableCell>
                     </TableRow>
                    ) : paginatedUsers.map((user) => (
-                    <TableRow key={user.id}>
+                    <TableRow key={user.id} className={cn(!user.isActive && "bg-muted/50 text-muted-foreground")}>
+                      <TableCell>
+                        {user.isActive ? (
+                            <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>
+                        ) : (
+                            <Badge variant="destructive">Inactive</Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{user.name}</TableCell>
                       <TableCell>
                           <div>{user.email}</div>
-                          <div className="text-xs text-muted-foreground">{user.phoneNumber || 'No phone'}</div>
+                          <div className="text-xs">{user.phoneNumber || 'No phone'}</div>
                       </TableCell>
                       <TableCell>
-                        {user.departmentName ? <Badge variant="outline">{user.departmentName}</Badge> : <span className="text-xs text-muted-foreground">N/A</span>}
+                        {user.departmentName ? <Badge variant="outline">{user.departmentName}</Badge> : <span className="text-xs">N/A</span>}
                       </TableCell>
                       <TableCell>
-                        {user.customRoleName ? <Badge>{user.customRoleName}</Badge> : <span className="text-xs text-muted-foreground">N/A</span>}
+                        {user.customRoleName ? <Badge>{user.customRoleName}</Badge> : <span className="text-xs">N/A</span>}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -363,14 +373,24 @@ export default function ManageUserAssignmentsPage() {
                                     <span>Reset Password</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                    className="text-destructive"
-                                    onClick={() => setActionToConfirm({ action: 'delete', user })}
-                                    disabled={user.email === currentUser?.email}
-                                >
-                                    <Trash2 className="mr-2 h-4 w-4"/>
-                                    <span>Delete User</span>
-                                </DropdownMenuItem>
+                                {user.isActive ? (
+                                     <DropdownMenuItem 
+                                        className="text-destructive"
+                                        onClick={() => setActionToConfirm({ action: 'deactivate', user })}
+                                        disabled={user.email === currentUser?.email}
+                                    >
+                                        <UserX className="mr-2 h-4 w-4"/>
+                                        <span>Deactivate User</span>
+                                    </DropdownMenuItem>
+                                ) : (
+                                    <DropdownMenuItem 
+                                        className="text-green-600"
+                                        onClick={() => setActionToConfirm({ action: 'activate', user })}
+                                    >
+                                        <UserCheck className="mr-2 h-4 w-4"/>
+                                        <span>Activate User</span>
+                                    </DropdownMenuItem>
+                                )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -479,7 +499,7 @@ export default function ManageUserAssignmentsPage() {
                     <AlertDialogDescription>
                         {actionToConfirm.action === 'reset' 
                             ? `This will reset the password for ${actionToConfirm.user.name}. They will be forced to change it upon their next login.`
-                            : `This will permanently delete the user ${actionToConfirm.user.name}. This action cannot be undone.`
+                            : `This will ${actionToConfirm.action} the user ${actionToConfirm.user.name}.`
                         }
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -488,10 +508,10 @@ export default function ManageUserAssignmentsPage() {
                     <AlertDialogAction 
                         onClick={handleConfirmAction}
                         disabled={isSubmitting}
-                        className={actionToConfirm.action === 'delete' ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}
+                        className={cn(actionToConfirm.action === 'deactivate' && "bg-destructive hover:bg-destructive/90 text-destructive-foreground")}
                     >
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                        Confirm {actionToConfirm.action === 'reset' ? 'Reset' : 'Delete'}
+                        Confirm {actionToConfirm.action}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

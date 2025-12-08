@@ -15,6 +15,7 @@ export interface UserForAssignment {
   departmentName: string | null;
   customRoleId: string | null;
   customRoleName: string | null;
+  isActive: boolean;
 }
 
 export interface AssignableData {
@@ -85,6 +86,7 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
       departmentName: u.department?.name || null,
       customRoleId: u.customRoleId,
       customRoleName: u.customRole?.name || null,
+      isActive: u.isActive,
     }));
 
     return { users: mappedUsers };
@@ -178,6 +180,7 @@ export async function updateUserAssignments(
       departmentName: updatedUserPrisma.department?.name || null,
       customRoleId: updatedUserPrisma.customRoleId,
       customRoleName: updatedUserPrisma.customRole?.name || null,
+      isActive: updatedUserPrisma.isActive,
     };
 
     return { success: true, user: mappedUser };
@@ -223,33 +226,31 @@ export async function resetUserPasswordAction(userId: string): Promise<{ success
   }
 }
 
-export async function deleteUserAction(userId: string): Promise<{ success: boolean; message: string }> {
+export async function toggleUserStatusAction(userId: string, newStatus: boolean): Promise<{ success: boolean; message: string }> {
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      return { success: false, message: 'Unauthorized: You do not have permission to delete users.' };
+      return { success: false, message: 'Unauthorized: You do not have permission to change user status.' };
     }
     
     if (adminUser.id === userId) {
-        return { success: false, message: 'You cannot delete your own account.' };
+        return { success: false, message: 'You cannot change your own active status.' };
     }
     
-    // Optional: Add checks here to prevent deletion if user is tied to critical data
-    const loansAssigned = await prisma.loanRequest.count({ where: { assignedToUsers: { some: { id: userId } } } });
-    if (loansAssigned > 0) {
-        return { success: false, message: `Cannot delete user: They are currently assigned to ${loansAssigned} loan(s). Please reassign the loans first.` };
+    const userToUpdate = await prisma.user.findUnique({ where: { id: userId }});
+    if (!userToUpdate) {
+        return { success: false, message: 'User not found.' };
     }
 
+    await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: newStatus },
+    });
 
-    await prisma.user.delete({ where: { id: userId } });
-
-    return { success: true, message: `User has been permanently deleted.` };
-  } catch (e: any)
-   {
-    if ((e as any).code === 'P2025') {
-       return { success: false, message: 'User not found or already deleted.' };
-    }
-    const { message } = createErrorReturn('Failed to delete user.', 'deleteUserAction', e);
+    const statusText = newStatus ? 'activated' : 'deactivated';
+    return { success: true, message: `User ${userToUpdate.name} has been ${statusText}.` };
+  } catch (e: any) {
+    const { message } = createErrorReturn(`Failed to toggle user status.`, 'toggleUserStatusAction', e);
     return { success: false, message };
   }
 }

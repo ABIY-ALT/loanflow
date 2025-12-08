@@ -571,6 +571,11 @@ async function main() {
     'Director Manufacturing and Agricultural Sector'
   );
 
+  // Add default user assignments
+  const abinetUser = appMockUsers.find(u => u.name === 'Abinet Wondimu');
+  if (abinetUser) {
+      abinetUser.customRoleName = 'Loan Officer';
+  }
 
   // Seed Users
   console.log('Seeding Users...');
@@ -631,6 +636,7 @@ async function main() {
         isPasswordChanged: false, // Set to true so they don't need to change password
         failedLoginAttempts: 0,
         lockoutUntil: null,
+        isActive: true,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
@@ -644,6 +650,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
         isPasswordChanged: false, // Set to true so they don't need to change password
+        isActive: true,
         ...departmentDataConnect,
         ...customRoleDataConnect,
       },
@@ -663,4 +670,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-

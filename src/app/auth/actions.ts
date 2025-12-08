@@ -33,6 +33,7 @@ function mapPrismaUserToAppUser(
     customRoleName: prismaUser.customRole?.name || undefined,
     permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
     isPasswordChanged: prismaUser.isPasswordChanged,
+    isActive: prismaUser.isActive,
   };
 }
 
@@ -54,6 +55,11 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     if (!user) {
       // Avoid revealing that the user does not exist
       return { success: false, error: genericError };
+    }
+
+    if (!user.isActive) {
+      console.warn(`Login attempt for inactive account: ${user.email}`);
+      return { success: false, error: `Your account is currently inactive. Please contact an administrator.` };
     }
     
     // Check for lockout

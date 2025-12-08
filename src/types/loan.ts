@@ -45,6 +45,7 @@ export interface User {
   email: string;
   phoneNumber?: string;
   isPasswordChanged: boolean; // Flag for forced password change
+  isActive: boolean; // Added to manage user status
 
   departmentId?: string;
   department?: Department; // Name of the department
