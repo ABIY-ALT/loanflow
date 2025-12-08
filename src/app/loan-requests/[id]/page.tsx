@@ -148,8 +148,8 @@ export default function LoanDetailPage() {
     const optimisticLoanState: LoanRequest = {
         ...loan,
         ...updatedFields,
-        history: updatedFields.history ? [...updatedFields.history] : [...loan.history],
-        documents: updatedFields.documents !== undefined ? [...updatedFields.documents] : [...loan.documents],
+        history: updatedFields.history ? [...updatedFields.history.map(h => ({...h}))] : [...loan.history.map(h => ({...h}))],
+        documents: updatedFields.documents !== undefined ? [...updatedFields.documents.map(d => ({...d}))] : [...loan.documents.map(d => ({...d}))],
         lastUpdatedDate: formatISO(new Date()),
     };
 
@@ -255,8 +255,8 @@ export default function LoanDetailPage() {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
       userName: currentUserName,
-      notes: `Logged information request:`,
-      requiredFulfilment: infoToRequest,
+      notes: `Logged information request: ${infoToRequest}`, // Base note
+      requiredFulfilment: infoToRequest, // The actual requirement text
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
     if (success) setIsLogInfoDialogOpen(false);
@@ -266,85 +266,59 @@ export default function LoanDetailPage() {
     if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) || !currentUser) return;
     
     const fulfillmentTag = `\n\n[FULFILLED] by ${currentUser.fullName} on ${new Date().toLocaleDateString()}. Requirement: "${requirementText}"`;
-    const reversalTag = `\n\n[REVERSED] by ${currentUser.fullName} on ${new Date().toLocaleDateString()}.`;
-
+    
     const updatedHistory = loan.history.map(h => {
         if (h.id === entryId) {
             let notes = h.notes || '';
-            const isAlreadyFulfilled = notes.includes('[FULFILLED]');
+            const isCurrentlyFulfilled = notes.includes('[FULFILLED]');
 
-            if (isFulfilling && !isAlreadyFulfilled) {
-                // Remove any previous reversal tags to keep it clean, then add fulfillment
-                notes = notes.replace(/\[REVERSED\].*$/gm, '').trim();
+            if (isFulfilling && !isCurrentlyFulfilled) {
+                // Add fulfillment tag
                 return { ...h, notes: notes + fulfillmentTag };
-            } else if (!isFulfilling && isAlreadyFulfilled) {
-                // Just remove the fulfillment tag
-                notes = notes.replace(/\[FULFILLED\].*$/gm, '').trim();
-                return { ...h, notes: notes + reversalTag };
+            } else if (!isFulfilling && isCurrentlyFulfilled) {
+                // Remove fulfillment tag (and any similar tags)
+                const newNotes = notes.replace(/\[FULFILLED\].*$/gm, '').trim();
+                return { ...h, notes: newNotes };
             }
         }
         return h;
     });
 
-    // Create a new set of history entries where the update happened, to trigger service update
-    const payload = { history: updatedHistory.map(h => ({...h})) };
+    const payload = { history: updatedHistory };
 
     const message = isFulfilling ? "Information requirement marked as fulfilled." : "Information requirement status reverted to pending.";
     await handleLocalAndUpdateService(payload, message);
   };
-
+  
   const validateCurrentStageRequirements = useCallback((): boolean => {
     if (!loan || !currentStageDef) {
-      toast({
-        title: 'Workflow Info Missing',
-        description:
-          'Cannot validate requirements as current stage definition is missing.',
-        variant: 'destructive',
-      });
-      return false;
-    }
-  
-    const activeInfoReq = [...loan.history]
-      .reverse()
-      .find(
-        (entry) =>
-          entry.requiredFulfilment &&
-          (!entry.notes || !entry.notes.includes('[FULFILLED]'))
-      );
-    if (activeInfoReq) {
-      toast({
-        title: 'Action Pending',
-        description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`,
-        variant: 'destructive',
-      });
-      return false;
-    }
-  
-    if (currentStageDef.documentRequirements.length > 0) {
-      const pendingDocs = currentStageDef.documentRequirements.filter((req) => {
-        if (!req.isMandatory) return false;
-        const uploadedDoc = loan.documents.find(
-          (d) => d.requirementId === req.id
-        );
-        return !uploadedDoc || uploadedDoc.status !== LoanDocumentStatus.VERIFIED;
-      });
-  
-      if (pendingDocs.length > 0) {
-        toast({
-          title: 'Documents Pending',
-          description: `Cannot proceed. Mandatory docs for stage '${
-            currentStageDef.name
-          }' must be fulfilled and verified: ${pendingDocs
-            .map((p) => p.name)
-            .join(', ')}.`,
-          variant: 'destructive',
-        });
+        toast({ title: 'Workflow Info Missing', description: 'Cannot validate requirements as current stage definition is missing.', variant: 'destructive' });
         return false;
-      }
     }
-  
+
+    // Check for unfulfilled information requests
+    const activeInfoReq = loan.history.find(entry => entry.requiredFulfilment && !entry.notes?.includes('[FULFILLED]'));
+    if (activeInfoReq) {
+        toast({ title: 'Action Pending', description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: 'destructive', duration: 7000 });
+        return false;
+    }
+
+    // Check for pending mandatory documents
+    if (currentStageDef.documentRequirements.length > 0) {
+        const pendingDocs = currentStageDef.documentRequirements.filter(req => {
+            if (!req.isMandatory) return false;
+            const uploadedDoc = loan.documents.find(d => d.requirementId === req.id);
+            return !uploadedDoc || uploadedDoc.status !== LoanDocumentStatus.VERIFIED;
+        });
+
+        if (pendingDocs.length > 0) {
+            toast({ title: 'Documents Pending', description: `Cannot proceed. Mandatory docs for stage '${currentStageDef.name}' must be fulfilled and verified: ${pendingDocs.map(p => p.name).join(', ')}.`, variant: 'destructive', duration: 9000 });
+            return false;
+        }
+    }
+
     return true;
-  }, [loan, currentStageDef, toast]);
+}, [loan, currentStageDef, toast]);
 
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;

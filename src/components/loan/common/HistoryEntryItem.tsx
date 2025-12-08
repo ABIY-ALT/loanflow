@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { LoanHistoryEntry } from '@/types/loan';
@@ -24,6 +25,8 @@ export function HistoryEntryItem({
   const isFulfilled = entry.notes?.includes('[FULFILLED]');
   const isActiveInfoRequest = entry.requiredFulfilment && !isFulfilled;
   
+  const originalNote = entry.notes?.replace(/\[FULFILLED\].*$/gm, '').trim();
+
   return (
     <div className="relative pl-6 pb-4 border-l border-border">
       <div className={`absolute -left-[0.30rem] top-1 w-2.5 h-2.5 rounded-full ${getHistoryDotColor()}`}></div>
@@ -31,7 +34,7 @@ export function HistoryEntryItem({
       <p className="text-xs text-muted-foreground">
         {format(parseISO(entry.timestamp), 'MMM dd, yyyy, HH:mm')} by {entry.userName}
       </p>
-      {entry.notes && <p className="text-sm mt-1 bg-background p-2 rounded-md border whitespace-pre-wrap">{entry.notes.replace(/\[FULFILLED\].*$/gm, '').replace(/\[REVERSED\].*$/gm, '').trim()}</p>}
+      {originalNote && <p className="text-sm mt-1 bg-background p-2 rounded-md border whitespace-pre-wrap">{originalNote}</p>}
       
       {entry.requiredFulfilment && (
         <div className={cn(
@@ -39,7 +42,7 @@ export function HistoryEntryItem({
           isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300' : 'border-green-500 bg-green-50 text-green-800 dark:border-green-400 dark:bg-green-900/30 dark:text-green-300'
         )}>
           <div className="flex-grow">
-            <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
+            <span className="font-semibold">{isActiveInfoRequest ? 'Pending Action:' : 'Fulfilled Action:'}</span> {entry.requiredFulfilment}
           </div>
           {onFulfillInfoRequest && entry.requiredFulfilment && (
             <Button
