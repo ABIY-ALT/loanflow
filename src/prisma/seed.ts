@@ -320,8 +320,8 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
-              workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
+              workflowVersionId: workflowVersion.id,
+              responsibleDepartmentId: department.id,
               availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
@@ -333,7 +333,7 @@ async function main() {
                 name: doc.name,
                 isMandatory: doc.isMandatory,
                 type: doc.type,
-                workflowStage: { connect: { id: stage.id } }
+                workflowStageId: stage.id,
               }
             });
              console.log(`      - Added doc requirement: "${doc.name}"`);
@@ -391,8 +391,8 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
-              workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
+              workflowVersionId: workflowVersion.id,
+              responsibleDepartmentId: department.id,
               availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
@@ -404,7 +404,7 @@ async function main() {
                 name: doc.name,
                 isMandatory: doc.isMandatory,
                 type: doc.type,
-                workflowStage: { connect: { id: stage.id } },
+                workflowStageId: stage.id,
               },
             });
             console.log(`      - Added doc requirement: "${doc.name}"`);
@@ -433,8 +433,8 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
-              workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
+              workflowVersionId: workflowVersion.id,
+              responsibleDepartmentId: department.id,
               availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
@@ -446,7 +446,7 @@ async function main() {
                 name: doc.name,
                 isMandatory: doc.isMandatory,
                 type: doc.type,
-                workflowStage: { connect: { id: stage.id } },
+                workflowStageId: stage.id,
               },
             });
             console.log(`      - Added doc requirement: "${doc.name}"`);
@@ -474,8 +474,8 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
-              workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
+              workflowVersionId: workflowVersion.id,
+              responsibleDepartmentId: department.id,
               availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
@@ -487,7 +487,7 @@ async function main() {
                 name: doc.name,
                 isMandatory: doc.isMandatory,
                 type: doc.type,
-                workflowStage: { connect: { id: stage.id } },
+                workflowStageId: stage.id,
               },
             });
             console.log(`      - Added doc requirement: "${doc.name}"`);
@@ -515,8 +515,8 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
-              workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
+              workflowVersionId: workflowVersion.id,
+              responsibleDepartmentId: department.id,
               availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
             },
           });
@@ -528,7 +528,7 @@ async function main() {
                 name: doc.name,
                 isMandatory: doc.isMandatory,
                 type: doc.type,
-                workflowStage: { connect: { id: stage.id } },
+                workflowStageId: stage.id,
               },
             });
             console.log(`      - Added doc requirement: "${doc.name}"`);
@@ -543,8 +543,8 @@ async function main() {
             order: 0,
             defaultTimelineDays: 5,
             percentageWeight: 100,
-            workflowVersion: { connect: { id: workflowVersion.id } },
-            responsibleDepartment: { connect: { id: department.id } },
+            workflowVersionId: workflowVersion.id,
+            responsibleDepartmentId: department.id,
             availableStatuses: { [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
           },
         });
@@ -634,7 +634,7 @@ async function main() {
         phoneNumber: userData.phoneNumber,
         userId: finalUserId,
         passwordHash: passwordHash,
-        isPasswordChanged: false, // Set to true so they don't need to change password
+        isPasswordChanged: false,
         failedLoginAttempts: 0,
         lockoutUntil: null,
         isActive: true,
@@ -650,7 +650,7 @@ async function main() {
         lastName: userData.lastName,
         phoneNumber: userData.phoneNumber,
         passwordHash: passwordHash,
-        isPasswordChanged: false, // Set to true so they don't need to change password
+        isPasswordChanged: false,
         isActive: true,
         ...departmentDataConnect,
         ...customRoleDataConnect,
@@ -671,3 +671,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+
