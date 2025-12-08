@@ -4,24 +4,26 @@
 import type { LoanHistoryEntry } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Loader2, MessageSquare, Undo2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Generic color for history dots, stage specific color removed
 const getHistoryDotColor = () => 'bg-primary';
 
 interface HistoryEntryItemProps {
   entry: LoanHistoryEntry;
-  isActiveInfoRequest?: boolean;
-  onFulfillInfoRequest?: (entryId: string, requirementText: string) => void;
+  onFulfillInfoRequest?: (entryId: string, requirementText: string, isFulfilling: boolean) => void;
   isSaving?: boolean;
 }
 
 export function HistoryEntryItem({
   entry,
-  isActiveInfoRequest,
   onFulfillInfoRequest,
   isSaving,
 }: HistoryEntryItemProps) {
+  const isFulfilled = entry.notes?.includes('[FULFILLED]');
+  const isActiveInfoRequest = entry.requiredFulfilment && !isFulfilled;
+  
   return (
     <div className="relative pl-6 pb-4 border-l border-border">
       <div className={`absolute -left-[0.30rem] top-1 w-2.5 h-2.5 rounded-full ${getHistoryDotColor()}`}></div>
@@ -29,20 +31,35 @@ export function HistoryEntryItem({
       <p className="text-xs text-muted-foreground">
         {format(parseISO(entry.timestamp), 'MMM dd, yyyy, HH:mm')} by {entry.userName}
       </p>
-      {entry.notes && <p className="text-sm mt-1 bg-background p-2 rounded-md border whitespace-pre-wrap">{entry.notes}</p>}
+      {entry.notes && <p className="text-sm mt-1 bg-background p-2 rounded-md border whitespace-pre-wrap">{entry.notes.replace(/\[FULFILLED\].*$/gm, '').replace(/\[REVERSED\].*$/gm, '').trim()}</p>}
+      
       {entry.requiredFulfilment && (
-        <div className={`text-sm mt-1 p-2 rounded-md border ${isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-muted/50'}`}>
-          <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
-          {isActiveInfoRequest && onFulfillInfoRequest && entry.requiredFulfilment && (
+        <div className={cn(
+          "text-sm mt-2 p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2",
+          isActiveInfoRequest ? 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300' : 'border-green-500 bg-green-50 text-green-800 dark:border-green-400 dark:bg-green-900/30 dark:text-green-300'
+        )}>
+          <div className="flex-grow">
+            <span className="font-semibold">Required:</span> {entry.requiredFulfilment}
+          </div>
+          {onFulfillInfoRequest && entry.requiredFulfilment && (
             <Button
               size="sm"
               variant="outline"
-              className="mt-2 w-full sm:w-auto border-amber-600 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-800 dark:hover:text-amber-200"
-              onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!)}
+              className={cn(
+                "w-full sm:w-auto",
+                isActiveInfoRequest ? "border-amber-600 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-800 dark:hover:text-amber-200" : "border-green-600 text-green-700 hover:bg-green-100 hover:text-green-800 dark:border-green-400 dark:text-green-300 dark:hover:bg-green-800 dark:hover:text-green-200"
+              )}
+              onClick={() => onFulfillInfoRequest(entry.id, entry.requiredFulfilment!, !isFulfilled)}
               disabled={isSaving}
             >
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
-              Mark Information Received
+              {isSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : isFulfilled ? (
+                <Undo2 className="mr-2 h-4 w-4" />
+              ) : (
+                <MessageSquare className="mr-2 h-4 w-4" />
+              )}
+              {isFulfilled ? 'Mark as Pending' : 'Mark as Fulfilled'}
             </Button>
           )}
         </div>

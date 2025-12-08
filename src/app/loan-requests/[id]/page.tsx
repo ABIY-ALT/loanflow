@@ -262,28 +262,32 @@ export default function LoanDetailPage() {
     if (success) setIsLogInfoDialogOpen(false);
   };
 
-  const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
+  const handleFulfillInfoRequest = async (entryId: string, requirementText: string, isFulfilling: boolean) => {
     if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) || !currentUser) return;
-    const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
-    const currentUserName = currentUser.fullName || 'User';
+    
+    const fulfillmentTag = `\n\n[FULFILLED] by ${currentUser.fullName} on ${new Date().toLocaleDateString()}. Requirement: "${requirementText}"`;
+    const reversalTag = `\n\n[REVERSED] by ${currentUser.fullName} on ${new Date().toLocaleDateString()}.`;
 
-    const updatedHistory = loan.history.map(h => 
-        h.id === entryId 
-            ? { ...h, notes: `${h.notes || ''}\n\n[FULFILLED] by ${currentUserName} on ${new Date().toLocaleDateString()}. Requirement: "${requirementText}"` }
-            : h
-    );
-    
-    // Add a new, separate history entry to make it prominent in the timeline
-    updatedHistory.push({
-        id: `hist-fulfill-${Date.now()}`,
-        stageName: stageNameToLog,
-        timestamp: formatISO(new Date()),
-        userId: currentUser.id,
-        userName: currentUserName,
-        notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
+    const updatedHistory = loan.history.map(h => {
+        if (h.id === entryId) {
+            let notes = h.notes || '';
+            const isAlreadyFulfilled = notes.includes('[FULFILLED]');
+
+            if (isFulfilling && !isAlreadyFulfilled) {
+                // Remove any previous reversal tags to keep it clean, then add fulfillment
+                notes = notes.replace(/\[REVERSED\].*$/gm, '').trim();
+                return { ...h, notes: notes + fulfillmentTag };
+            } else if (!isFulfilling && isAlreadyFulfilled) {
+                // Just remove the fulfillment tag
+                notes = notes.replace(/\[FULFILLED\].*$/gm, '').trim();
+                return { ...h, notes: notes + reversalTag };
+            }
+        }
+        return h;
     });
-    
-    await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
+
+    const message = isFulfilling ? "Information requirement marked as fulfilled." : "Information requirement status reverted to pending.";
+    await handleLocalAndUpdateService({ history: updatedHistory }, message);
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
