@@ -255,7 +255,7 @@ export default function LoanDetailPage() {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
       userName: currentUserName,
-      notes: `Logged information request: ${infoToRequest}`,
+      notes: `Logged information request:`,
       requiredFulfilment: infoToRequest,
     };
     const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
@@ -263,18 +263,26 @@ export default function LoanDetailPage() {
   };
 
   const handleFulfillInfoRequest = async (entryId: string, requirementText: string) => {
-    if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST)) return;
+    if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) || !currentUser) return;
     const stageNameToLog = currentStageDef?.name || loan.currentStageName || 'Current Stage';
-    const currentUserName = currentUser?.fullName || 'User';
-    const updatedHistory = loan.history.map(h =>
-        h.id === entryId ? { ...h, notes: `${h.notes || ''}\n[FULFILLED MOCK] by ${currentUserName} on ${new Date().toLocaleDateString()}. Requirement: ${requirementText}` } : h
+    const currentUserName = currentUser.fullName || 'User';
+
+    const updatedHistory = loan.history.map(h => 
+        h.id === entryId 
+            ? { ...h, notes: `${h.notes || ''}\n\n[FULFILLED] by ${currentUserName} on ${new Date().toLocaleDateString()}. Requirement: "${requirementText}"` }
+            : h
     );
+    
+    // Add a new, separate history entry to make it prominent in the timeline
     updatedHistory.push({
-        id: `hist-fulfill-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
-        userId: currentUser?.id || 'system-prisma',
+        id: `hist-fulfill-${Date.now()}`,
+        stageName: stageNameToLog,
+        timestamp: formatISO(new Date()),
+        userId: currentUser.id,
         userName: currentUserName,
         notes: `Information received for requirement: "${requirementText}". Ready for re-evaluation.`
     });
+    
     await handleLocalAndUpdateService({ history: updatedHistory }, "Information fulfillment status updated.");
   };
 
@@ -294,7 +302,7 @@ export default function LoanDetailPage() {
       .find(
         (entry) =>
           entry.requiredFulfilment &&
-          (!entry.notes || !entry.notes.includes('[FULFILLED MOCK]'))
+          (!entry.notes || !entry.notes.includes('[FULFILLED]'))
       );
     if (activeInfoReq) {
       toast({
