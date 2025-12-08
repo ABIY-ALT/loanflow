@@ -37,6 +37,29 @@ const createClientErrorReturn = (message: string, statusCode = 400): { success: 
     return { success: false, message: message, statusCode: statusCode };
 }
 
+function generateTemporaryPassword(length = 12): string {
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const special = '@$!%*?&';
+    const allChars = uppercase + lowercase + numbers + special;
+
+    let password = '';
+    // Ensure at least one of each type
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += special[Math.floor(Math.random() * special.length)];
+
+    // Fill the rest of the password length
+    for (let i = password.length; i < length; i++) {
+        password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+
+    // Shuffle the password to avoid predictable start
+    return password.split('').sort(() => 0.5 - Math.random()).join('');
+}
+
 
 export async function getUsersForAssignment(): Promise<{ users?: UserForAssignment[]; error?: string }> {
   try {
@@ -168,7 +191,7 @@ export async function updateUserAssignments(
   }
 }
 
-export async function resetUserPasswordAction(userId: string): Promise<{ success: boolean; message: string }> {
+export async function resetUserPasswordAction(userId: string): Promise<{ success: boolean; message: string; newPassword?: string }> {
   try {
     const { user: adminUser } = await getCurrentUser();
     if (!adminUser || !adminUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
@@ -180,7 +203,7 @@ export async function resetUserPasswordAction(userId: string): Promise<{ success
       return { success: false, message: 'User not found.' };
     }
 
-    const newPassword = 'password123'; // Default temporary password
+    const newPassword = generateTemporaryPassword();
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
     await prisma.user.update({
@@ -193,7 +216,7 @@ export async function resetUserPasswordAction(userId: string): Promise<{ success
       },
     });
 
-    return { success: true, message: `Password for ${userToReset.name} has been reset to "${newPassword}".` };
+    return { success: true, message: `Password for ${userToReset.name} has been reset.`, newPassword: newPassword };
   } catch (e: any) {
     const { message } = createErrorReturn('Failed to reset password.', 'resetUserPasswordAction', e);
     return { success: false, message };

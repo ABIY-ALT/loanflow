@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save, Search, X, MoreVertical, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, Edit, AlertTriangle, Users, ArrowLeft, ShieldAlert, Save, Search, X, MoreVertical, RefreshCw, Trash2, Copy } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,23 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
 const ITEMS_PER_PAGE = 10;
+
+const CopyableToast = ({ password, onCopy }: { password: string, onCopy: () => void }) => {
+  return (
+    <div className="flex items-center space-x-2">
+      <Input
+        readOnly
+        value={password}
+        className="h-8 flex-grow bg-muted/50 border-border"
+      />
+      <Button variant="outline" size="sm" onClick={onCopy} className="h-8">
+        <Copy className="h-4 w-4 mr-2" />
+        Copy
+      </Button>
+    </div>
+  );
+};
+
 
 export default function ManageUserAssignmentsPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -172,19 +189,32 @@ export default function ManageUserAssignmentsPage() {
     if (!actionToConfirm) return;
     setIsSubmitting(true);
 
-    let result: { success: boolean, message: string };
+    let result;
     if (actionToConfirm.action === 'reset') {
       result = await resetUserPasswordAction(actionToConfirm.user.id);
+      
+      if (result.success && result.newPassword) {
+        const password = result.newPassword;
+        const copyToClipboard = () => {
+          navigator.clipboard.writeText(password);
+          toast({ title: "Copied!", description: "New password copied to clipboard." });
+        };
+        toast({
+          title: "Success: Password Reset",
+          description: <CopyableToast password={password} onCopy={copyToClipboard} />,
+          duration: 30000, // Give user time to copy
+        });
+      }
+
     } else { // 'delete'
       result = await deleteUserAction(actionToConfirm.user.id);
-    }
-    
-    if (result.success) {
-      toast({ title: "Success", description: result.message });
-      if (actionToConfirm.action === 'delete') {
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchPageData(); // Refresh list after deletion
       }
-    } else {
+    }
+    
+    if (!result.success) {
       toast({ title: "Action Failed", description: result.message, variant: "destructive" });
     }
 
