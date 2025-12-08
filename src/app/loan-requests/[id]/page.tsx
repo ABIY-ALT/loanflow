@@ -286,8 +286,11 @@ export default function LoanDetailPage() {
         return h;
     });
 
+    // Create a new set of history entries where the update happened, to trigger service update
+    const payload = { history: updatedHistory.map(h => ({...h})) };
+
     const message = isFulfilling ? "Information requirement marked as fulfilled." : "Information requirement status reverted to pending.";
-    await handleLocalAndUpdateService({ history: updatedHistory }, message);
+    await handleLocalAndUpdateService(payload, message);
   };
 
   const validateCurrentStageRequirements = useCallback((): boolean => {
