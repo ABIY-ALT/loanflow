@@ -450,22 +450,38 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
-        if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES)) throw new Error("Unauthorized to add notes.");
-        const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
-        const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
+        if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES) && !user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) {
+          throw new Error("Unauthorized to modify history.");
+        }
         
-        for (const entry of newHistoryEntries) {
-            if (!entry.userId) continue;
-            await tx.loanHistoryEntry.create({
-                data: {
-                    loanRequest: { connect: { id } },
-                    user: { connect: { id: entry.userId } },
-                    stageName: entry.stageName,
-                    timestamp: parseISO(entry.timestamp),
-                    notes: entry.notes,
-                    requiredFulfilment: entry.requiredFulfilment,
-                }
+        const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
+        
+        for (const entry of dataToUpdate.history) {
+          if (!entry.userId) continue;
+
+          if (existingHistoryIds.has(entry.id)) {
+            // This is an update to an existing entry (e.g., fulfilling a request)
+             if (!user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
+            await tx.loanHistoryEntry.update({
+              where: { id: entry.id },
+              data: {
+                notes: entry.notes
+              }
             });
+          } else {
+            // This is a new history entry (e.g., adding a note)
+             if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES)) throw new Error("Unauthorized to add notes.");
+            await tx.loanHistoryEntry.create({
+              data: {
+                loanRequest: { connect: { id } },
+                user: { connect: { id: entry.userId } },
+                stageName: entry.stageName,
+                timestamp: parseISO(entry.timestamp),
+                notes: entry.notes,
+                requiredFulfilment: entry.requiredFulfilment,
+              }
+            });
+          }
         }
       }
 

@@ -141,8 +141,8 @@ export default function LoanDetailPage() {
   const handleLocalAndUpdateService = useCallback(async (
     updatedFields: Partial<Omit<LoanRequest, 'id'>>,
     successMessage: string,
-  ): Promise<boolean> => {
-    if (!loan) return false;
+  ): Promise<{success: boolean; finalLoanState?: LoanRequest}> => {
+    if (!loan) return {success: false};
     setIsSaving(true);
 
     const optimisticLoanState: LoanRequest = {
@@ -152,7 +152,8 @@ export default function LoanDetailPage() {
         documents: updatedFields.documents !== undefined ? [...updatedFields.documents.map(d => ({...d}))] : [...loan.documents.map(d => ({...d}))],
         lastUpdatedDate: formatISO(new Date()),
     };
-
+    
+    // Optimistically set state
     setLoan(optimisticLoanState); 
 
     try {
@@ -162,22 +163,24 @@ export default function LoanDetailPage() {
       
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan. The data has been refreshed.", variant: "destructive" });
-        await fetchLoanData(); 
-        return false;
+        await fetchLoanData(); // Re-fetch to get true state
+        return {success: false};
       }
       
       toast({ title: "Update Successful", description: successMessage, variant: "default" });
       
       if(serviceResult.updatedLoan) {
         setLoan(serviceResult.updatedLoan);
+        return {success: true, finalLoanState: serviceResult.updatedLoan};
       } else {
-        await fetchLoanData(); 
+        await fetchLoanData(); // Re-fetch if the service didn't return the updated loan
+        return {success: true, finalLoanState: undefined}; // Indicate success but no immediate data
       }
-      return true;
+
     } catch (err: any) {
       toast({ title: "System Error", description: "A critical error occurred. Reverting changes.", variant: "destructive" });
       await fetchLoanData(); // Revert on critical failure
-      return false;
+      return {success: false};
     } finally {
       setIsSaving(false);
     }
@@ -221,7 +224,7 @@ export default function LoanDetailPage() {
         payload.isReadyForManagerReview = false;
     }
 
-    const success = await handleLocalAndUpdateService(payload, "Staff assignment updated.");
+    const {success} = await handleLocalAndUpdateService(payload, "Staff assignment updated.");
     if (success) setIsEditLoanDialogOpen(false);
   };
 
@@ -239,7 +242,7 @@ export default function LoanDetailPage() {
       userName: currentUserName,
       notes: noteContent,
     };
-    const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
+    const {success} = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
     if (success) setIsAddNoteDialogOpen(false);
   };
 
@@ -258,7 +261,7 @@ export default function LoanDetailPage() {
       notes: `Logged information request: ${infoToRequest}`, // Base note
       requiredFulfilment: infoToRequest, // The actual requirement text
     };
-    const success = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
+    const {success} = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
     if (success) setIsLogInfoDialogOpen(false);
   };
 
@@ -290,14 +293,15 @@ export default function LoanDetailPage() {
     await handleLocalAndUpdateService(payload, message);
   };
   
-  const validateCurrentStageRequirements = useCallback((): boolean => {
-    if (!loan || !currentStageDef) {
+  const validateCurrentStageRequirements = useCallback((loanForValidation?: LoanRequest | null): boolean => {
+    const loanToUse = loanForValidation || loan;
+    if (!loanToUse || !currentStageDef) {
         toast({ title: 'Workflow Info Missing', description: 'Cannot validate requirements as current stage definition is missing.', variant: 'destructive' });
         return false;
     }
 
     // Check for unfulfilled information requests
-    const activeInfoReq = loan.history.find(entry => entry.requiredFulfilment && !entry.notes?.includes('[FULFILLED]'));
+    const activeInfoReq = loanToUse.history.find(entry => entry.requiredFulfilment && !entry.notes?.includes('[FULFILLED]'));
     if (activeInfoReq) {
         toast({ title: 'Action Pending', description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: 'destructive', duration: 7000 });
         return false;
@@ -307,7 +311,7 @@ export default function LoanDetailPage() {
     if (currentStageDef.documentRequirements.length > 0) {
         const pendingDocs = currentStageDef.documentRequirements.filter(req => {
             if (!req.isMandatory) return false;
-            const uploadedDoc = loan.documents.find(d => d.requirementId === req.id);
+            const uploadedDoc = loanToUse.documents.find(d => d.requirementId === req.id);
             return !uploadedDoc || uploadedDoc.status !== LoanDocumentStatus.VERIFIED;
         });
 
@@ -318,10 +322,13 @@ export default function LoanDetailPage() {
     }
 
     return true;
-}, [loan, currentStageDef, toast]);
+  }, [loan, currentStageDef, toast]);
 
   const handleMarkStageComplete = async () => {
-    if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !validateCurrentStageRequirements() || !currentUser) return;
+    if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !currentUser) return;
+    
+    // Use a fresh copy of the loan state for validation
+    if (!validateCurrentStageRequirements()) return;
 
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
     if (assignedUserIds.size === 0) {
@@ -473,7 +480,7 @@ export default function LoanDetailPage() {
       userName: currentUserName,
       notes: `Manager returned case for rework. Reason: ${reworkNote}`
     };
-    const success = await handleLocalAndUpdateService({
+    const {success} = await handleLocalAndUpdateService({
       isReadyForManagerReview: false,
       stageCompletedBy: [], 
       assignedToUsers: users.filter(u => reworkAssigneeIds.includes(u.id)),
@@ -502,7 +509,7 @@ export default function LoanDetailPage() {
       notes: `Loan process terminated by higher authority. Reason: ${terminationReason}`,
     };
 
-    const success = await handleLocalAndUpdateService({
+    const {success} = await handleLocalAndUpdateService({
       isTerminalStage: true,
       isReadyForManagerReview: false,
       currentStageStatus: "Terminated",
@@ -543,7 +550,7 @@ export default function LoanDetailPage() {
         notes: `MANUAL TRANSITION: Moved from '${fromStageName}' to '${newStage.name}' in workflow '${newVersion.workflowDefinitionId}'. Reason: ${reason}`,
     };
 
-    const success = await handleLocalAndUpdateService({
+    const {success} = await handleLocalAndUpdateService({
         workflowVersionId: newWorkflowVersionId,
         currentStageId: newStageId,
         assignedDepartmentId: users.find(u => u.department === newStage.responsibleDepartment)?.departmentId,
@@ -585,7 +592,7 @@ export default function LoanDetailPage() {
         updatedDocuments = [...loan.documents, newDocData];
     }
 
-    const success = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${requirement.name}' uploaded.`);
+    const {success} = await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document for '${requirement.name}' uploaded.`);
     if (success) setIsUploadDocDialogOpen(false);
   };
   
@@ -662,7 +669,7 @@ export default function LoanDetailPage() {
   const handleUrgencyChange = async (isUrgent: boolean) => {
     if (!loan || !userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE)) return;
 
-    const success = await handleLocalAndUpdateService(
+    await handleLocalAndUpdateService(
       { isUrgent },
       `Loan marked as ${isUrgent ? 'urgent' : 'not urgent'}.`
     );
@@ -878,3 +885,4 @@ export default function LoanDetailPage() {
     </div>
   );
 }
+
