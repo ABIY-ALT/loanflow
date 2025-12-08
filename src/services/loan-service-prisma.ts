@@ -535,7 +535,9 @@ export async function updateLoanRequest(
 export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDefinition[]; error?: string }> {
   try {
     const { user } = await getCurrentUser();
-    if (!user || !user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS)) {
+    // A user only needs to view loan details to see the context of the workflow.
+    // They don't need full management permissions for this read-only operation.
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_DETAILS)) {
         return { error: "Unauthorized: You do not have permission to view workflow definitions." };
     }
     const prismaWorkflowDefs = await prisma.workflowDefinition.findMany({
