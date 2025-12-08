@@ -367,13 +367,18 @@ export async function updateLoanRequest(
     
     let primaryAction: AppPermission | null = null;
     
+    // Determine the primary action based on the data sent
     if (isStageChange) {
-        if (user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) {
-            primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
-        } else if (user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
-            primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
-        } else {
-            throw new Error("Unauthorized to change loan stage.");
+        primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION; // Assume manual transition first
+        // If it's a sequential promotion, the permission check will handle it.
+        const allLoanWfVersions = (await getWorkflowDefinitions()).workflows?.flatMap(w => w.versions) || [];
+        const currentVersion = allLoanWfVersions.find(v => v.id === existingLoan.workflowVersionIdMirror);
+        const currentStageIndex = currentVersion?.stages.findIndex(s => s.id === existingLoan.currentStageIdMirror);
+        if (currentVersion && currentStageIndex !== undefined && currentStageIndex > -1) {
+            const nextStage = currentVersion.stages[currentStageIndex + 1];
+            if (nextStage && nextStage.id === dataToUpdate.currentStageId) {
+                primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
+            }
         }
     } else if (dataToUpdate.isTerminalStage === true) {
         primaryAction = PERMISSIONS.TERMINATE_LOAN_PROCESS;
@@ -390,13 +395,15 @@ export async function updateLoanRequest(
         primaryAction = PERMISSIONS.ASSIGN_LOAN_TO_STAFF;
     } else if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
         primaryAction = PERMISSIONS.MARK_STAGE_COMPLETE;
-    } else if (dataToUpdate.history && dataToUpdate.history.length === (existingLoan.history?.length || 0) && dataToUpdate.history.some((h, i) => h.notes !== existingLoan.history[i]?.notes)) {
+    } else if (dataToUpdate.documents) {
+        primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS;
+    } else if (dataToUpdate.history && dataToUpdate.history.length === (existingLoan.history?.length || 0)) {
         primaryAction = PERMISSIONS.FULFILL_INFO_REQUEST;
     }
 
 
     if (primaryAction && !user.permissions.includes(primaryAction)) {
-      throw new Error(`Unauthorized action: ${primaryAction}`);
+      throw new Error(`Unauthorized action: You need the '${primaryAction}' permission.`);
     }
 
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
@@ -433,8 +440,10 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
-        if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && primaryAction !== PERMISSIONS.RETURN_LOAN_FOR_REWORK && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
-            throw new Error("Unauthorized to assign staff.");
+        if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION) {
+            if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF) && !user.permissions.includes(PERMISSIONS.RETURN_LOAN_FOR_REWORK)) {
+                throw new Error("Unauthorized to assign staff.");
+            }
         }
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
@@ -445,13 +454,17 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
-          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && !user.permissions.includes(PERMISSIONS.MARK_STAGE_COMPLETE)) throw new Error("Unauthorized to mark stage as complete.");
+          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION) {
+              if (!user.permissions.includes(PERMISSIONS.MARK_STAGE_COMPLETE)) throw new Error("Unauthorized to mark stage as complete.");
+          }
           const userIds = dataToUpdate.stageCompletedBy?.map(u => ({ id: u.id })) || [];
           updatePayload.stageCompletedBy = { set: userIds };
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
-          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
+          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION) {
+              if (!user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
+          }
           updatePayload.assignedDepartment = dataToUpdate.assignedDepartmentId ? { connect: { id: dataToUpdate.assignedDepartmentId } } : { disconnect: true };
       }
 
@@ -473,12 +486,12 @@ export async function updateLoanRequest(
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
         
-        if (primaryAction === PERMISSIONS.MANUAL_STAGE_TRANSITION) {
-            updatePayload.isReadyForManagerReview = false;
-            updatePayload.stageCompletedBy = { set: [] };
-            updatePayload.assignedToUsers = { set: [] };
-            updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
-        }
+        // When any stage change occurs, reset these fields.
+        updatePayload.isReadyForManagerReview = false;
+        updatePayload.stageCompletedBy = { set: [] };
+        updatePayload.assignedToUsers = { set: [] };
+        updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
+
         
         const availableStatusesForDept = newStageDef.availableStatuses && typeof newStageDef.availableStatuses === 'object' && !Array.isArray(newStageDef.availableStatuses) ? (newStageDef.availableStatuses as Record<string, string[]>)[newStageDef.responsibleDepartment.name] : [];
         updatePayload.currentStageStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -488,41 +501,46 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
-        const canModifyHistory = [
-            PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.FULFILL_INFO_REQUEST, PERMISSIONS.MARK_STAGE_COMPLETE,
-            PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.TERMINATE_LOAN_PROCESS,
-            PERMISSIONS.MANUAL_STAGE_TRANSITION, PERMISSIONS.ASSIGN_LOAN_TO_STAFF
-        ].some(p => user.permissions.includes(p));
+        const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
+        const newHistoryEntries = dataToUpdate.history.filter(h => !existingHistoryIds.has(h.id));
+        const updatedHistoryEntries = dataToUpdate.history.filter(h => existingHistoryIds.has(h.id));
+        
+        if (newHistoryEntries.length > 0) {
+            const canAddHistory = [
+                PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.LOG_INFO_REQUEST, PERMISSIONS.MARK_STAGE_COMPLETE,
+                PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.TERMINATE_LOAN_PROCESS,
+                PERMISSIONS.MANUAL_STAGE_TRANSITION, PERMISSIONS.ASSIGN_LOAN_TO_STAFF
+            ].some(p => user.permissions.includes(p));
+            if (!canAddHistory) throw new Error("Unauthorized to add new history entries.");
 
-        if (!canModifyHistory) {
-            throw new Error("Unauthorized to modify history.");
+            for (const entry of newHistoryEntries) {
+                if (!entry.userId) continue;
+                await tx.loanHistoryEntry.create({
+                    data: {
+                        loanRequest: { connect: { id } },
+                        user: { connect: { id: entry.userId } },
+                        stageName: entry.stageName,
+                        timestamp: parseISO(entry.timestamp),
+                        notes: entry.notes,
+                        requiredFulfilment: entry.requiredFulfilment,
+                    }
+                });
+            }
         }
         
-        const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
-        
-        for (const entry of dataToUpdate.history) {
-          if (!entry.userId) continue;
-
-          if (existingHistoryIds.has(entry.id)) {
-             if (!user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
-            await tx.loanHistoryEntry.update({
-              where: { id: entry.id },
-              data: { notes: entry.notes }
-            });
-          } else {
-            await tx.loanHistoryEntry.create({
-              data: {
-                loanRequest: { connect: { id } },
-                user: { connect: { id: entry.userId } },
-                stageName: entry.stageName,
-                timestamp: parseISO(entry.timestamp),
-                notes: entry.notes,
-                requiredFulfilment: entry.requiredFulfilment,
-              }
-            });
-          }
+        if (updatedHistoryEntries.length > 0) {
+            if (!user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) {
+                throw new Error("Unauthorized to fulfill info request.");
+            }
+            for (const entry of updatedHistoryEntries) {
+                await tx.loanHistoryEntry.update({
+                    where: { id: entry.id },
+                    data: { notes: entry.notes }
+                });
+            }
         }
       }
+
 
       if (dataToUpdate.documents !== undefined) {
           if (!user.permissions.includes(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && !user.permissions.includes(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) {
@@ -1199,5 +1217,3 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
-
-    
