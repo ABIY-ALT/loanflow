@@ -4,7 +4,8 @@
 import type { LoanHistoryEntry } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Undo2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, MessageSquare, Undo2, BadgeCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Generic color for history dots, stage specific color removed
@@ -43,7 +44,9 @@ export function HistoryEntryItem({
           <div className="flex-grow">
             <span className="font-semibold">{isActiveInfoRequest ? 'Pending Action:' : 'Fulfilled Action:'}</span> {entry.requiredFulfilment}
           </div>
-          {onFulfillInfoRequest && entry.requiredFulfilment && (
+          
+          {/* Conditional rendering based on whether the onFulfillInfoRequest function is provided (i.e., user has permission) */}
+          {onFulfillInfoRequest ? (
             <Button
               size="sm"
               variant="outline"
@@ -63,6 +66,11 @@ export function HistoryEntryItem({
               )}
               {isFulfilled ? 'Mark as Pending' : 'Mark Information Received'}
             </Button>
+          ) : isFulfilled && (
+             <Badge className="bg-green-600 hover:bg-green-600 text-white">
+                <BadgeCheck className="mr-2 h-4 w-4" />
+                Completed
+             </Badge>
           )}
         </div>
       )}
