@@ -451,8 +451,19 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.history) {
-        if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES) && !user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) {
-          throw new Error("Unauthorized to modify history.");
+        // Broader check for any action that generates a history entry
+        const canModifyHistory = [
+            PERMISSIONS.ADD_LOAN_NOTES,
+            PERMISSIONS.FULFILL_INFO_REQUEST,
+            PERMISSIONS.PROMOTE_LOAN_STAGE,
+            PERMISSIONS.RETURN_LOAN_FOR_REWORK,
+            PERMISSIONS.TERMINATE_LOAN_PROCESS,
+            PERMISSIONS.MANUAL_STAGE_TRANSITION,
+            PERMISSIONS.MARK_STAGE_COMPLETE
+        ].some(p => user.permissions.includes(p));
+
+        if (!canModifyHistory) {
+            throw new Error("Unauthorized to modify history.");
         }
         
         const existingHistoryIds = new Set(existingLoan.history.map(h => h.id));
@@ -470,8 +481,7 @@ export async function updateLoanRequest(
               }
             });
           } else {
-            // This is a new history entry (e.g., adding a note)
-             if (!user.permissions.includes(PERMISSIONS.ADD_LOAN_NOTES)) throw new Error("Unauthorized to add notes.");
+            // This is a new history entry (e.g., adding a note, promoting, etc.)
             await tx.loanHistoryEntry.create({
               data: {
                 loanRequest: { connect: { id } },
