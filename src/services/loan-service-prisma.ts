@@ -358,19 +358,35 @@ export async function updateLoanRequest(
         return createErrorResult("Unauthorized: No user session found.", "updateLoanRequest");
     }
 
-    // Determine the primary intent of the update
-    const isStageChange = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== (await prisma.loanRequest.findUnique({ where: { id } }))?.currentStageIdMirror;
-    const isTerminating = dataToUpdate.isTerminalStage === true;
-    const isPromoting = isStageChange && user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
-    const isManualTransition = isStageChange && user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION);
+    const existingLoan = await prisma.loanRequest.findUnique({ where: { id } });
+    if (!existingLoan) {
+      throw new Error(`Loan with ID "${id}" not found.`);
+    }
+
+    const isStageChange = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror;
+    
+    let primaryAction: AppPermission | null = null;
+    
+    if (isStageChange && user.permissions.includes(PERMISSIONS.MANUAL_STAGE_TRANSITION)) {
+        primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
+    } else if (isStageChange && user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
+        primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
+    } else if (dataToUpdate.isTerminalStage === true) {
+        primaryAction = PERMISSIONS.TERMINATE_LOAN_PROCESS;
+    } else if (dataToUpdate.history && dataToUpdate.history.length > (existingLoan.history?.length || 0)) {
+        const newNote = dataToUpdate.history[dataToUpdate.history.length-1].notes;
+        if (newNote?.startsWith("Manager returned case for rework")) {
+            primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK;
+        } else if (newNote?.startsWith("Logged information request")) {
+            primaryAction = PERMISSIONS.LOG_INFO_REQUEST;
+        } else {
+            primaryAction = PERMISSIONS.ADD_LOAN_NOTES;
+        }
+    } else if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
+        primaryAction = PERMISSIONS.ASSIGN_LOAN_TO_STAFF;
+    }
 
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
-      const existingLoan = await tx.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true, customer: true, assignedToUsers: true, stageCompletedBy: true } });
-
-      if (!existingLoan) {
-        throw new Error(`Loan with ID "${id}" not found.`);
-      }
-
       const updatePayload: any = { lastUpdatedDate: new Date() };
       const customerUpdatePayload: any = {};
 
@@ -403,10 +419,8 @@ export async function updateLoanRequest(
         updatePayload.requestType = { connect: { id: dataToUpdate.requestTypeId } };
       }
 
-
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
-        // Allow unassignment as part of higher-level actions
-        if (!isManualTransition && !isTerminating && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
+        if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && primaryAction !== PERMISSIONS.RETURN_LOAN_FOR_REWORK && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
             throw new Error("Unauthorized to assign staff.");
         }
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
@@ -416,18 +430,18 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
-          if (!user.permissions.includes(PERMISSIONS.MARK_STAGE_COMPLETE)) throw new Error("Unauthorized to mark stage as complete.");
+          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && !user.permissions.includes(PERMISSIONS.MARK_STAGE_COMPLETE)) throw new Error("Unauthorized to mark stage as complete.");
           const userIds = dataToUpdate.stageCompletedBy?.map(u => ({ id: u.id })) || [];
           updatePayload.stageCompletedBy = { set: userIds };
       }
 
       if (dataToUpdate.hasOwnProperty('assignedDepartmentId')) {
-          if (!isManualTransition && !isTerminating && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
+          if (primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION && !user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) throw new Error("Unauthorized to assign department.");
           updatePayload.assignedDepartment = dataToUpdate.assignedDepartmentId ? { connect: { id: dataToUpdate.assignedDepartmentId } } : { disconnect: true };
       }
 
       if (isStageChange) {
-        if (!isPromoting && !isManualTransition) throw new Error("Unauthorized to change loan stage.");
+        if (primaryAction !== PERMISSIONS.PROMOTE_LOAN_STAGE && primaryAction !== PERMISSIONS.MANUAL_STAGE_TRANSITION) throw new Error("Unauthorized to change loan stage.");
         
         const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionIdMirror;
         if (!wfVerId) throw new Error("Workflow version context missing.");
@@ -473,14 +487,12 @@ export async function updateLoanRequest(
           if (!entry.userId) continue;
 
           if (existingHistoryIds.has(entry.id)) {
-            // This is an update to an existing entry (e.g., fulfilling a request)
-             if (!isTerminating && !user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
+             if (!user.permissions.includes(PERMISSIONS.FULFILL_INFO_REQUEST)) throw new Error("Unauthorized to fulfill info request.");
             await tx.loanHistoryEntry.update({
               where: { id: entry.id },
               data: { notes: entry.notes }
             });
           } else {
-            // This is a new history entry (e.g., adding a note, promoting, etc.)
             await tx.loanHistoryEntry.create({
               data: {
                 loanRequest: { connect: { id } },
@@ -663,6 +675,9 @@ export async function addWorkflowDefinition(
     });
     return { id: newDef.id };
   } catch (e: any) {
+    if ((e as any).code === 'P2003' && (e as any).meta?.field_name?.includes('parentId')) {
+        return createErrorResult("Invalid Parent Sector selected.", "addWorkflowDefinition", e);
+    }
     return createErrorResult("Failed to add workflow definition.", "addWorkflowDefinition", e);
   }
 }
