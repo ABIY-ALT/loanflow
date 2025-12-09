@@ -257,7 +257,8 @@ async function main() {
       description: "Responsible for analyzing credit and appraisal data.",
       permissions: [
         "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "EDIT_LOAN_DETAILS",
-        "VERIFY_LOAN_DOCUMENTS", "ADD_LOAN_NOTES", "MARK_STAGE_COMPLETE"
+        "VERIFY_LOAN_DOCUMENTS", "ADD_LOAN_NOTES", "MARK_STAGE_COMPLETE", "FULFILL_INFO_REQUEST", 
+        "VIEW_OWN_ASSIGNED_CASES"
       ]
     },
     {
@@ -266,7 +267,7 @@ async function main() {
       permissions: [
         "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
         "CREATE_LOAN_REQUEST", "EDIT_LOAN_DETAILS", "UPLOAD_LOAN_DOCUMENTS",
-        "LOG_INFO_REQUEST", "FULFILL_INFO_REQUEST", "ADD_LOAN_NOTES", "FLAG_URGENT_CASE"
+        "LOG_INFO_REQUEST", "FULFILL_INFO_REQUEST", "ADD_LOAN_NOTES", "VIEW_OWN_ASSIGNED_CASES"
       ]
     },
     {
@@ -274,7 +275,8 @@ async function main() {
       description: "Senior management with review and reporting capabilities.",
       permissions: [
         "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
-        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK", "VIEW_REPORTS"
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK", "VIEW_REPORTS",
+        "FLAG_URGENT_CASE", "LOG_INFO_REQUEST"
       ]
     },
     {
@@ -282,7 +284,8 @@ async function main() {
       description: "Departmental leadership with review and approval authority.",
       permissions: [
         "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
-        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK"
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK",
+        "FLAG_URGENT_CASE", "ASSIGN_LOAN_TO_STAFF"
       ]
     },
     {
@@ -290,7 +293,7 @@ async function main() {
       description: "Manages a division and can promote loans through stages.",
       permissions: [
         "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS",
-        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE"
+        "VIEW_MANAGER_REVIEW_QUEUE", "PROMOTE_LOAN_STAGE", "ASSIGN_LOAN_TO_STAFF"
       ]
     },
     {
@@ -306,7 +309,42 @@ async function main() {
       name: "Viewer",
       description: "Can view loan data but cannot make changes.",
       permissions: ["VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS"]
-    }
+    },
+    {
+    name: "Secretary",
+    description: "Handles initial data entry, document intake, and loan request submission.",
+    permissions: [
+      "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_CUSTOMERS", 
+      "CREATE_LOAN_REQUEST", "UPLOAD_LOAN_DOCUMENTS", "ADD_LOAN_NOTES"
+    ]
+  },
+  {
+    name: "Property Valuation Officer",
+    description: "Conducts property valuation tasks and documents appraisal results.",
+    permissions: [
+      "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_OWN_ASSIGNED_CASES",  
+      "EDIT_LOAN_DETAILS", "UPLOAD_LOAN_DOCUMENTS", "VERIFY_LOAN_DOCUMENTS", "ADD_LOAN_NOTES", 
+      "MARK_STAGE_COMPLETE", "FULFILL_INFO_REQUEST"
+    ]
+  },
+  {
+    name: "Manager, Property Valuation (Maker)",
+    description: "Reviews officer submissions, requests clarification, and forwards cases for checking.",
+    permissions: [
+      "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_MANAGER_REVIEW_QUEUE", 
+      "VIEW_OWN_ASSIGNED_CASES", "ADD_LOAN_NOTES", "LOG_INFO_REQUEST", "RETURN_LOAN_FOR_REWORK", 
+      "ASSIGN_LOAN_TO_STAFF", "FLAG_URGENT_CASE", "MARK_STAGE_COMPLETE"
+    ]
+  },
+  {
+    name: "Manager, Property Valuation (Checker)",
+    description: "Final reviewer who approves or rejects valuation stages and promotes the loan to the next workflow stage.",
+    permissions: [
+      "VIEW_DASHBOARD", "VIEW_LOAN_PIPELINE", "VIEW_LOAN_DETAILS", "VIEW_MANAGER_REVIEW_QUEUE", 
+      "VIEW_OWN_ASSIGNED_CASES", "ADD_LOAN_NOTES", "PROMOTE_LOAN_STAGE", "RETURN_LOAN_FOR_REWORK", 
+      "FLAG_URGENT_CASE"
+    ]
+  }
   ];
 
   // Mapping from provided permission names to system permission names
