@@ -37,7 +37,17 @@ This page is the primary tool for tracking the flow of all loans through the sys
 
 ---
 
-## 4. Creating a New Loan Request
+## 4. Overdue Tasks Report
+
+The **Overdue Tasks Report** provides a focused view of all loan requests that have passed their assigned deadline for the current stage. This page is crucial for identifying bottlenecks and ensuring timely processing.
+
+- **Accessing the Report:** You can navigate to this page directly by clicking the "Overdue Tasks" card on the Dashboard or by selecting "Overdue Tasks" from the sidebar.
+- **Prioritized Information:** The report lists all overdue loans, showing the customer's name, loan number, current stage, and the missed deadline.
+- **Take Action:** To address an overdue task, click the **"View Details"** button. This will take you to the detailed loan page, where you can complete the necessary actions or re-assign the task to resolve the delay.
+
+---
+
+## 5. Creating a New Loan Request
 
 To initiate a new loan application, navigate to the **"New Loan Request"** page from the sidebar or click the button on the Dashboard or Loan Pipeline pages. This opens a comprehensive form to capture all necessary initial information.
 
@@ -49,17 +59,17 @@ To initiate a new loan application, navigate to the **"New Loan Request"** page 
 
 ---
 
-## 5. Managing Customers
+## 6. Managing Customers
 
 The LoanFlow system maintains a comprehensive profile for every customer, allowing you to easily track their complete history with the institution.
 
-### 5.1. The Customer List
+### 6.1. The Customer List
 You can access a complete list of all customers by navigating to the **"Customers"** page from the sidebar. This page provides a high-level overview of every customer in the system.
 
 - **Search & Filter:** Use the search bar at the top of the list to instantly find a customer by their name, email address, or phone number.
 - **Customer Overview:** The table displays each customer's name, contact details, the current status of their most recent loan, and the total number of loan requests they have made.
 
-### 5.2. Customer Profile Page
+### 6.2. Customer Profile Page
 To see a detailed view of a customer, click the **"View Profile"** button next to their name in the customer list. The profile page contains two main sections:
 
 - **Contact Information:** Displays the customer's email, phone number, and home branch for quick reference.
@@ -69,7 +79,7 @@ This feature provides a 360-degree view of the customer's relationship and histo
 
 ---
 
-## 6. My Assigned Cases
+## 7. My Assigned Cases
 
 This page provides a personalized view of all loan requests that are currently assigned directly to you for processing. It is your primary work queue, showing you exactly which tasks require your attention.
 
@@ -79,7 +89,7 @@ This page provides a personalized view of all loan requests that are currently a
 
 ---
 
-## 7. Manager Review Queue
+## 8. Manager Review Queue
 
 This page is designed specifically for users in managerial roles, such as Directors and Division Managers. It serves as the central hub for reviewing loan requests that have been fully processed by assigned staff and are now awaiting a manager's decision.
 
@@ -91,7 +101,7 @@ This page is designed specifically for users in managerial roles, such as Direct
 
 ---
 
-## 8. Unassigned Cases Queue
+## 9. Unassigned Cases Queue
 
 The **Unassigned Cases Queue** is a crucial page for department managers. It lists all loan requests that have been routed to your department but have not yet been assigned to a specific staff member for processing.
 
@@ -103,7 +113,7 @@ This queue ensures that no loan request sits idle and that work is distributed e
 
 ---
 
-## 9. Internal Status Lookup
+## 10. Internal Status Lookup
 
 The **Internal Status Lookup** page is a quick and powerful search tool for finding specific loan requests within the system. This is especially useful when you have a specific piece of information, like a loan number, and need to quickly access the corresponding loan record.
 
@@ -119,7 +129,7 @@ This feature is designed for internal staff to quickly find and access loan info
 
 ---
 
-## 10. Task Assignment Report
+## 11. Task Assignment Report
 
 The **Task Assignment Report** page provides a comprehensive, filterable, and sortable view of every loan request in the system. It is a powerful tool for analyzing workloads, tracking progress, and generating exports.
 
@@ -136,7 +146,7 @@ This page is essential for managers who need a detailed, data-driven overview of
 
 ---
 
-### 11. Public Loan Tracker
+## 12. Public Loan Tracker
 
 The Public Loan Tracker is a feature designed for loan applicants to check the status of their application without needing to log into the main system. It provides a simplified, read-only view of their loan's progress.
 
