@@ -100,3 +100,19 @@ The **Unassigned Cases Queue** is a crucial page for department managers. It lis
 - **Assign Staff:** To assign a loan, click the **"View & Assign Staff"** button. This will take you to the loan's detail page, where you can use the "Edit / Assign" functionality to delegate the task to one or more members of your team.
 
 This queue ensures that no loan request sits idle and that work is distributed efficiently within each department.
+
+---
+
+## 9. Internal Status Lookup
+
+The **Internal Status Lookup** page is a quick and powerful search tool for finding specific loan requests within the system. This is especially useful when you have a specific piece of information, like a loan number, and need to quickly access the corresponding loan record.
+
+- **Accessing the Page:** You can find the "Internal Status Lookup" in the sidebar.
+- **Search Criteria:** The page provides a simple form where you can enter a search term.
+- **Identifier Type:** You must specify what type of information you are searching for by selecting one of the following buttons:
+    - **Loan Number:** Search for a loan using its unique ID (e.g., `LN-PSQL-123456`).
+    - **Customer Name:** Find all loans associated with a customer's name.
+    - **Customer Code:** Search using the customer's unique identifier code.
+- **Viewing Results:** After searching, the system will display a table with all matching loan requests. From this table, you can click "View Loan" to navigate directly to the detailed page for any of the results.
+
+This feature is designed for internal staff to quickly find and access loan information without needing to browse the entire pipeline.
