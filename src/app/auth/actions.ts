@@ -136,7 +136,8 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
 }
 
 export async function getCurrentUser(): Promise<{ user: User | null }> {
-  const sessionCookie = cookies().get('session')?.value;
+  const cookieStore = cookies();
+  const sessionCookie = cookieStore.get('session')?.value;
   if (!sessionCookie) return { user: null };
 
   const session = await decrypt(sessionCookie);
