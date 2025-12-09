@@ -66,3 +66,13 @@ To see a detailed view of a customer, click the **"View Profile"** button next t
 - **Loan Requests:** A complete table of every loan request associated with that customer, including the loan number, amount, submission date, and current stage. You can click the "View Loan" button on any entry in this table to go directly to that specific loan's detail page.
 
 This feature provides a 360-degree view of the customer's relationship and history with the bank.
+
+---
+
+## 6. My Assigned Cases
+
+This page provides a personalized view of all loan requests that are currently assigned directly to you for processing. It is your primary work queue, showing you exactly which tasks require your attention.
+
+- **Prioritized List:** The table automatically sorts your tasks to help you prioritize. Urgent cases and overdue tasks are always listed first.
+- **Key Information:** For each assigned case, you can see the customer's name, loan number, the current stage it's in, and its deadline.
+- **Process Your Tasks:** To begin working on a loan, click the **"View & Process"** button. This will take you to the detailed loan page where you can review information, upload documents, and mark your tasks as complete to move the loan forward.
