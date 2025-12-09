@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, KeyRound, LogOut, XCircle, CheckCircle } from 'lucide-react';
+import { Loader2, KeyRound, LogOut, XCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { changePasswordAction } from './actions';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,10 @@ export default function ForcePasswordChangePage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // If user is loaded and their password IS already changed, redirect them away.
@@ -93,27 +97,53 @@ export default function ForcePasswordChangePage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="oldPassword">Old Password</Label>
-              <Input
-                id="oldPassword"
-                type="password"
-                placeholder="Enter your current password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                required
-                disabled={isSubmitting}
-              />
+              <div className="relative">
+                <Input
+                  id="oldPassword"
+                  type={showOldPassword ? 'text' : 'password'}
+                  placeholder="Enter your current password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  required
+                  disabled={isSubmitting}
+                />
+                 <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute inset-y-0 right-0 h-full px-3"
+                  onClick={() => setShowOldPassword(!showOldPassword)}
+                  disabled={isSubmitting}
+                >
+                  {showOldPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                  <span className="sr-only">{showOldPassword ? 'Hide password' : 'Show password'}</span>
+                </Button>
+              </div>
             </div>
              <div className="space-y-2">
               <Label htmlFor="newPassword">New Password</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                placeholder="Enter your new password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                disabled={isSubmitting}
-              />
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? 'text' : 'password'}
+                  placeholder="Enter your new password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  disabled={isSubmitting}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute inset-y-0 right-0 h-full px-3"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  disabled={isSubmitting}
+                >
+                  {showNewPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                  <span className="sr-only">{showNewPassword ? 'Hide password' : 'Show password'}</span>
+                </Button>
+              </div>
             </div>
 
             {newPassword && (
@@ -133,15 +163,28 @@ export default function ForcePasswordChangePage() {
 
              <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm New Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="Confirm your new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                disabled={isSubmitting}
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="Confirm your new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={isSubmitting}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute inset-y-0 right-0 h-full px-3"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={isSubmitting}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                  <span className="sr-only">{showConfirmPassword ? 'Hide password' : 'Show password'}</span>
+                </Button>
+              </div>
             </div>
 
             {error && (
