@@ -424,7 +424,7 @@ export default function NewLoanRequestPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Child Sector</FormLabel>
-                      <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isSubmitting || sectors.length === 0}>
+                      <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isSubmitting || childSectorOptions.length === 0}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a sector"} />
@@ -561,7 +561,3 @@ export default function NewLoanRequestPage() {
     </div>
   );
 }
-
-    
-
-    
