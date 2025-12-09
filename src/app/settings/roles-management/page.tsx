@@ -136,10 +136,10 @@ export default function ManageRolesPage() {
     if (result.error) {
       toast({ title: `Error ${editingRole ? 'Updating' : 'Adding'} Role`, description: result.error, variant: "destructive" });
     } else {
-      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" ${editingRole ? 'updated' : 'created'} successfully. Refreshing to apply changes.` });
+      toast({ title: `Role ${editingRole ? 'Updated' : 'Added'}`, description: `Role "${result.data?.name}" has been saved. The page will now reload to apply any permission changes.`, duration: 7000 });
       resetFormDialog();
-      // Force a reload to reflect permission changes for the current user
-      window.location.reload();
+      // Force a reload to reflect permission changes for the current user if their own role was changed
+      setTimeout(() => window.location.reload(), 2000);
     }
     setIsSubmitting(false);
   };
@@ -330,7 +330,7 @@ export default function ManageRolesPage() {
             
             <div className="space-y-2 pt-2">
               <h4 className="text-md font-semibold">Assign Permissions</h4>
-              <ScrollArea className="rounded-md border"> {/* Removed max-h-* classes */}
+              <ScrollArea className="rounded-md border h-96">
                 <div className="p-4 space-y-3">
                   {PERMISSION_CATEGORIES.map(category => (
                     <div key={category.name} className="space-y-2 p-3 border rounded-md bg-muted/30">
@@ -371,6 +371,3 @@ export default function ManageRolesPage() {
     </div>
   );
 }
-    
-
-    
