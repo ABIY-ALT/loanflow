@@ -46,3 +46,23 @@ To initiate a new loan application, navigate to the **"New Loan Request"** page 
 - **Workflow Routing:** Based on the **Child Sector** you select, the system will automatically display which **Parent Sector** and **Initial Department** the loan will be routed to. This ensures the request enters the correct workflow from the start.
 - **Loan Purpose:** Provide a clear and concise description of why the customer is requesting the loan.
 - **Submission:** After filling out all fields, click **"Submit Loan Request."** A confirmation dialog will appear, allowing you to review all the details one last time. Click **"Confirm & Submit"** to create the loan and send it to the initial department for assignment.
+
+---
+
+## 5. Managing Customers
+
+The LoanFlow system maintains a comprehensive profile for every customer, allowing you to easily track their complete history with the institution.
+
+### 5.1. The Customer List
+You can access a complete list of all customers by navigating to the **"Customers"** page from the sidebar. This page provides a high-level overview of every customer in the system.
+
+- **Search & Filter:** Use the search bar at the top of the list to instantly find a customer by their name, email address, or phone number.
+- **Customer Overview:** The table displays each customer's name, contact details, the current status of their most recent loan, and the total number of loan requests they have made.
+
+### 5.2. Customer Profile Page
+To see a detailed view of a customer, click the **"View Profile"** button next to their name in the customer list. The profile page contains two main sections:
+
+- **Contact Information:** Displays the customer's email, phone number, and home branch for quick reference.
+- **Loan Requests:** A complete table of every loan request associated with that customer, including the loan number, amount, submission date, and current stage. You can click the "View Loan" button on any entry in this table to go directly to that specific loan's detail page.
+
+This feature provides a 360-degree view of the customer's relationship and history with the bank.
