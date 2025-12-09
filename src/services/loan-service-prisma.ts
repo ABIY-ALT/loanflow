@@ -386,11 +386,22 @@ export async function updateLoanRequest(
     let primaryAction: AppPermission | null = null;
     let requiredPermissions: AppPermission[] = [];
     
+    const isStageChanging = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror;
+    const isTerminating = dataToUpdate.isTerminalStage === true && existingLoan.isTerminalStage === false;
+    let newHistoryEntries: LoanHistoryEntry[] = [];
+    if (dataToUpdate.history) {
+        const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
+        newHistoryEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
+    }
+
     // Determine the primary action and its required permissions
-    if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
+    if (isStageChanging && (newHistoryEntries[0]?.notes || '').includes('MANUAL TRANSITION')) {
         primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
         requiredPermissions.push(primaryAction);
-    } else if (dataToUpdate.isTerminalStage === true && existingLoan.isTerminalStage === false) {
+    } else if (isStageChanging) {
+        primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
+        requiredPermissions.push(primaryAction);
+    } else if (isTerminating) {
         primaryAction = PERMISSIONS.TERMINATE_LOAN_PROCESS;
         requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
@@ -402,41 +413,29 @@ export async function updateLoanRequest(
     } else if (dataToUpdate.hasOwnProperty('documents')) {
         primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS; // Could also be VERIFY, this is a safe default
         requiredPermissions.push(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.VERIFY_LOAN_DOCUMENTS);
-    } else if (dataToUpdate.history) {
-        const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
-        const newEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
+    } else if (newHistoryEntries.length > 0) {
+        const newNoteText = newHistoryEntries[0].notes || '';
+        if (newNoteText.includes('rework')) { primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK; requiredPermissions.push(primaryAction); }
+        else if (newNoteText.includes('information request')) { primaryAction = PERMISSIONS.LOG_INFO_REQUEST; requiredPermissions.push(primaryAction); }
+        else { primaryAction = PERMISSIONS.ADD_LOAN_NOTES; requiredPermissions.push(primaryAction); }
+    } else { // Fallback for simple flags like 'isUrgent' or fulfilling info requests
         const hasModifiedEntries = (dataToUpdate.history || []).some(h => {
             const oldEntry = (existingLoan.history || []).find(eh => eh.id === h.id);
             return oldEntry && oldEntry.notes !== h.notes;
         });
-
-        if (newEntries.length > 0) {
-            const newNoteText = newEntries[0].notes || '';
-            if (newNoteText.includes('rework')) { primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK; requiredPermissions.push(primaryAction); }
-            else if (newNoteText.includes('Promoted to new workflow')) { primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE; requiredPermissions.push(primaryAction); }
-            else if (newNoteText.includes('promoted to')) { primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE; requiredPermissions.push(primaryAction); }
-            else if (newNoteText.includes('information request')) { primaryAction = PERMISSIONS.LOG_INFO_REQUEST; requiredPermissions.push(primaryAction); }
-            else { primaryAction = PERMISSIONS.ADD_LOAN_NOTES; requiredPermissions.push(primaryAction); }
-        } else if (hasModifiedEntries) { // Modified existing history (e.g., fulfilling)
+        if (hasModifiedEntries) {
             primaryAction = PERMISSIONS.FULFILL_INFO_REQUEST;
             requiredPermissions.push(primaryAction);
+        } else {
+             primaryAction = PERMISSIONS.EDIT_LOAN_DETAILS;
+             requiredPermissions.push(primaryAction);
         }
-    } else { // Fallback for simple flags like 'isUrgent'
-        primaryAction = PERMISSIONS.EDIT_LOAN_DETAILS;
-        requiredPermissions.push(primaryAction);
-    }
-
-    if (!primaryAction) {
-        throw new Error("Could not determine the action being performed.");
     }
     
     // Authorization Check
-    const hasSufficientPermission = 
-        userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) || // Highest override
-        userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) ||
-        requiredPermissions.some(p => userPermissions.has(p));
+    const hasSufficientPermission = requiredPermissions.some(p => userPermissions.has(p));
 
-    if (!hasSufficientPermission) {
+    if (!hasSufficientPermission && primaryAction) {
       throw new Error(`Unauthorized action: You need the '${primaryAction}' permission.`);
     }
 
@@ -498,14 +497,14 @@ export async function updateLoanRequest(
 
       if (dataToUpdate.hasOwnProperty('history')) {
         const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
-        const newEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
+        const newHistoryEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
         const modifiedEntries = (dataToUpdate.history || []).filter(h => {
             const oldEntry = (existingLoan.history || []).find(eh => eh.id === h.id);
             return oldEntry && oldEntry.notes !== h.notes;
         });
 
-        if (newEntries.length > 0) {
-            for (const entry of newEntries) {
+        if (newHistoryEntries.length > 0) {
+            for (const entry of newHistoryEntries) {
                 await tx.loanHistoryEntry.create({
                     data: {
                         loanRequest: { connect: { id } },
