@@ -162,3 +162,28 @@ The Public Loan Tracker is a feature designed for loan applicants to check the s
     *   **Stage Information:** For each stage, the customer can see the responsible department and the estimated timeline for that specific stage.
 
 This feature enhances transparency by allowing customers to self-serve and monitor their application's progress through the pipeline.
+
+---
+
+## 13. Settings
+
+The **Settings** page is the central control panel for administrators to configure the core logic and structure of the LoanFlow application. Access to this page and its subsections is restricted to users with the appropriate administrative permissions.
+
+*   **Administrative Areas:** This section provides quick links to other key management pages:
+    *   **Manage Departments:** Create or delete the departments that are used in workflow stages.
+    *   **Manage Branches & Districts:** Define the organizational structure of districts and their corresponding branches.
+    *   **Manage Roles:** Create custom user roles and assign a specific combination of permissions to each one.
+    *   **Manage User Assignments:** Assign users to specific departments and roles.
+    *   **Register New User:** Create new user accounts in the system.
+
+*   **Manage Sectors:** Define the business sectors for loans. This includes creating **Parent Sectors** (e.g., "Service & Mining Sectors") and assigning **Child Sectors** (e.g., "Hotel and Tourism") to them. This structure is critical for routing loans into the correct workflow path.
+
+*   **Manage Request Types:** Create or delete the types of loan requests available in the system, such as "New Loan" or "Restructuring."
+
+*   **Workflow Definitions:** This is the most powerful part of the settings page. Here, you can:
+    *   **Define Workflow Paths:** Create sequences of workflows for each Parent Sector.
+    *   **Manage Versions:** Each workflow can have multiple versions. Only one version can be "active" at a time, which is the version new loans will follow.
+    *   **Edit Stages:** For each version, you can add, remove, and reorder stages. You can define the stage name, responsible department, timeline (in days), and percentage weight for progress calculation.
+    *   **Configure Documents & Statuses:** Within each stage, you can specify mandatory document requirements (as uploads or checkboxes) and create custom status options available to users working in that stage.
+
+*   **Save All Settings:** After making changes to workflows, you must click the **"Save All Settings to Database"** button to persist your changes. Changes to sectors and request types are saved immediately.
