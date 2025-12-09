@@ -271,13 +271,29 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[], error?
     if (isFullAdmin) {
       // Admins can see all loans. No filter needed.
     } else if (isManager) {
-      if (!user.departmentId) {
-        whereClause.assignedToUsers = { some: { id: user.id } };
-      } else {
-        whereClause.assignedDepartmentId = user.departmentId;
-      }
+        // Managers see all loans in their department.
+        if (user.departmentId) {
+            whereClause = { assignedDepartmentId: user.departmentId };
+        } else {
+            // Manager without a department can only see loans directly assigned to them.
+            whereClause = { assignedToUsers: { some: { id: user.id } } };
+        }
     } else {
-      whereClause.assignedToUsers = { some: { id: user.id } };
+        // Non-managers see loans assigned to them OR unassigned loans in their department.
+        if (user.departmentId) {
+            whereClause = {
+                OR: [
+                    { assignedToUsers: { some: { id: user.id } } }, // Assigned to them
+                    { 
+                        assignedDepartmentId: user.departmentId, // In their department
+                        assignedToUsers: { none: {} } // And unassigned
+                    },
+                ]
+            };
+        } else {
+            // If they have no department, they can only see what's directly assigned.
+            whereClause = { assignedToUsers: { some: { id: user.id } } };
+        }
     }
 
 
@@ -368,51 +384,59 @@ export async function updateLoanRequest(
     }
     
     let primaryAction: AppPermission | null = null;
+    let requiredPermissions: AppPermission[] = [];
     
-    // Determine the primary action based on the data being updated
+    // Determine the primary action and its required permissions
     if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
         primaryAction = PERMISSIONS.MANUAL_STAGE_TRANSITION;
+        requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.isTerminalStage === true && existingLoan.isTerminalStage === false) {
         primaryAction = PERMISSIONS.TERMINATE_LOAN_PROCESS;
+        requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         primaryAction = PERMISSIONS.ASSIGN_LOAN_TO_STAFF;
+        requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
         primaryAction = PERMISSIONS.MARK_STAGE_COMPLETE;
+        requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.hasOwnProperty('documents')) {
-        primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS;
-    } else if (dataToUpdate.loanAmount !== undefined) {
-        primaryAction = PERMISSIONS.EDIT_LOAN_DETAILS;
+        primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS; // Could also be VERIFY, this is a safe default
+        requiredPermissions.push(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.VERIFY_LOAN_DOCUMENTS);
     } else if (dataToUpdate.history) {
         const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
         const newEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
+        const hasModifiedEntries = (dataToUpdate.history || []).some(h => {
+            const oldEntry = (existingLoan.history || []).find(eh => eh.id === h.id);
+            return oldEntry && oldEntry.notes !== h.notes;
+        });
 
         if (newEntries.length > 0) {
             const newNoteText = newEntries[0].notes || '';
-            if (newNoteText.includes('rework')) primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK;
-            else if (newNoteText.includes('Promoted to new workflow')) primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
-            else if (newNoteText.includes('promoted to')) primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE;
-            else if (newNoteText.includes('information request')) primaryAction = PERMISSIONS.LOG_INFO_REQUEST;
-            else primaryAction = PERMISSIONS.ADD_LOAN_NOTES;
-        } else { // Modified existing history
+            if (newNoteText.includes('rework')) { primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK; requiredPermissions.push(primaryAction); }
+            else if (newNoteText.includes('Promoted to new workflow')) { primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE; requiredPermissions.push(primaryAction); }
+            else if (newNoteText.includes('promoted to')) { primaryAction = PERMISSIONS.PROMOTE_LOAN_STAGE; requiredPermissions.push(primaryAction); }
+            else if (newNoteText.includes('information request')) { primaryAction = PERMISSIONS.LOG_INFO_REQUEST; requiredPermissions.push(primaryAction); }
+            else { primaryAction = PERMISSIONS.ADD_LOAN_NOTES; requiredPermissions.push(primaryAction); }
+        } else if (hasModifiedEntries) { // Modified existing history (e.g., fulfilling)
             primaryAction = PERMISSIONS.FULFILL_INFO_REQUEST;
+            requiredPermissions.push(primaryAction);
         }
-    } else {
-        primaryAction = PERMISSIONS.EDIT_LOAN_DETAILS; // Fallback for simple flags like 'isUrgent'
+    } else { // Fallback for simple flags like 'isUrgent'
+        primaryAction = PERMISSIONS.EDIT_LOAN_DETAILS;
+        requiredPermissions.push(primaryAction);
     }
 
     if (!primaryAction) {
         throw new Error("Could not determine the action being performed.");
     }
     
-    // Now, check if the user has permission for the primary action OR a higher-level override
-    const hasDirectPermission = userPermissions.has(primaryAction);
-    const canOverride = 
-        userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) ||
-        userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) ||
-        userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) ||
-        userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS);
+    // Authorization Check
+    const hasSufficientPermission = 
+        userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) || // Highest override
+        userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) ||
+        requiredPermissions.some(p => userPermissions.has(p));
 
-    if (!hasDirectPermission && !canOverride) {
+    if (!hasSufficientPermission) {
       throw new Error(`Unauthorized action: You need the '${primaryAction}' permission.`);
     }
 
@@ -433,7 +457,7 @@ export async function updateLoanRequest(
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
-        // Reset completion only if this is the primary action (not part of a stage transition)
+        // Reset completion only if assignment is the primary action
         if (primaryAction === PERMISSIONS.ASSIGN_LOAN_TO_STAFF) {
           updatePayload.stageCompletedBy = { set: [] };
           updatePayload.isReadyForManagerReview = false;
