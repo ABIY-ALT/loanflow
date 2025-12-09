@@ -88,3 +88,15 @@ This page is designed specifically for users in managerial roles, such as Direct
 - **Take Action:** To make a decision, click the **"Review & Process"** button. This takes you to the loan's detail page, where you have two primary options:
     - **Approve & Promote:** If the work is satisfactory, you can promote the loan to the next stage in its workflow.
     - **Return for Rework:** If you find issues or missing information, you can return the case to the assigned staff with a note explaining the required corrections.
+
+---
+
+## 8. Unassigned Cases Queue
+
+The **Unassigned Cases Queue** is a crucial page for department managers. It lists all loan requests that have been routed to your department but have not yet been assigned to a specific staff member for processing.
+
+- **Assignment Hub:** This page acts as the central hub for incoming work for your department. It's your responsibility to assign these cases to your team members.
+- **Case Details:** For each unassigned case, you can see the customer's name, loan number, the current stage, and the date it was last updated. Urgent cases are flagged for immediate attention.
+- **Assign Staff:** To assign a loan, click the **"View & Assign Staff"** button. This will take you to the loan's detail page, where you can use the "Edit / Assign" functionality to delegate the task to one or more members of your team.
+
+This queue ensures that no loan request sits idle and that work is distributed efficiently within each department.
