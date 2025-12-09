@@ -116,3 +116,22 @@ The **Internal Status Lookup** page is a quick and powerful search tool for find
 - **Viewing Results:** After searching, the system will display a table with all matching loan requests. From this table, you can click "View Loan" to navigate directly to the detailed page for any of the results.
 
 This feature is designed for internal staff to quickly find and access loan information without needing to browse the entire pipeline.
+
+---
+
+### 10. Public Loan Tracker
+
+The Public Loan Tracker is a feature designed for loan applicants to check the status of their application without needing to log into the main system. It provides a simplified, read-only view of their loan's progress.
+
+*   **Accessing the Tracker:** Customers can access the tracker via a public URL (e.g., `yourapp.com/track-loan`).
+*   **Searching for a Loan:** On the tracker page, the applicant must enter the unique **Loan ID** that was provided to them when they submitted their application (e.g., `LN-PSQL-123456`).
+*   **Viewing the Status:** After submitting the Loan ID, the page will display:
+    *   **Applicant and Loan Details:** The customer's name and loan number.
+    *   **Estimated Timeline:** The total estimated processing time for the entire loan workflow.
+    *   **Workflow Stepper:** A visual stepper that shows all the stages in the loan's path.
+        *   **Completed:** Stages marked with a check are finished.
+        *   **Current Stage:** The stage currently being processed is highlighted.
+        *   **Pending:** Future stages are shown as pending.
+    *   **Stage Information:** For each stage, the customer can see the responsible department and the estimated timeline for that specific stage.
+
+This feature enhances transparency by allowing customers to self-serve and monitor their application's progress through the pipeline.
