@@ -30,15 +30,26 @@ const createErrorResult = <T>(message: string, context?: string, originalError?:
   return { error: message }; // For admin settings, it's okay to return a more specific message
 };
 
-const hasPermission = async (): Promise<boolean> => {
+const hasPermission = async (isForCreatingLoan: boolean = false): Promise<boolean> => {
     const { user } = await getCurrentUser();
-    return !!user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
+    if (!user) return false;
+    
+    if (isForCreatingLoan) {
+      return user.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
+    }
+    
+    return user.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 }
 
 // --- Sector Functions ---
 
 export async function getSectors(): Promise<{ sectors?: Sector[]; error?: string }> {
-  if (!await hasPermission()) return { error: "Unauthorized" };
+  // Allow users who can create loans OR manage settings to see sectors
+  const { user } = await getCurrentUser();
+  const canView = user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
+
+  if (!canView) return { error: "Unauthorized" };
+  
   try {
     const sectors = await prisma.sector.findMany({ orderBy: { name: 'asc' } });
     return { sectors: sectors.map(mapPrismaToApp) };
@@ -108,6 +119,11 @@ export async function deleteSector(id: string): Promise<{ success?: boolean; err
 // --- RequestType Functions ---
 
 export async function getRequestTypes(): Promise<{ requestTypes?: ConfigurableListItem[]; error?: string }> {
+  // Allow users who can create loans OR manage settings to see request types
+  const { user } = await getCurrentUser();
+  const canView = user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
+  if(!canView) return { error: "Unauthorized" };
+
   try {
     const requestTypes = await prisma.requestType.findMany({ orderBy: { name: 'asc' } });
     return { requestTypes };
