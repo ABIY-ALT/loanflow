@@ -76,3 +76,15 @@ This page provides a personalized view of all loan requests that are currently a
 - **Prioritized List:** The table automatically sorts your tasks to help you prioritize. Urgent cases and overdue tasks are always listed first.
 - **Key Information:** For each assigned case, you can see the customer's name, loan number, the current stage it's in, and its deadline.
 - **Process Your Tasks:** To begin working on a loan, click the **"View & Process"** button. This will take you to the detailed loan page where you can review information, upload documents, and mark your tasks as complete to move the loan forward.
+
+---
+
+## 7. Manager Review Queue
+
+This page is designed specifically for users in managerial roles, such as Directors and Division Managers. It serves as the central hub for reviewing loan requests that have been fully processed by assigned staff and are now awaiting a manager's decision.
+
+- **Review Queue:** The page lists all loans within your department that are marked as "Ready for Review." It prioritizes urgent and overdue cases so you can address critical items first.
+- **Case Information:** For each loan, you can quickly see the customer's name, loan number, current stage, and the staff members who worked on it.
+- **Take Action:** To make a decision, click the **"Review & Process"** button. This takes you to the loan's detail page, where you have two primary options:
+    - **Approve & Promote:** If the work is satisfactory, you can promote the loan to the next stage in its workflow.
+    - **Return for Rework:** If you find issues or missing information, you can return the case to the assigned staff with a note explaining the required corrections.
