@@ -119,7 +119,24 @@ This feature is designed for internal staff to quickly find and access loan info
 
 ---
 
-### 10. Public Loan Tracker
+## 10. Task Assignment Report
+
+The **Task Assignment Report** page provides a comprehensive, filterable, and sortable view of every loan request in the system. It is a powerful tool for analyzing workloads, tracking progress, and generating exports.
+
+*   **Accessing the Page:** You can find the "Reports" link in the sidebar.
+*   **Filtering:** You can narrow down the data using several filters at the top of the page:
+    *   **Department:** View all loans currently assigned to a specific department.
+    *   **Assigned Person:** See all tasks assigned to a specific user.
+    *   **Date Range:** Filter loans based on their submission date (e.g., Today, This Week, This Month).
+*   **Sorting:** Click on column headers like "Customer," "Loan Amount," or "Submitted" to sort the entire dataset.
+*   **Key Data Points:** The report table shows critical information for each loan, including the customer details, loan amount, current stage, assigned staff, and the total time the loan has spent in its current stage.
+*   **Download as CSV:** Use the "Download as CSV" button to export the currently filtered and sorted report data for use in external tools like Microsoft Excel.
+
+This page is essential for managers who need a detailed, data-driven overview of all loan activities across the institution.
+
+---
+
+### 11. Public Loan Tracker
 
 The Public Loan Tracker is a feature designed for loan applicants to check the status of their application without needing to log into the main system. It provides a simplified, read-only view of their loan's progress.
 
