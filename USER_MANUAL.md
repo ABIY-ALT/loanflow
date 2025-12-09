@@ -34,3 +34,15 @@ The **Loan Pipeline** is a powerful, Kanban-style board that gives you a complet
 - **View Details:** To manage or review a specific loan, simply click the "View" button on its card. This will take you to the detailed Loan Request page, where you can take further action.
 
 This page is the primary tool for tracking the flow of all loans through the system.
+
+---
+
+## 4. Creating a New Loan Request
+
+To initiate a new loan application, navigate to the **"New Loan Request"** page from the sidebar or click the button on the Dashboard or Loan Pipeline pages. This opens a comprehensive form to capture all necessary initial information.
+
+- **Customer Information:** Fill in the customer's full name, email, phone number, and their home branch. If a customer with the provided email already exists, this loan will be added to their existing profile; otherwise, a new customer profile will be created.
+- **Loan Details:** Enter the requested loan amount, select the appropriate **Child Sector** (e.g., 'Agriculture', 'Hotel and Tourism'), and choose the **Request Type** (e.g., 'New Loan').
+- **Workflow Routing:** Based on the **Child Sector** you select, the system will automatically display which **Parent Sector** and **Initial Department** the loan will be routed to. This ensures the request enters the correct workflow from the start.
+- **Loan Purpose:** Provide a clear and concise description of why the customer is requesting the loan.
+- **Submission:** After filling out all fields, click **"Submit Loan Request."** A confirmation dialog will appear, allowing you to review all the details one last time. Click **"Confirm & Submit"** to create the loan and send it to the initial department for assignment.
