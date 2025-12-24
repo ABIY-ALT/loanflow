@@ -146,10 +146,8 @@ export default function LoanDetailPage() {
     setIsSaving(true);
 
     const optimisticLoanState: LoanRequest = {
-        ...loan,
+        ...JSON.parse(JSON.stringify(loan)), // Deep clone to ensure re-render
         ...updatedFields,
-        history: updatedFields.history ? [...updatedFields.history.map(h => ({...h}))] : [...loan.history.map(h => ({...h}))],
-        documents: updatedFields.documents !== undefined ? [...updatedFields.documents.map(d => ({...d}))] : [...loan.documents.map(d => ({...d}))],
         lastUpdatedDate: formatISO(new Date()),
     };
     
@@ -639,17 +637,10 @@ export default function LoanDetailPage() {
       }
     }
   
-    const { success, finalLoanState } = await handleLocalAndUpdateService(
+    await handleLocalAndUpdateService(
       { documents: updatedDocuments },
       `Requirement '${requirement.name}' status updated.`
     );
-    
-    if (success && finalLoanState) {
-        // Explicitly update the loan state to ensure UI re-renders,
-        // even though handleLocalAndUpdateService already does this.
-        // This is the fix for the re-rendering issue.
-        setLoan(finalLoanState);
-    }
   };
 
   const handleStatusChange = async (newStatus: string) => {
