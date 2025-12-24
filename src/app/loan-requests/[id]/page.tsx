@@ -639,10 +639,17 @@ export default function LoanDetailPage() {
       }
     }
   
-    await handleLocalAndUpdateService(
+    const { success, finalLoanState } = await handleLocalAndUpdateService(
       { documents: updatedDocuments },
       `Requirement '${requirement.name}' status updated.`
     );
+    
+    if (success && finalLoanState) {
+        // Explicitly update the loan state to ensure UI re-renders,
+        // even though handleLocalAndUpdateService already does this.
+        // This is the fix for the re-rendering issue.
+        setLoan(finalLoanState);
+    }
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -885,4 +892,3 @@ export default function LoanDetailPage() {
     </div>
   );
 }
-
