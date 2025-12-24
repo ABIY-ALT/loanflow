@@ -637,10 +637,15 @@ export default function LoanDetailPage() {
       }
     }
   
-    await handleLocalAndUpdateService(
+    const { success } = await handleLocalAndUpdateService(
       { documents: updatedDocuments },
       `Requirement '${requirement.name}' status updated.`
     );
+    
+    if (!success) {
+      // If the server update fails, the `handleLocalAndUpdateService` already reverts.
+      // No extra client-side state reversal is needed here.
+    }
   };
 
   const handleStatusChange = async (newStatus: string) => {

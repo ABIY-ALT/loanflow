@@ -378,7 +378,7 @@ export async function updateLoanRequest(
     }
     const userPermissions = new Set(user.permissions || []);
 
-    const existingLoan = await prisma.loanRequest.findUnique({ where: { id }, include: { history: true } });
+    const existingLoan = await prisma.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true } });
     if (!existingLoan) {
       throw new Error(`Loan with ID "${id}" not found.`);
     }
@@ -411,8 +411,8 @@ export async function updateLoanRequest(
         primaryAction = PERMISSIONS.MARK_STAGE_COMPLETE;
         requiredPermissions.push(primaryAction);
     } else if (dataToUpdate.hasOwnProperty('documents')) {
-        primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS; // Could also be VERIFY, this is a safe default
-        requiredPermissions.push(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.VERIFY_LOAN_DOCUMENTS);
+        primaryAction = PERMISSIONS.UPLOAD_LOAN_DOCUMENTS; // Could also be VERIFY or CHECKBOX, this is a safe default
+        requiredPermissions.push(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.VERIFY_LOAN_DOCUMENTS, PERMISSIONS.EDIT_LOAN_DETAILS);
     } else if (newHistoryEntries.length > 0) {
         const newNoteText = newHistoryEntries[0].notes || '';
         if (newNoteText.includes('rework')) { primaryAction = PERMISSIONS.RETURN_LOAN_FOR_REWORK; requiredPermissions.push(primaryAction); }
@@ -525,7 +525,45 @@ export async function updateLoanRequest(
       }
 
       if (dataToUpdate.documents !== undefined) {
-        // ... (existing document handling logic)
+        const currentDocIds = new Set(existingLoan.documents.map(d => d.id));
+        const updatedDocIds = new Set(dataToUpdate.documents.map(d => d.id));
+
+        const docsToAdd = dataToUpdate.documents.filter(d => !currentDocIds.has(d.id));
+        const docsToDelete = existingLoan.documents.filter(d => !updatedDocIds.has(d.id));
+        const docsToUpdate = dataToUpdate.documents.filter(d => currentDocIds.has(d.id));
+
+        if (docsToDelete.length > 0) {
+            await tx.loanDocument.deleteMany({
+                where: { id: { in: docsToDelete.map(d => d.id) } },
+            });
+        }
+        if (docsToAdd.length > 0) {
+            for (const doc of docsToAdd) {
+                await tx.loanDocument.create({
+                    data: {
+                        loanRequest: { connect: { id } },
+                        requirement: doc.requirementId ? { connect: { id: doc.requirementId } } : undefined,
+                        name: doc.name,
+                        status: doc.status as PrismaLoanDocumentStatus,
+                        filePath: doc.filePath,
+                        notes: doc.notes,
+                        uploadedAt: doc.uploadedAt ? parseISO(doc.uploadedAt) : undefined,
+                    },
+                });
+            }
+        }
+        if (docsToUpdate.length > 0) {
+            for (const doc of docsToUpdate) {
+                await tx.loanDocument.update({
+                    where: { id: doc.id },
+                    data: {
+                        status: doc.status as PrismaLoanDocumentStatus,
+                        notes: doc.notes,
+                        filePath: doc.filePath,
+                    },
+                });
+            }
+        }
       }
 
       return tx.loanRequest.update({
