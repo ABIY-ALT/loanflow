@@ -187,3 +187,5 @@ The **Settings** page is the central control panel for administrators to configu
     *   **Configure Documents & Statuses:** Within each stage, you can specify mandatory document requirements (as uploads or checkboxes) and create custom status options available to users working in that stage.
 
 *   **Save All Settings:** After making changes to workflows, you must click the **"Save All Settings to Database"** button to persist your changes. Changes to sectors and request types are saved immediately.
+
+    
