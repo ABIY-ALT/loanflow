@@ -17,23 +17,47 @@ To access the system, use the credentials provided by your administrator.
 On first login, you will be required to change your temporary password for security.
 
 ### 2.2. The Dashboard
-The Dashboard is your central hub. It provides a high-level overview of the loan pipeline with key statistics:
-- **Active Loans:** Total number of loans currently being processed.
-- **New Applications:** Loans submitted in the last 7 days.
-- **Approval Rate:** The percentage of completed loans that were approved.
-- **Overdue Tasks:** A critical indicator of loans that have passed their stage deadline. Clicking this card takes you directly to the Overdue Tasks report.
+The Dashboard is your central hub for loan operations. It is the first page you see after logging in and provides a vital, at-a-glance overview of the entire loan pipeline.
+
+#### **Key Statistics**
+
+At the top of the page, you'll find four cards displaying key performance indicators (KPIs):
+*   **Active Loans:** The total number of loan applications that are currently in progress and have not reached a final 'funded' or 'rejected' stage.
+*   **New Applications:** The number of new loan requests submitted within the last 7 days. This helps you track recent business volume.
+*   **Approval Rate:** The percentage of all completed loans (both approved and rejected) that were successfully approved. This is a key measure of portfolio quality and underwriting effectiveness.
+*   **Overdue Tasks:** A critical alert showing the number of loans that have passed their deadline for the current stage. Clicking this card will take you directly to the **Overdue Tasks Report** for immediate action.
+
+#### **Quick Access**
+
+Below the statistics, the "Quick Access" section provides convenient links to the most common areas of the application:
+*   **View Loan Pipeline:** Navigates you to the main Kanban board to see all active loans.
+*   **Internal Status Lookup:** Takes you to the search tool to quickly find any loan in the system.
+*   **Configure Workflows:** For administrators, this provides a direct link to the settings page to manage workflow stages and rules.
 
 ---
 
 ## 3. The Loan Pipeline
 
-The **Loan Pipeline** is a powerful, Kanban-style board that gives you a complete visual overview of all active loans. Loans are organized by their parent sector (e.g., 'Manufacturing & Agriculture Sector'), workflow, and current stage, allowing you to see exactly where every application stands in the process.
+The **Loan Pipeline** is a powerful, Kanban-style board that gives you a complete visual overview of all active loans. It is the primary tool for tracking the progress of applications from submission to completion. Loans are organized by their parent sector (e.g., 'Manufacturing & Agriculture Sector'), workflow, and current stage, allowing you to see exactly where every application stands in the process.
 
-- **Filter & Search:** Use the powerful filters at the top of the page to instantly narrow down the view. You can filter by status (Active, Overdue, Terminated) or use the search bar to find specific loans by number, customer name, or sector.
-- **Loan Cards:** Each card on the board represents a single loan. It displays critical information at a glance, including the customer's name, loan number, sector, and whether the case is marked as urgent.
-- **View Details:** To manage or review a specific loan, simply click the "View" button on its card. This will take you to the detailed Loan Request page, where you can take further action.
+#### **Filtering and Searching**
 
-This page is the primary tool for tracking the flow of all loans through the system.
+At the top of the page, a set of powerful tools allows you to instantly find specific loans:
+*   **Status Filters:** Quickly toggle the view between **Active**, **Overdue**, and **Terminated** loans. This allows you to focus on loans that are on track, require immediate attention, or have been closed.
+*   **Search Bar:** Use the intelligent search bar to find a specific loan by entering the **customer's name**, the unique **loan number**, the **child sector**, or the **request type**. The pipeline will instantly update to show only matching results.
+
+#### **The Kanban Board**
+
+The main view is divided into swimlanes, each representing a workflow path. Within each path, columns represent the individual stages of that workflow.
+*   **Loan Cards:** Each card on the board represents a single loan. It displays critical information at a glance, including:
+    *   Customer's Name and Loan Number
+    *   Parent and Child Sector
+    *   Request Type
+    *   Time since last update (e.g., "2 days ago")
+*   **Visual Indicators:**
+    *   **Urgent:** Loans marked as urgent are highlighted with a distinct red border and a flame icon, making them easy to spot and prioritize.
+    *   **Overdue:** Loans that have passed their stage deadline are flagged to draw your attention to potential bottlenecks.
+*   **View Details:** To manage or review a specific loan, simply click the **"View"** button on its card. This will take you to the detailed Loan Request page, where you can perform all necessary actions for that stage.
 
 ---
 
@@ -187,5 +211,3 @@ The **Settings** page is the central control panel for administrators to configu
     *   **Configure Documents & Statuses:** Within each stage, you can specify mandatory document requirements (as uploads or checkboxes) and create custom status options available to users working in that stage.
 
 *   **Save All Settings:** After making changes to workflows, you must click the **"Save All Settings to Database"** button to persist your changes. Changes to sectors and request types are saved immediately.
-
-    
