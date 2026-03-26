@@ -436,7 +436,7 @@ export default function LoanDetailPage() {
             isReadyForManagerReview: false,
             history: [...loan.history, newHistoryEntry],
             stageDeadline: formatISO(addDays(new Date(), firstStageOfNextWorkflow.defaultTimelineDays)),
-        }, `Loan automatically promoted to new workflow: ${firstStageOfNextWorkflow.name}.`);
+        }, `Loan approved and promoted to ${nextWorkflowDef.name} (${nextWorkflowDef.departmentName} Dept).`);
 
     } else {
         const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
@@ -460,7 +460,7 @@ export default function LoanDetailPage() {
           isReadyForManagerReview: false,
           stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
           workflowVersionId: loan.workflowVersionId,
-        }, `${loan.customerName} moved to ${nextStageDef.name}.`);
+        }, `Loan approved and promoted to ${nextStageDef.name} (${nextStageDef.responsibleDepartment} Dept).`);
     }
   };
 
@@ -561,7 +561,7 @@ export default function LoanDetailPage() {
         isReadyForManagerReview: false,
         history: [...loan.history, newHistoryEntry],
         stageDeadline: formatISO(addDays(new Date(), newStage.defaultTimelineDays)),
-    }, `Loan manually transitioned to ${newStage.name}.`);
+    }, `Loan manually transitioned to ${newStage.name} (${newStage.responsibleDepartment} Dept).`);
 
     if (success) {
         setIsManualTransitionDialogOpen(false);

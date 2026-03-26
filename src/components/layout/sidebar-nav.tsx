@@ -29,13 +29,14 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { getLoanRequests } from '@/services/loan-service-prisma';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 interface NavItemConfig {
   href: string;
@@ -177,23 +178,41 @@ export default function SidebarNav() {
   const { user, isLoading: authLoading } = useAuth();
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
   const [incomingCount, setIncomingCount] = useState(0);
+  const { toast } = useToast();
+  
+  // Use a ref to track the previous count without triggering re-renders
+  const prevCountRef = useRef<number>(0);
 
-  const fetchIncomingCount = useCallback(async () => {
+  const fetchIncomingCount = useCallback(async (isInitial = false) => {
     if (!user || !user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES)) return;
     try {
       const result = await getLoanRequests();
       if (result.loans && user.department) {
-        const count = result.loans.filter(loan => 
+        const currentIncomingLoans = result.loans.filter(loan => 
           loan.assignedDepartment === user.department && 
           loan.assignedToUsers.length === 0 && 
           !loan.isReadyForManagerReview
-        ).length;
-        setIncomingCount(count);
+        );
+        
+        const newCount = currentIncomingLoans.length;
+        
+        // Trigger notification if count increased
+        if (!isInitial && newCount > prevCountRef.current) {
+          const diff = newCount - prevCountRef.current;
+          toast({
+            title: "New Incoming Cases",
+            description: `${diff} new loan request(s) have arrived in the ${user.department} department.`,
+            variant: "default",
+          });
+        }
+        
+        prevCountRef.current = newCount;
+        setIncomingCount(newCount);
       }
     } catch (e) {
       console.error("Error fetching incoming count for sidebar", e);
     }
-  }, [user]);
+  }, [user, toast]);
 
   useEffect(() => {
     setIsClient(true);
@@ -205,8 +224,11 @@ export default function SidebarNav() {
         setOpenMenus(prev => new Set(prev).add(parentMenu.href));
     }
     
-    fetchIncomingCount();
-    const interval = setInterval(fetchIncomingCount, 60000); // Refresh every minute
+    // Initial fetch
+    fetchIncomingCount(true);
+    
+    // Polling interval: 30 seconds for better perceived "real-time" responsiveness
+    const interval = setInterval(() => fetchIncomingCount(false), 30000); 
     return () => clearInterval(interval);
   }, [currentPathname, fetchIncomingCount]);
 

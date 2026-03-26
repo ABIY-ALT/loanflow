@@ -24,7 +24,7 @@ The Dashboard is your central hub for loan operations. It is the first page you 
 At the top of the page, you'll find four cards displaying key performance indicators (KPIs):
 *   **Active Loans:** The total number of loan applications that are currently in progress and have not reached a final 'funded' or 'rejected' stage.
 *   **New Applications:** The number of new loan requests submitted within the last 7 days. This helps you track recent business volume.
-*   **Approval Rate:** The percentage of all completed loans (both approved and rejected) that were successfully approved. This is a key measure of portfolio quality and underwriting effectiveness.
+*   **Approval Rate:** The percentage of all completed loans (both approved and rejected) boxes. This is a key measure of portfolio quality and underwriting effectiveness.
 *   **Overdue Tasks:** A critical alert showing the number of loans that have passed their deadline for the current stage. Clicking this card will take you directly to the **Overdue Tasks Report** for immediate action.
 
 #### **Quick Access**
@@ -113,7 +113,25 @@ This page provides a personalized view of all loan requests that are currently a
 
 ---
 
-## 8. Manager Review Queue
+## 8. Incoming Cases & Inter-Department Notifications
+
+The **Incoming Cases** page is a critical tool for Department Heads and Managers to manage the flow of work as it enters their department.
+
+### 8.1. Automatic Case Routing
+When a loan is "Approved & Promoted" from one department to the next (e.g., from Property Valuation to Credit Analysis), the system automatically routes the case to the new department's **Incoming Cases** queue.
+
+### 8.2. Real-Time Notifications
+The system includes an automated notification system to ensure no new case goes unnoticed:
+- **Sidebar Badge:** A red circle with a count automatically appears next to "Incoming Cases" in the sidebar for the receiving department head.
+- **In-App Alerts:** When a new case arrives while you are logged in, a toast notification will appear at the top of the screen: *"New loan LN-XXXX has arrived in [Your Department] – please assign staff."*
+- **Auto-Refresh:** The system polls for new arrivals every 30 seconds to keep the count and notifications accurate without requiring a manual page refresh.
+
+### 8.3. Assigning Staff
+From the Incoming Cases page, you can click the prominent orange **"Assign Staff"** button to go directly to the loan details and delegate the case to one or more members of your team.
+
+---
+
+## 9. Manager Review Queue
 
 This page is designed specifically for users in managerial roles, such as Directors and Division Managers. It serves as the central hub for reviewing loan requests that have been fully processed by assigned staff and are now awaiting a manager's decision.
 
@@ -125,19 +143,17 @@ This page is designed specifically for users in managerial roles, such as Direct
 
 ---
 
-## 9. Unassigned Cases Queue
+## 10. Unassigned Cases Queue
 
-The **Unassigned Cases Queue** is a crucial page for department managers. It lists all loan requests that have been routed to your department but have not yet been assigned to a specific staff member for processing.
+The **Unassigned Cases Queue** lists all loan requests that have been routed to your department but have not yet been assigned to a specific staff member for processing.
 
 - **Assignment Hub:** This page acts as the central hub for incoming work for your department. It's your responsibility to assign these cases to your team members.
 - **Case Details:** For each unassigned case, you can see the customer's name, loan number, the current stage, and the date it was last updated. Urgent cases are flagged for immediate attention.
 - **Assign Staff:** To assign a loan, click the **"View & Assign Staff"** button. This will take you to the loan's detail page, where you can use the "Edit / Assign" functionality to delegate the task to one or more members of your team.
 
-This queue ensures that no loan request sits idle and that work is distributed efficiently within each department.
-
 ---
 
-## 10. Internal Status Lookup
+## 11. Internal Status Lookup
 
 The **Internal Status Lookup** page is a quick and powerful search tool for finding specific loan requests within the system. This is especially useful when you have a specific piece of information, like a loan number, and need to quickly access the corresponding loan record.
 
@@ -149,11 +165,9 @@ The **Internal Status Lookup** page is a quick and powerful search tool for find
     - **Customer Code:** Search using the customer's unique identifier code.
 - **Viewing Results:** After searching, the system will display a table with all matching loan requests. From this table, you can click "View Loan" to navigate directly to the detailed page for any of the results.
 
-This feature is designed for internal staff to quickly find and access loan information without needing to browse the entire pipeline.
-
 ---
 
-## 11. Task Assignment Report
+## 12. Task Assignment Report
 
 The **Task Assignment Report** page provides a comprehensive, filterable, and sortable view of every loan request in the system. It is a powerful tool for analyzing workloads, tracking progress, and generating exports.
 
@@ -166,11 +180,9 @@ The **Task Assignment Report** page provides a comprehensive, filterable, and so
 *   **Key Data Points:** The report table shows critical information for each loan, including the customer details, loan amount, current stage, assigned staff, and the total time the loan has spent in its current stage.
 *   **Download as CSV:** Use the "Download as CSV" button to export the currently filtered and sorted report data for use in external tools like Microsoft Excel.
 
-This page is essential for managers who need a detailed, data-driven overview of all loan activities across the institution.
-
 ---
 
-## 12. Public Loan Tracker
+## 13. Public Loan Tracker
 
 The Public Loan Tracker is a feature designed for loan applicants to check the status of their application without needing to log into the main system. It provides a simplified, read-only view of their loan's progress.
 
@@ -185,11 +197,9 @@ The Public Loan Tracker is a feature designed for loan applicants to check the s
         *   **Pending:** Future stages are shown as pending.
     *   **Stage Information:** For each stage, the customer can see the responsible department and the estimated timeline for that specific stage.
 
-This feature enhances transparency by allowing customers to self-serve and monitor their application's progress through the pipeline.
-
 ---
 
-## 13. Settings
+## 14. Settings
 
 The **Settings** page is the central control panel for administrators to configure the core logic and structure of the LoanFlow application. Access to this page and its subsections is restricted to users with the appropriate administrative permissions.
 
