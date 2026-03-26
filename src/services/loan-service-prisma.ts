@@ -27,7 +27,6 @@ import { getCurrentUser } from '@/app/auth/actions';
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  const genericMessage = 'An unexpected error occurred. Please try again later.';
   console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
   return { error: message };
 };
@@ -234,17 +233,17 @@ async function addLoanRequestInternal(
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
         createdById: user.id,
+        history: {
+          create: [
+            {
+              stageName: firstStage.name,
+              timestamp: currentDate,
+              notes: initialHistoryNote,
+              user: { connect: { id: systemUserId } }
+            }
+          ]
+        }
       },
-    });
-    
-    await prisma.loanHistoryEntry.create({
-      data: {
-        loanRequest: { connect: { id: newLoan.id } },
-        user: { connect: { id: systemUserId } },
-        stageName: firstStage.name,
-        timestamp: currentDate,
-        notes: initialHistoryNote,
-      }
     });
 
     return { id: newLoan.id };
