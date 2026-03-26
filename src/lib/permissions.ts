@@ -1,4 +1,3 @@
-
 // src/lib/permissions.ts
 
 // Using 'as const' makes the values of PERMISSIONS literal types,
@@ -14,6 +13,7 @@ export const PERMISSIONS = {
   // Loan Creation & Officer Actions
   CREATE_LOAN_REQUEST: "CREATE_LOAN_REQUEST",
   VIEW_OWN_ASSIGNED_CASES: "VIEW_OWN_ASSIGNED_CASES", // Specific to logged-in user
+  VIEW_OWN_SUBMITTED_CASES: "VIEW_OWN_SUBMITTED_CASES", // Visibility for inputters/creators
   EDIT_LOAN_DETAILS: "EDIT_LOAN_DETAILS", // Can edit core loan data
   ASSIGN_LOAN_TO_STAFF: "ASSIGN_LOAN_TO_STAFF", // Can assign/reassign staff
   ADD_LOAN_NOTES: "ADD_LOAN_NOTES",
@@ -61,6 +61,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_CUSTOMERS: "Can view the list of all customers.",
   CREATE_LOAN_REQUEST: "Can submit new loan requests into the system.",
   VIEW_OWN_ASSIGNED_CASES: "Can view the 'My Assigned Cases' page (cases assigned to them).",
+  VIEW_OWN_SUBMITTED_CASES: "Can view the 'My Submitted Cases' page (cases they created).",
   EDIT_LOAN_DETAILS: "Can edit loan details and customer information.",
   ASSIGN_LOAN_TO_STAFF: "Can assign or re-assign a loan to a specific staff member.",
   ADD_LOAN_NOTES: "Can add notes to a loan's history.",
@@ -110,6 +111,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
     permissions: [
       "CREATE_LOAN_REQUEST",
       "VIEW_OWN_ASSIGNED_CASES",
+      "VIEW_OWN_SUBMITTED_CASES",
       "EDIT_LOAN_DETAILS",
       "ASSIGN_LOAN_TO_STAFF",
       "ADD_LOAN_NOTES",

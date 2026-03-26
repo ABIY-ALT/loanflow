@@ -1,5 +1,4 @@
 
-
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -111,6 +110,7 @@ const mapPrismaLoanToAppLoan = (
     isUrgent: prismaLoan.isUrgent,
     isOverdue: isOverdueCalc,
     isTerminalStage: !!isTerminal,
+    createdById: prismaLoan.createdById || undefined,
     history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,
@@ -200,7 +200,7 @@ export async function addLoanRequest(
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
     const systemUserId = 'system-prisma';
-    const initialHistoryNote = `Loan application submitted. Initial Department: ${initialDepartment.name}. Workflow: ${activeVersion.workflowDefinition.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
+    const initialHistoryNote = `Loan application submitted by ${user.fullName}. Initial Department: ${initialDepartment.name}. Workflow: ${activeVersion.workflowDefinition.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
     
     const availableStatusesForDept = firstStage.availableStatuses && typeof firstStage.availableStatuses === 'object' && !Array.isArray(firstStage.availableStatuses) ? (firstStage.availableStatuses as Record<string, string[]>)[firstStage.responsibleDepartment.name] : [];
     const initialStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -236,6 +236,7 @@ export async function addLoanRequest(
         currentWorkflowStage: { connect: { id: firstStage.id } },
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
+        createdById: user.id, // Store who submitted the loan
       },
     });
     
@@ -259,7 +260,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[], error?
   try {
     const { user } = await getCurrentUser();
     if (!user) {
-        return { error: "Unauthorized: You do not have permissions to view loan data." };
+        return { error: "Unauthorized: No user session found." };
     }
     
     const userPermissions = new Set(user.permissions || []);
@@ -1202,4 +1203,34 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
   }
 }
 
+export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[], error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES)) {
+        return { error: "Unauthorized: You do not have permission to view your submitted cases." };
+    }
+
+    const prismaLoans = await prisma.loanRequest.findMany({
+      where: { createdById: user.id },
+      orderBy: { submittedDate: 'desc' },
+      include: {
+        customer: true,
+        sector: { include: { parent: true } },
+        requestType: true,
+        assignedToUsers: { include: { department: true, customRole: true } },
+        stageCompletedBy: { include: { department: true, customRole: true } },
+        currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
+        workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
+        assignedDepartment: true,
+        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
+        documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
     
+    return { loans: appLoans };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch your submitted loan requests.", "getSubmittedLoanRequests", e);
+  }
+}

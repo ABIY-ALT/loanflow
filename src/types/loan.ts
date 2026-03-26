@@ -1,5 +1,4 @@
 
-
 import type { AppPermission } from '@/lib/permissions';
 
 // Represents a predefined department in the system (name string)
@@ -197,6 +196,8 @@ export interface LoanRequest {
 
   currentStageName?: string;
   isTerminalStage?: boolean;
+
+  createdById?: string; // Added to track submission origin
 
   createdAt?: string;
   updatedAt?: string;

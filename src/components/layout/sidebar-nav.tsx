@@ -21,6 +21,7 @@ import {
   Map,
   FileSearch,
   ChevronDown,
+  FileOutput,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -71,6 +72,12 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'My Assigned Cases',
     icon: ClipboardList,
     requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+  },
+  {
+    href: '/my-submitted-cases',
+    label: 'My Submitted Cases',
+    icon: FileOutput,
+    requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
   },
   {
     href: '/manager-review',
