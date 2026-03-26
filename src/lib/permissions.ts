@@ -27,6 +27,7 @@ export const PERMISSIONS = {
   // Managerial Actions
   VIEW_MANAGER_REVIEW_QUEUE: "VIEW_MANAGER_REVIEW_QUEUE",
   VIEW_UNASSIGNED_CASES_QUEUE: "VIEW_UNASSIGNED_CASES_QUEUE", // Department queue
+  VIEW_INCOMING_CASES: "VIEW_INCOMING_CASES", // New incoming cases for department heads
   PROMOTE_LOAN_STAGE: "PROMOTE_LOAN_STAGE", // Manager approval for sequential promotion
   RETURN_LOAN_FOR_REWORK: "RETURN_LOAN_FOR_REWORK", // Manager action
   VIEW_OVERDUE_TASKS_REPORT: "VIEW_OVERDUE_TASKS_REPORT", // Overdue tasks page
@@ -73,6 +74,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   FLAG_URGENT_CASE: "Can mark or unmark a loan case as 'Urgent'.",
   VIEW_MANAGER_REVIEW_QUEUE: "Can view the queue of loans awaiting manager review.",
   VIEW_UNASSIGNED_CASES_QUEUE: "Can view the queue of unassigned cases within departments (department queue).",
+  VIEW_INCOMING_CASES: "Can view new incoming cases promoted to their department that need staff assignment.",
   PROMOTE_LOAN_STAGE: "Can approve a loan stage and promote it to the next sequential stage in the workflow.",
   RETURN_LOAN_FOR_REWORK: "Can return a loan to a previous assignee or state for rework (manager action).",
   VIEW_OVERDUE_TASKS_REPORT: "Can view the page listing all overdue loan tasks.",
@@ -128,6 +130,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
     permissions: [
       "VIEW_MANAGER_REVIEW_QUEUE",
       "VIEW_UNASSIGNED_CASES_QUEUE",
+      "VIEW_INCOMING_CASES",
       "PROMOTE_LOAN_STAGE",
       "RETURN_LOAN_FOR_REWORK",
     ],

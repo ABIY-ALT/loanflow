@@ -22,17 +22,20 @@ import {
   FileSearch,
   ChevronDown,
   FileOutput,
+  BellRing,
 } from 'lucide-react';
 import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
+import { getLoanRequests } from '@/services/loan-service-prisma';
+import { Badge } from '@/components/ui/badge';
 
 interface NavItemConfig {
   href: string;
@@ -40,6 +43,7 @@ interface NavItemConfig {
   icon: React.ElementType;
   requiredPermissions?: AppPermission[]; // Permissions needed to see this item
   subItems?: NavItemConfig[];
+  badgeCount?: number;
 }
 
 const navItemsConfig: NavItemConfig[] = [
@@ -66,6 +70,12 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'Customers',
     icon: Users,
     requiredPermissions: [PERMISSIONS.VIEW_CUSTOMERS]
+  },
+  {
+    href: '/incoming-cases',
+    label: 'Incoming Cases',
+    icon: BellRing,
+    requiredPermissions: [PERMISSIONS.VIEW_INCOMING_CASES]
   },
   {
     href: '/my-assigned-cases',
@@ -166,6 +176,24 @@ export default function SidebarNav() {
   const currentPathname = usePathname();
   const { user, isLoading: authLoading } = useAuth();
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
+  const [incomingCount, setIncomingCount] = useState(0);
+
+  const fetchIncomingCount = useCallback(async () => {
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES)) return;
+    try {
+      const result = await getLoanRequests();
+      if (result.loans && user.department) {
+        const count = result.loans.filter(loan => 
+          loan.assignedDepartment === user.department && 
+          loan.assignedToUsers.length === 0 && 
+          !loan.isReadyForManagerReview
+        ).length;
+        setIncomingCount(count);
+      }
+    } catch (e) {
+      console.error("Error fetching incoming count for sidebar", e);
+    }
+  }, [user]);
 
   useEffect(() => {
     setIsClient(true);
@@ -176,7 +204,11 @@ export default function SidebarNav() {
     if (parentMenu) {
         setOpenMenus(prev => new Set(prev).add(parentMenu.href));
     }
-  }, [currentPathname]);
+    
+    fetchIncomingCount();
+    const interval = setInterval(fetchIncomingCount, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [currentPathname, fetchIncomingCount]);
 
   if (!isClient || authLoading) {
     return (
@@ -238,6 +270,9 @@ export default function SidebarNav() {
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
         const isMenuOpen = openMenus.has(item.href);
+        
+        // Handle badge for Incoming Cases
+        const showBadge = item.href === '/incoming-cases' && incomingCount > 0;
 
         const buttonContent = (
           <SidebarMenuButton
@@ -248,6 +283,11 @@ export default function SidebarNav() {
             <Link href={item.href} className="flex items-center gap-2 flex-grow" passHref>
               <Icon className="h-5 w-5" />
               <span>{item.label}</span>
+              {showBadge && (
+                <Badge variant="destructive" className="ml-auto mr-2 h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full bg-red-600 animate-pulse">
+                  {incomingCount}
+                </Badge>
+              )}
             </Link>
             {hasSubItems && (
               <Button
