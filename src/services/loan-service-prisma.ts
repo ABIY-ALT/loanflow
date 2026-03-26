@@ -93,8 +93,8 @@ const mapPrismaLoanToAppLoan = (
     requestTypeName: prismaLoan.requestType.name,
     loanPurpose: prismaLoan.loanPurpose,
 
-    workflowVersionId: prismaLoan.workflowVersionIdMirror || undefined,
-    currentStageId: prismaLoan.currentStageIdMirror || undefined,
+    workflowVersionId: prismaLoan.workflowVersionId || undefined,
+    currentStageId: prismaLoan.currentStageId || undefined,
     currentStageStatus: prismaLoan.currentStageStatus || undefined,
     stageEntryDate: prismaLoan.stageEntryDate ? formatISO(new Date(prismaLoan.stageEntryDate)) : undefined,
     currentStageName: prismaLoan.currentWorkflowStage?.name || 'Unknown Stage',
@@ -235,9 +235,7 @@ export async function addLoanRequest(
         stageEntryDate: currentDate,
         stageDeadline: stageDeadlineDate,
         workflowVersion: { connect: { id: activeVersion.id } },
-        workflowVersionIdMirror: activeVersion.id,
         currentWorkflowStage: { connect: { id: firstStage.id } },
-        currentStageIdMirror: firstStage.id,
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
         createdById: user.id, // Store who submitted the loan
@@ -391,7 +389,7 @@ export async function updateLoanRequest(
     let primaryAction: AppPermission | null = null;
     let requiredPermissions: AppPermission[] = [];
     
-    const isStageChanging = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror;
+    const isStageChanging = dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageId;
     const isTerminating = dataToUpdate.isTerminalStage === true && existingLoan.isTerminalStage === false;
     let newHistoryEntries: LoanHistoryEntry[] = [];
     if (dataToUpdate.history) {
@@ -473,8 +471,8 @@ export async function updateLoanRequest(
           updatePayload.stageCompletedBy = { set: userIds };
       }
 
-      if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageIdMirror) {
-        const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionIdMirror;
+      if (dataToUpdate.currentStageId && dataToUpdate.currentStageId !== existingLoan.currentStageId) {
+        const wfVerId = dataToUpdate.workflowVersionId || existingLoan.workflowVersionId;
         if (!wfVerId) throw new Error("Workflow version context missing.");
 
         const newStageDef = await tx.workflowStageDefinition.findUnique({
@@ -484,9 +482,7 @@ export async function updateLoanRequest(
         if (!newStageDef) throw new Error(`Stage definition not found.`);
         
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
-        updatePayload.currentStageIdMirror = newStageDef.id;
         updatePayload.workflowVersion = { connect: { id: wfVerId } }; 
-        updatePayload.workflowVersionIdMirror = wfVerId;
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;
@@ -1072,7 +1068,7 @@ export async function searchLoanRequests(
         id: true,
         loanNumber: true,
         submittedDate: true,
-        currentStageIdMirror: true,
+        currentStageId: true,
         currentStageStatus: true,
         isTerminalStage: true,
         customer: {
@@ -1094,7 +1090,7 @@ export async function searchLoanRequests(
         loanNumber: loan.loanNumber,
         customerName: loan.customer.name,
         submittedDate: formatISO(loan.submittedDate),
-        currentStageId: loan.currentStageIdMirror,
+        currentStageId: loan.currentStageId,
         currentStageStatus: loan.currentStageStatus,
         isTerminalStage: loan.isTerminalStage,
     }));
@@ -1196,7 +1192,7 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string): Promi
       loanNumber: prismaLoan.loanNumber,
       customerName: prismaLoan.customer.name,
       submittedDate: formatISO(prismaLoan.submittedDate),
-      currentStageId: prismaLoan.currentStageIdMirror,
+      currentStageId: prismaLoan.currentStageId,
       currentStageStatus: prismaLoan.currentStageStatus,
       isTerminalStage: prismaLoan.isTerminalStage,
       workflowSequence: workflowSequence,

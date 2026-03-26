@@ -34,7 +34,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
-import { Button } from '../ui/button';
 import { getLoanRequests } from '@/services/loan-service-prisma';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -331,16 +330,17 @@ export default function SidebarNav() {
                   const subItemIsActive = currentPathname.startsWith(subItem.href);
                   return (
                     <SidebarMenuItem key={subItem.href} className="list-none">
-                       <Link href={subItem.href} passHref>
-                         <SidebarMenuButton
-                            isActive={subItemIsActive}
-                            className="justify-start text-sm h-8"
-                            tooltip={subItem.label}
-                         >
+                       <SidebarMenuButton
+                          asChild
+                          isActive={subItemIsActive}
+                          className="justify-start text-sm h-8"
+                          tooltip={subItem.label}
+                       >
+                          <Link href={subItem.href}>
                             <SubIcon className="h-4 w-4 mr-2.5" />
                             <span>{subItem.label}</span>
-                         </SidebarMenuButton>
-                       </Link>
+                          </Link>
+                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
                 })}
