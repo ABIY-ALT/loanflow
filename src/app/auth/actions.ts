@@ -53,7 +53,6 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     });
 
     if (!user) {
-      // Avoid revealing that the user does not exist
       return { success: false, error: genericError };
     }
 
@@ -62,14 +61,11 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       return { success: false, error: `Your account is currently inactive. Please contact an administrator.` };
     }
     
-    // Check for lockout
     if (user.lockoutUntil && isAfter(user.lockoutUntil, new Date())) {
-       console.log(`Login attempt for locked account: ${user.email}`);
        return { success: false, error: `Your account is temporarily locked. Please try again in a few minutes.` };
     }
 
     if (!user.passwordHash) {
-       console.error(`Login attempt for user without password hash: ${user.email}`);
        return { success: false, error: genericError };
     }
 
@@ -81,7 +77,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
 
       if (newAttemptCount >= MAX_LOGIN_ATTEMPTS) {
         updateData.lockoutUntil = addMinutes(new Date(), LOCKOUT_DURATION_MINUTES);
-        updateData.failedLoginAttempts = 0; // Reset after locking
+        updateData.failedLoginAttempts = 0;
       }
 
       await prisma.user.update({
@@ -90,14 +86,12 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       });
       
       if (updateData.lockoutUntil) {
-          console.warn(`Account locked due to too many failed login attempts: ${user.email}`);
           return { success: false, error: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minute.` };
       }
 
       return { success: false, error: genericError };
     }
     
-    // On successful login, reset failed attempts
     if (user.failedLoginAttempts > 0 || user.lockoutUntil) {
         await prisma.user.update({
             where: { id: user.id },
@@ -110,24 +104,24 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
 
     const appUser = mapPrismaUserToAppUser(user);
 
-    // Create session
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     const session = await encrypt({ userId: user.id, expires });
 
-    cookies().set('session', session, { expires, httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+    const cookieStore = await cookies();
+    cookieStore.set('session', session, { expires, httpOnly: true, secure: process.env.NODE_ENV === 'production' });
 
     return { success: true, user: appUser };
 
   } catch (error: any) {
     console.error("Critical error during login:", error);
-    // Do not expose detailed error to the client
     return { success: false, error: 'An unexpected server error occurred during login.' };
   }
 }
 
 export async function logoutUser(): Promise<{ success: boolean; error?: string }> {
   try {
-    cookies().delete('session');
+    const cookieStore = await cookies();
+    cookieStore.delete('session');
     return { success: true };
   } catch (error: any) {
     console.error("Critical error during logout:", error);
@@ -136,15 +130,15 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
 }
 
 export async function getCurrentUser(): Promise<{ user: User | null }> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('session')?.value;
   if (!sessionCookie) return { user: null };
 
   const session = await decrypt(sessionCookie);
 
   if (!session || !session.userId) {
-    // Invalid or expired session, ensure cookie is cleared
-    cookies().delete('session');
+    const cookieStoreInternal = await cookies();
+    cookieStoreInternal.delete('session');
     return { user: null };
   }
 
