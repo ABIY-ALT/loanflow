@@ -235,7 +235,9 @@ export async function addLoanRequest(
         stageEntryDate: currentDate,
         stageDeadline: stageDeadlineDate,
         workflowVersion: { connect: { id: activeVersion.id } },
+        workflowVersionIdMirror: activeVersion.id,
         currentWorkflowStage: { connect: { id: firstStage.id } },
+        currentStageIdMirror: firstStage.id,
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
         createdById: user.id, // Store who submitted the loan
@@ -482,7 +484,9 @@ export async function updateLoanRequest(
         if (!newStageDef) throw new Error(`Stage definition not found.`);
         
         updatePayload.currentWorkflowStage = { connect: { id: newStageDef.id } };
+        updatePayload.currentStageIdMirror = newStageDef.id;
         updatePayload.workflowVersion = { connect: { id: wfVerId } }; 
+        updatePayload.workflowVersionIdMirror = wfVerId;
         updatePayload.stageEntryDate = new Date();
         const newStageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         updatePayload.stageDeadline = newStageDeadline;

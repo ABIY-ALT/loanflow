@@ -28,6 +28,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuAction,
 } from '@/components/ui/sidebar';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
@@ -296,37 +297,33 @@ export default function SidebarNav() {
         // Handle badge for Incoming Cases
         const showBadge = item.href === '/incoming-cases' && incomingCount > 0;
 
-        const buttonContent = (
-          <SidebarMenuButton
-            isActive={mainButtonIsActive}
-            className="justify-start w-full pr-0"
-            tooltip={item.label}
-          >
-            <Link href={item.href} className="flex items-center gap-2 flex-grow" passHref>
-              <Icon className="h-5 w-5" />
-              <span>{item.label}</span>
-              {showBadge && (
-                <Badge variant="destructive" className="ml-auto mr-2 h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full bg-red-600 animate-pulse">
-                  {incomingCount}
-                </Badge>
-              )}
-            </Link>
-            {hasSubItems && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 ml-auto shrink-0"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(item.href); }}
-              >
-                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-200", isMenuOpen && "rotate-180")} />
-              </Button>
-            )}
-          </SidebarMenuButton>
-        );
-
         return (
           <SidebarMenuItem key={item.href}>
-            {buttonContent}
+            <SidebarMenuButton
+              asChild
+              isActive={mainButtonIsActive}
+              className="justify-start w-full"
+              tooltip={item.label}
+            >
+              <Link href={item.href} className="flex items-center gap-2">
+                <Icon className="h-5 w-5" />
+                <span>{item.label}</span>
+                {showBadge && (
+                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full bg-red-600 animate-pulse">
+                    {incomingCount}
+                  </Badge>
+                )}
+              </Link>
+            </SidebarMenuButton>
+            {hasSubItems && (
+              <SidebarMenuAction
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(item.href); }}
+                className={cn("transition-transform duration-200", isMenuOpen && "rotate-180")}
+              >
+                <ChevronDown className="h-4 w-4" />
+                <span className="sr-only">Toggle {item.label} sub-menu</span>
+              </SidebarMenuAction>
+            )}
             {hasSubItems && isMenuOpen && (
               <ul className="pl-4 mt-1 space-y-1 border-l border-sidebar-border ml-4">
                 {item.subItems?.map(subItem => {
