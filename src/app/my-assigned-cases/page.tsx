@@ -1,9 +1,8 @@
 
-
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -207,9 +206,16 @@ export default function MyAssignedCasesPage() {
                         ) : <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Link href={`/loan-requests/${loan.id}`} passHref>
-                        <Button variant="ghost" size="sm">View & Process <ExternalLink className="ml-2 h-3 w-3" /></Button>
-                      </Link>
+                      <div className="flex items-center justify-center gap-2">
+                        <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Audit Trail">
+                          <Button variant="ghost" size="icon">
+                            <History className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/loan-requests/${loan.id}`} passHref>
+                          <Button variant="ghost" size="sm">View & Process <ExternalLink className="ml-2 h-3 w-3" /></Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

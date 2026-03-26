@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import Link from 'next/link';
@@ -7,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import type { LoanRequest, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle, Briefcase, Network, X } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ArrowRight, Building, Users as UsersIcon, FileDigit, ListFilter, KanbanSquare, ExternalLink, Flame, Clock, Search, AlertCircleIcon, XCircle, CheckCircle, Briefcase, Network, X, History } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLoanRequests, getWorkflowDefinitions as getWfDefs } from '@/services/loan-service-prisma';
@@ -153,8 +152,6 @@ export default function LoanProcessPage() {
       );
     }
     
-    const allLoanIdsInFilter = new Set(filteredLoans.map(l => l.id));
-
     const structure: Record<string, {
         groupingKey: string;
         parentSectorName?: string;
@@ -413,11 +410,18 @@ export default function LoanProcessPage() {
                                                       <Clock className="h-3 w-3"/>
                                                       {formatDistanceToNow(parseISO(loan.lastUpdatedDate), { addSuffix: true })}
                                                     </span>
-                                                    <Link href={`/loan-requests/${loan.id}`} passHref>
-                                                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-                                                        View <ExternalLink className="ml-1 h-3 w-3" />
-                                                      </Button>
-                                                    </Link>
+                                                    <div className="flex items-center gap-1">
+                                                      <Link href={`/loan-requests/${loan.id}?tab=history`} passHref>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                                                          <History className="h-3 w-3" />
+                                                        </Button>
+                                                      </Link>
+                                                      <Link href={`/loan-requests/${loan.id}`} passHref>
+                                                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                                                          View <ExternalLink className="ml-1 h-3 w-3" />
+                                                        </Button>
+                                                      </Link>
+                                                    </div>
                                                   </div>
                                                 </CardContent>
                                               </Card>

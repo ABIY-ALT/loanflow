@@ -16,7 +16,8 @@ import {
   Clock,
   Building,
   User,
-  Info
+  Info,
+  History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -229,11 +230,18 @@ export default function MySubmittedCasesPage() {
                         {format(parseISO(loan.lastUpdatedDate), 'MMM dd, HH:mm')}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/loan-requests/${loan.id}`} passHref>
-                          <Button variant="ghost" size="sm" className="h-8">
-                            View <ExternalLink className="ml-1.5 h-3 w-3" />
-                          </Button>
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Audit Trail">
+                            <Button variant="ghost" size="icon">
+                              <History className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/loan-requests/${loan.id}`} passHref>
+                            <Button variant="ghost" size="sm" className="h-8">
+                              View <ExternalLink className="ml-1.5 h-3 w-3" />
+                            </Button>
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

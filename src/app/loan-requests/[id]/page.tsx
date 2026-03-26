@@ -1,8 +1,7 @@
 
-
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -14,18 +13,19 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, Info as InfoIcon, FileText } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
 import { LoanInfoDisplay } from '@/components/loan/detail/LoanInfoDisplay';
 import { LoanDocumentsManager } from '@/components/loan/detail/LoanDocumentsManager';
-import { LoanHistoryTimeline } from '@/components/loan/detail/LoanHistoryTimeline';
+import { LoanAuditTrail } from '@/components/loan/detail/LoanAuditTrail';
 
-import { EditLoanDetailsDialog, UNASSIGNED_DIALOG_OPTION_VALUE } from '@/components/loan/dialogs/EditLoanDetailsDialog';
+import { EditLoanDetailsDialog } from '@/components/loan/dialogs/EditLoanDetailsDialog';
 import { AddNoteToLoanDialog } from '@/components/loan/dialogs/AddNoteToLoanDialog';
 import { LogInfoRequestForLoanDialog } from '@/components/loan/dialogs/LogInfoRequestForLoanDialog';
 import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanForReworkDialog';
@@ -34,14 +34,16 @@ import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDial
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import Link from 'next/link';
 
 
 export default function LoanDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const loanId = params.id as string;
+  const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'overview';
+  
   const { user: currentUser, isLoading: authLoading } = useAuth();
 
   const [loan, setLoan] = useState<LoanRequest | null>(null);
@@ -50,6 +52,8 @@ export default function LoanDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = useState(false);
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
@@ -641,11 +645,6 @@ export default function LoanDetailPage() {
       { documents: updatedDocuments },
       `Requirement '${requirement.name}' status updated.`
     );
-    
-    if (!success) {
-      // If the server update fails, the `handleLocalAndUpdateService` already reverts.
-      // No extra client-side state reversal is needed here.
-    }
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -843,23 +842,37 @@ export default function LoanDetailPage() {
           )}
 
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
-          <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
-          <Separator className="my-8" />
-          <div className="grid md:grid-cols-2 gap-8">
-            <LoanDocumentsManager
-              loan={loan}
-              currentStageDef={currentStageDef}
-              onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && isActionable ? (docReq) => { setCurrentDocumentRequirementToUpload(docReq); setIsUploadDocDialogOpen(true); } : undefined}
-              onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) && isActionable ? handleVerifyDocument : undefined}
-              onCheckboxChange={handleCheckboxRequirementChange}
-              isSavingGlobal={isSaving}
-            />
-            <LoanHistoryTimeline
-              loan={loan}
-              onFulfillInfoRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) && isActionable ? handleFulfillInfoRequest : undefined}
-              isSavingGlobal={isSaving}
-            />
-          </div>
+          
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-8 h-12">
+              <TabsTrigger value="overview" className="gap-2 text-base">
+                <InfoIcon className="h-4 w-4" /> Overview & Documents
+              </TabsTrigger>
+              <TabsTrigger value="history" className="gap-2 text-base">
+                <History className="h-4 w-4" /> Case History & Audit Trail
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-8 animate-in fade-in-50 duration-300">
+              <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
+              <Separator />
+              <div className="max-w-3xl">
+                <LoanDocumentsManager
+                  loan={loan}
+                  currentStageDef={currentStageDef}
+                  onOpenUploadDialog={userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && isActionable ? (docReq) => { setCurrentDocumentRequirementToUpload(docReq); setIsUploadDocDialogOpen(true); } : undefined}
+                  onVerifyDocument={userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS) && isActionable ? handleVerifyDocument : undefined}
+                  onCheckboxChange={handleCheckboxRequirementChange}
+                  isSavingGlobal={isSaving}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="animate-in fade-in-50 duration-300">
+              <LoanAuditTrail loan={loan} />
+            </TabsContent>
+          </Tabs>
+
         </CardContent>
          <CardFooter className="p-6 border-t">
             <p className="text-xs text-muted-foreground">

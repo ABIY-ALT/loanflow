@@ -15,7 +15,8 @@ import {
   Building,
   Clock,
   Flame,
-  CheckCircle2
+  CheckCircle2,
+  History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -196,12 +197,19 @@ export default function IncomingCasesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/loan-requests/${loan.id}`} passHref>
-                          <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold shadow-md hover:shadow-lg transition-all group">
-                            <UserPlus className="mr-2 h-4 w-4 group-hover:scale-110 transition-transform" />
-                            Assign Staff
-                          </Button>
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Audit Trail">
+                            <Button variant="ghost" size="icon">
+                              <History className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/loan-requests/${loan.id}`} passHref>
+                            <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold shadow-md hover:shadow-lg transition-all group">
+                              <UserPlus className="mr-2 h-4 w-4 group-hover:scale-110 transition-transform" />
+                              Assign Staff
+                            </Button>
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

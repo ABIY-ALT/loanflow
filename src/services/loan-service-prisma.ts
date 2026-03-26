@@ -65,7 +65,7 @@ const mapPrismaLoanToAppLoan = (
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector & { parent?: PrismaSector | null}, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
-        history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { customRole?: PrismaRole | null }) | null })[];
+        history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null })[];
         documents?: (PrismaLoanDocument & { requirement: PrismaDocumentRequirement | null })[];
     }
 ): LoanRequest => {
@@ -115,6 +115,8 @@ const mapPrismaLoanToAppLoan = (
       id: h.id,
       userId: h.userId,
       userName: h.user?.name || (h.userId === 'system-prisma' ? 'System Process' : 'Unknown User'),
+      userRole: h.user?.customRole?.name || undefined,
+      userDepartment: h.user?.department?.name || undefined,
       stageName: h.stageName,
       timestamp: formatISO(new Date(h.timestamp)),
       notes: h.notes || undefined,
@@ -310,7 +312,7 @@ export async function getLoanRequests(): Promise<{ loans?: LoanRequest[], error?
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
         assignedDepartment: true,
-        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
+        history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
     });
@@ -346,7 +348,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
           },
         },
         assignedDepartment: true,
-        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
+        history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
     });
@@ -579,7 +581,7 @@ export async function updateLoanRequest(
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
           assignedDepartment: true,
-          history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
+          history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
         },
       });
@@ -1222,7 +1224,7 @@ export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
         assignedDepartment: true,
-        history: { include: { user: { include: { customRole: true } } }, orderBy: { timestamp: 'desc' } },
+        history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
     });
