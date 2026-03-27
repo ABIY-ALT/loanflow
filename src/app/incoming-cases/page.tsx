@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -9,10 +8,8 @@ import {
   Search, 
   Loader2, 
   AlertCircle, 
-  ExternalLink, 
   ArrowLeft,
   UserPlus,
-  Building,
   Clock,
   Flame,
   CheckCircle2,
@@ -32,6 +29,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getLoanRequests } from '@/services/loan-service-prisma';
 import type { LoanRequest } from '@/types/loan';
 import { cn } from '@/lib/utils';
+import { QuickFollowUpDialog } from '@/components/loan/dialogs/QuickFollowUpDialog';
 
 export default function IncomingCasesPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -39,6 +37,10 @@ export default function IncomingCasesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Status Dialog State
+  const [selectedLoanForStatus, setSelectedLoanForStatus] = useState<LoanRequest | null>(null);
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
 
   const canViewPage = currentUser?.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES);
 
@@ -103,6 +105,11 @@ export default function IncomingCasesPage() {
 
   const filteredIncoming = useMemo(() => sortLoans(filterLoans(incomingLoans)), [incomingLoans, searchTerm]);
   const filteredDelegated = useMemo(() => sortLoans(filterLoans(delegatedLoans)), [delegatedLoans, searchTerm]);
+
+  const openStatusView = (loan: LoanRequest) => {
+    setSelectedLoanForStatus(loan);
+    setIsStatusDialogOpen(true);
+  };
 
   if (authLoading || isLoading) {
     return (
@@ -282,7 +289,7 @@ export default function IncomingCasesPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex -space-x-2 overflow-hidden">
-                              {loan.assignedToUsers.map((u, i) => (
+                              {loan.assignedToUsers.map((u) => (
                                 <Badge key={u.id} variant="secondary" className="border border-background text-[10px] py-0 px-1.5">
                                   {u.fullName.split(' ')[0]}
                                 </Badge>
@@ -307,17 +314,24 @@ export default function IncomingCasesPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Audit Trail">
+                              <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Full Audit Trail">
                                 <Button variant="ghost" size="icon"><History className="h-4 w-4" /></Button>
                               </Link>
-                              <Link href={`/loan-requests/${loan.id}`} passHref title="Send Follow-up / Add Note">
-                                <Button variant="outline" size="sm" className="h-8 border-orange-200 text-orange-700 hover:bg-orange-50">
-                                  <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Follow-up
-                                </Button>
-                              </Link>
-                              <Link href={`/loan-requests/${loan.id}`} passHref>
-                                <Button variant="ghost" size="icon"><Eye className="h-4 w-4" /></Button>
-                              </Link>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 border-orange-200 text-orange-700 hover:bg-orange-50"
+                                onClick={() => openStatusView(loan)}
+                              >
+                                <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Follow-up
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => openStatusView(loan)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -330,6 +344,12 @@ export default function IncomingCasesPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <QuickFollowUpDialog 
+        isOpen={isStatusDialogOpen}
+        onOpenChange={setIsStatusDialogOpen}
+        loan={selectedLoanForStatus}
+      />
     </div>
   );
 }
