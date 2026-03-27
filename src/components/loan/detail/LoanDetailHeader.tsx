@@ -1,11 +1,24 @@
-
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle, BadgeCheck, CheckCircle2 } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  StickyNote, 
+  Edit3, 
+  CheckSquare, 
+  ArrowRight, 
+  Undo2, 
+  Loader2, 
+  UserPlus, 
+  ShieldX, 
+  Shuffle, 
+  BadgeCheck, 
+  CheckCircle2 
+} from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
 import { useMemo } from 'react';
+import { cn } from '@/lib/utils';
 
 interface LoanDetailHeaderProps {
   loan: LoanRequest | null;
@@ -51,6 +64,10 @@ export function LoanDetailHeader({
   const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
   const hasCurrentUserCompleted = loan.stageCompletedBy?.some(u => u.id === currentUser.id) || false;
 
+  // Determine if this user can promote the stage directly (if configured)
+  const canDirectPromote = !requiresApproval && canPromote;
+  const isDirectPromotion = !requiresApproval;
+
   return (
     <div className="flex items-center justify-between mb-8 flex-wrap gap-2">
       <Button variant="outline" onClick={onBack} disabled={isSaving}>
@@ -69,24 +86,42 @@ export function LoanDetailHeader({
             <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Request</Button>
         }
 
+        {/* Primary Staff Action Button: Dynamically changes based on direct promotion capability */}
         {isActionableStage && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
           <Button 
             onClick={onMarkStageComplete} 
             disabled={isSaving || hasCurrentUserCompleted}
-            className={!requiresApproval ? "bg-green-600 hover:bg-green-700" : ""}
+            className={cn(
+              canDirectPromote ? "bg-green-600 hover:bg-green-700" : 
+              isDirectPromotion ? "bg-blue-600 hover:bg-blue-700" : ""
+            )}
           >
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {hasCurrentUserCompleted ? <BadgeCheck className="mr-2 h-4 w-4" /> : (!requiresApproval ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />)}
-            {hasCurrentUserCompleted ? 'Part Submitted' : (!requiresApproval ? 'Complete & Promote' : 'Mark Stage Complete & Submit')}
+            {hasCurrentUserCompleted ? (
+              <BadgeCheck className="mr-2 h-4 w-4" />
+            ) : canDirectPromote ? (
+              <ArrowRight className="mr-2 h-4 w-4" />
+            ) : isDirectPromotion ? (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            ) : (
+              <CheckSquare className="mr-2 h-4 w-4" />
+            )}
+
+            {hasCurrentUserCompleted ? 'Part Submitted' : 
+             canDirectPromote ? 'Approve & Promote' :
+             isDirectPromotion ? 'Complete & Promote' : 
+             'Mark Stage Complete & Submit'}
           </Button>
         )}
         
+        {/* Manager Approval Button: Shown only when a case is submitted for review */}
         {isActionableStage && canPromote && loan.isReadyForManagerReview && (
             <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white font-bold">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                <ArrowRight className="mr-2 h-4 w-4" /> Approve & Promote
             </Button>
         )}
+
         {isActionableStage && userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && loan.isReadyForManagerReview && (
              <Button variant="outline" onClick={onOpenReturnForReworkDialog} disabled={isSaving} className="border-amber-500 text-amber-700 hover:bg-amber-50">
                 <Undo2 className="mr-2 h-4 w-4" /> Return for Rework

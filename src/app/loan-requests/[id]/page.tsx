@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -66,31 +65,30 @@ export default function LoanDetailPage() {
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
   // Logical access levels
-  const isCreator = useMemo(() => loan?.createdById === currentUser?.id, [loan, currentUser]);
+  const isAdmin = useMemo(() => userPermissions.has(PERMISSIONS.MANAGE_USERS), [userPermissions]);
   const isAssigned = useMemo(() => loan?.assignedToUsers.some(u => u.id === currentUser?.id), [loan, currentUser]);
   const isInActiveDept = useMemo(() => currentUser?.department === loan?.assignedDepartment, [currentUser, loan]);
-  const isManagerInDept = useMemo(() => isInActiveDept && (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)), [isInActiveDept, userPermissions]);
-  const isAdmin = useMemo(() => userPermissions.has(PERMISSIONS.MANAGE_USERS), [userPermissions]);
+  
+  // Managers are identified by having Promote or Assign permissions within their own department
+  const isManagerInDept = useMemo(() => 
+    isInActiveDept && (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)), 
+    [isInActiveDept, userPermissions]
+  );
 
   /**
-   * VITAL: Determine if user can see sensitive financials and docs.
-   * Inputters (Creators) should ONLY see tracking info unless they are also Assigned or Managers.
+   * Access Gating: Determine if user can see sensitive financials and docs.
+   * Only specifically assigned staff, department managers, or admins see full details.
    */
   const canViewFullDetails = useMemo(() => {
     if (!currentUser || !loan) return false;
-    // 1. Admins see everything
     if (isAdmin) return true;
-    // 2. Assigned staff see everything
     if (isAssigned) return true;
-    // 3. Managers in the active department see everything
     if (isManagerInDept) return true;
-    
-    // Everyone else (including Creators/Inputters) gets the restricted view
     return false;
   }, [currentUser, loan, isAdmin, isAssigned, isManagerInDept]);
   
-  // Can only act if they have full permissions AND are assigned/permitted
-  const canActOnLoan = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
+  // Action Locking: Can only act if the case is in the user's active department and not terminated
+  const isCaseInUserDepartment = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -108,13 +106,14 @@ export default function LoanDetailPage() {
     return workflowDefinitions.find(def => def.id === currentWorkflowVersion.workflowDefinitionId) || null;
   }, [currentWorkflowVersion, workflowDefinitions]);
   
+  // Determines if the "Primary Action" (Complete/Promote) is enabled for this specific user
   const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef || !canActOnLoan || !loan) return false;
+    if (!currentUser || !currentStageDef || !isCaseInUserDepartment || !loan) return false;
 
     // Administrators can always act
     if (isAdmin) return true;
 
-    // Officers must be assigned to act. Managers can act (assign/promote) regardless of assignment if in dept.
+    // Officers must be assigned to act. Managers can act regardless of assignment if in correct dept.
     if (isAssigned || isManagerInDept) {
         const allowedRoles = currentStageDef.allowedRoles || [];
         if (allowedRoles.length === 0) return true; 
@@ -122,7 +121,7 @@ export default function LoanDetailPage() {
     }
 
     return false;
-  }, [currentUser, currentStageDef, canActOnLoan, loan, isAdmin, isAssigned, isManagerInDept]);
+  }, [currentUser, currentStageDef, isCaseInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
 
   const fetchLoanData = useCallback(async () => {
     if (!loanId) {
@@ -283,7 +282,10 @@ export default function LoanDetailPage() {
     
     const allAssignedHaveCompleted = assignedUserIds.size === 0 || Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
-    if (!isApprovalRequired && allAssignedHaveCompleted) {
+    // Role-based logic: If the user has Promotion permissions and the stage doesn't require manager review, advance immediately.
+    const canUserPromoteDirectly = !isApprovalRequired && userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
+
+    if (canUserPromoteDirectly && allAssignedHaveCompleted) {
         await handleManagerPromoteLoan(true); 
     } else {
         const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
@@ -308,7 +310,7 @@ export default function LoanDetailPage() {
     const currentStageIndex = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (currentStageIndex === -1) return;
 
-    const roleActionText = isDirectFromOfficer ? `Completed by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
+    const roleActionText = isDirectFromOfficer ? `Completed & Promoted by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
 
     if (currentStageIndex === currentWorkflowVersion.stages.length - 1) {
         const loanWorkflows = workflowDefinitions
@@ -451,7 +453,8 @@ export default function LoanDetailPage() {
   if (error) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" /><h1 className="text-xl font-bold">{error}</h1><Button className="mt-4" onClick={() => router.back()}>Go Back</Button></div>;
   if (!loan) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" /><h1 className="text-xl font-bold">Loan Not Found</h1><Button className="mt-4" onClick={() => router.push('/')}>Dashboard</Button></div>;
 
-  // --- RENDER RESTRICTED VIEW ---
+  // --- RENDER RESTRICTED TRACKING VIEW ---
+  // Users like Secretaries or general submitters see this read-only tracking view
   if (!canViewFullDetails) {
     return (
       <div className="space-y-6">
@@ -540,7 +543,7 @@ export default function LoanDetailPage() {
     );
   }
 
-  // --- RENDER FULL VIEW ---
+  // --- RENDER FULL ACCESS VIEW ---
   const isActionable = !loan.isTerminalStage;
   const availableStatuses = (currentStageDef?.availableStatuses && loan.assignedDepartment && currentStageDef.availableStatuses[loan.assignedDepartment]) || [];
 
