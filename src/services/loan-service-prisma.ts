@@ -1,4 +1,3 @@
-
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -196,7 +195,7 @@ async function addLoanRequestInternal(
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
     const systemUserId = 'system-prisma';
-    const initialHistoryNote = `Loan application submitted by ${user.fullName}. Initial Department: ${initialDepartment.name}. Workflow: ${activeVersion.workflowDefinition.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
+    const initialHistoryNote = `Loan application submitted by ${user.fullName}. Initial Department: ${initialDepartment.name}. Workflow: ${firstWorkflowInSequence.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
     
     const availableStatusesForDept = firstStage.availableStatuses && typeof firstStage.availableStatuses === 'object' && !Array.isArray(firstStage.availableStatuses) ? (firstStage.availableStatuses as Record<string, string[]>)[firstStage.responsibleDepartment.name] : [];
     const initialStatus = availableStatusesForDept && availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
@@ -232,7 +231,7 @@ async function addLoanRequestInternal(
         currentWorkflowStage: { connect: { id: firstStage.id } },
         assignedDepartment: { connect: { id: initialDepartment.id } },
         currentStageStatus: initialStatus,
-        createdById: user.id,
+        createdBy: { connect: { id: user.id } },
         history: {
           create: [
             {
