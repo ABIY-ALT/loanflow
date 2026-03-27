@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -88,7 +89,7 @@ export default function LoanDetailPage() {
   }, [currentUser, loan, isAdmin, isAssigned, isManagerInDept]);
   
   // Action Locking: Can only act if the case is in the user's active department and not terminated
-  const isCaseInUserDepartment = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
+  const isActionableInUserDepartment = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -108,7 +109,7 @@ export default function LoanDetailPage() {
   
   // Determines if the "Primary Action" (Complete/Promote) is enabled for this specific user
   const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef || !isCaseInUserDepartment || !loan) return false;
+    if (!currentUser || !currentStageDef || !isActionableInUserDepartment || !loan) return false;
 
     // Administrators can always act
     if (isAdmin) return true;
@@ -121,7 +122,7 @@ export default function LoanDetailPage() {
     }
 
     return false;
-  }, [currentUser, currentStageDef, isCaseInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
+  }, [currentUser, currentStageDef, isActionableInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
 
   const fetchLoanData = useCallback(async () => {
     if (!loanId) {

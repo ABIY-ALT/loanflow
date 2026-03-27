@@ -1,3 +1,4 @@
+
 import { PrismaClient, DocumentRequirementType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -272,21 +273,23 @@ async function main() {
 
 
   const standardWorkflowsToSeed = [
-    { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration.' },
-    { name: 'WF-02 – Valuation', order: 2, purpose: 'Valuation process.' },
+    { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration.', dept: 'sector-default' },
+    { name: 'WF-02 – Valuation', order: 2, purpose: 'Valuation process.', dept: 'Director Property Valuation' },
+    { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Valuation review.', dept: 'sector-default' },
+    { name: 'WF-05 – Appraisal', order: 5, purpose: 'Credit analysis.', dept: 'Director Credit Analysis and Appraisal' },
+    { name: 'WF-06 – RM Disbursement', order: 6, purpose: 'Initial disbursement.', dept: 'sector-default' },
   ];
   
   const seedWorkflowPath = async (
     parentSectorName: string,
     childSectorName: string,
-    departmentName: string
+    sectorDepartmentName: string
   ) => {
     console.log(`--- Seeding Workflows for ${parentSectorName}...`);
     const parentSector = await prisma.sector.findUnique({ where: { name: parentSectorName } });
     const childSector = await prisma.sector.findUnique({ where: { name: childSectorName } });
-    const department = await prisma.department.findUnique({ where: { nameLowercase: departmentName.toLowerCase() } });
   
-    if (!parentSector || !childSector || !department) return;
+    if (!parentSector || !childSector) return;
 
     const maxOrderResult = await prisma.workflowDefinition.aggregate({
       _max: { order: true },
@@ -295,6 +298,10 @@ async function main() {
     let currentMaxOrder = maxOrderResult._max.order ?? -1;
   
     for (const wf of standardWorkflowsToSeed) {
+      const finalDeptName = wf.dept === 'sector-default' ? sectorDepartmentName : wf.dept;
+      const department = await prisma.department.findUnique({ where: { nameLowercase: finalDeptName.toLowerCase() } });
+      if (!department) continue;
+
       const workflowDefinition = await prisma.workflowDefinition.create({
         data: {
           name: wf.name,
@@ -315,7 +322,7 @@ async function main() {
       
       const stage = await prisma.workflowStageDefinition.create({
         data: {
-          name: 'Initial Stage',
+          name: wf.name.split('–')[1]?.trim() || 'Initial Stage',
           order: 0,
           defaultTimelineDays: 5,
           percentageWeight: 100,
@@ -328,6 +335,8 @@ async function main() {
   };
 
   await seedWorkflowPath('Institutional Banking & Green Financing', 'Financial Institution', 'Director Institutional Banking and Green Financing');
+  await seedWorkflowPath('Service & Mining Sectors', 'Hotel and Tourism', 'Director Service and Mining Sector');
+  await seedWorkflowPath('Manufacturing & Agriculture Sector', 'Agriculture', 'Director Manufacturing and Agricultural Sector');
 
   // Seed Users
   console.log('Seeding Users...');

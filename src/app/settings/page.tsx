@@ -929,6 +929,22 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteRequestType = async (id: string, name: string) => {
+    if (!canManageWorkflows) return;
+    setIsSavingData(true);
+    try {
+      const result = await deleteRequestType(id);
+      if (result.success) {
+        toast({ title: "Success", description: `Request Type "${name}" deleted.` });
+        await fetchInitialData();
+      } else {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      }
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
   const handleSaveChanges = async () => {
     setIsSavingAll(true);
     try {
