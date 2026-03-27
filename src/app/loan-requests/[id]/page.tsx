@@ -17,7 +17,6 @@ import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, 
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -40,10 +39,8 @@ import { Label } from '@/components/ui/label';
 export default function LoanDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
   const loanId = params.id as string;
-  const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'overview';
   
   const { user: currentUser, isLoading: authLoading } = useAuth();
 
@@ -53,8 +50,6 @@ export default function LoanDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [isEditLoanDialogOpen, setIsEditLoanDialogOpen] = useState(false);
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false);
@@ -128,8 +123,6 @@ export default function LoanDetailPage() {
          setError(prev => prev ? `${prev}\n${wfResult.error}` : wfResult.error);
       } else if (wfResult.workflows) {
         setWorkflowDefinitions(wfResult.workflows);
-      } else {
-         setError(prev => prev ? `${prev}\nAn issue occurred loading workflow data.` : `An issue occurred loading workflow data.`);
       }
 
     } catch (err: any) {
@@ -152,16 +145,14 @@ export default function LoanDetailPage() {
     if (!loan) return {success: false};
     setIsSaving(true);
 
-    // Filter out helper fields for local state simulation
     const { respondToInfoRequest, ...restUpdatedFields } = updatedFields;
 
     const optimisticLoanState: LoanRequest = {
-        ...JSON.parse(JSON.stringify(loan)), // Deep clone to ensure re-render
+        ...JSON.parse(JSON.stringify(loan)),
         ...restUpdatedFields,
         lastUpdatedDate: formatISO(new Date()),
     };
     
-    // Optimistically update history locally if it's a direct info request response
     if (respondToInfoRequest) {
         optimisticLoanState.history = optimisticLoanState.history.map(h => 
             h.id === respondToInfoRequest.entryId 
@@ -170,7 +161,6 @@ export default function LoanDetailPage() {
         );
     }
     
-    // Optimistically set state
     setLoan(optimisticLoanState); 
 
     try {
@@ -180,7 +170,7 @@ export default function LoanDetailPage() {
       
       if (serviceResult.error || !serviceResult.success) {
         toast({ title: "Update Error", description: serviceResult.error || "Failed to update loan. The data has been refreshed.", variant: "destructive" });
-        await fetchLoanData(); // Re-fetch to get true state
+        await fetchLoanData();
         return {success: false};
       }
       
@@ -190,13 +180,13 @@ export default function LoanDetailPage() {
         setLoan(serviceResult.updatedLoan);
         return {success: true, finalLoanState: serviceResult.updatedLoan};
       } else {
-        await fetchLoanData(); // Re-fetch if the service didn't return the updated loan
-        return {success: true, finalLoanState: undefined}; // Indicate success but no immediate data
+        await fetchLoanData();
+        return {success: true, finalLoanState: undefined};
       }
 
     } catch (err: any) {
       toast({ title: "System Error", description: "A critical error occurred. Reverting changes.", variant: "destructive" });
-      await fetchLoanData(); // Revert on critical failure
+      await fetchLoanData();
       return {success: false};
     } finally {
       setIsSaving(false);
@@ -208,7 +198,6 @@ export default function LoanDetailPage() {
     if (!loan) return;
     
     const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
-
     if (!canAssignStaff) return;
 
     const newAssignedUserIds = new Set(data.assignedTo || []);
@@ -275,8 +264,8 @@ export default function LoanDetailPage() {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
       userName: currentUserName,
-      notes: `Logged information request: ${infoToRequest}`, // Base note
-      requiredFulfilment: infoToRequest, // The actual requirement text
+      notes: `Logged information request: ${infoToRequest}`,
+      requiredFulfilment: infoToRequest,
       isFulfilled: false,
     };
     const {success} = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
@@ -304,14 +293,12 @@ export default function LoanDetailPage() {
         return false;
     }
 
-    // Check for unfulfilled information requests
     const activeInfoReq = loanToUse.history.find(entry => entry.requiredFulfilment && !entry.isFulfilled);
     if (activeInfoReq) {
         toast({ title: 'Action Pending', description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: 'destructive', duration: 7000 });
         return false;
     }
 
-    // Check for pending mandatory documents
     if (currentStageDef.documentRequirements.length > 0) {
         const pendingDocs = currentStageDef.documentRequirements.filter(req => {
             if (!req.isMandatory) return false;
@@ -330,8 +317,6 @@ export default function LoanDetailPage() {
 
   const handleMarkStageComplete = async () => {
     if (!userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) || !loan || !currentStageDef || !currentUser) return;
-    
-    // Use a fresh copy of the loan state for validation
     if (!validateCurrentStageRequirements()) return;
 
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
@@ -341,10 +326,7 @@ export default function LoanDetailPage() {
     }
 
     const completedUserIds = new Set(loan.stageCompletedBy?.map(u => u.id) || []);
-    
-    if (!completedUserIds.has(currentUser.id)) {
-        completedUserIds.add(currentUser.id);
-    }
+    if (!completedUserIds.has(currentUser.id)) completedUserIds.add(currentUser.id);
     
     const allAssignedHaveCompleted = Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
@@ -379,15 +361,10 @@ export default function LoanDetailPage() {
     if (assignedUserIds.size > 0) {
       const completedUserIds = new Set(loan.stageCompletedBy.map(u => u.id));
       if (!Array.from(assignedUserIds).every(id => completedUserIds.has(id))) {
-          toast({
-              title: "Promotion Blocked",
-              description: "Cannot promote stage. Not all assigned staff have marked their work as complete.",
-              variant: "destructive",
-          });
+          toast({ title: "Promotion Blocked", description: "Not all assigned staff have marked their work as complete.", variant: "destructive" });
           return;
       }
     }
-
 
     if (!validateCurrentStageRequirements()) return;
 
@@ -406,7 +383,7 @@ export default function LoanDetailPage() {
         const currentWorkflowIndexInPath = loanWorkflows.findIndex(def => def.id === currentWorkflowDef.id);
 
         if (currentWorkflowIndexInPath === -1 || currentWorkflowIndexInPath === loanWorkflows.length - 1) {
-            toast({ title: "Process Complete", description: "This is the final workflow in the loan path. No further automatic promotion.", variant: "default" });
+            toast({ title: "Process Complete", description: "Final workflow in path reached.", variant: "default" });
             return;
         }
 
@@ -414,7 +391,7 @@ export default function LoanDetailPage() {
         const nextActiveVersion = nextWorkflowDef.versions.find(v => v.isActive);
 
         if (!nextActiveVersion || nextActiveVersion.stages.length === 0) {
-            toast({ title: "Promotion Error", description: `Next workflow "${nextWorkflowDef.name}" has no active version or stages. Cannot promote.`, variant: "destructive" });
+            toast({ title: "Promotion Error", description: `Next workflow "${nextWorkflowDef.name}" is misconfigured.`, variant: "destructive" });
             return;
         }
 
@@ -438,7 +415,7 @@ export default function LoanDetailPage() {
             isReadyForManagerReview: false,
             history: [...loan.history, newHistoryEntry],
             stageDeadline: formatISO(addDays(new Date(), firstStageOfNextWorkflow.defaultTimelineDays)),
-        }, `Loan approved and promoted to ${nextWorkflowDef.name} (${nextWorkflowDef.departmentName} Dept).`);
+        }, `Loan promoted to ${nextWorkflowDef.name} (${nextWorkflowDef.departmentName} Dept).`);
 
     } else {
         const nextStageDef = currentWorkflowVersion.stages[currentStageIndex + 1];
@@ -446,7 +423,7 @@ export default function LoanDetailPage() {
           id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
           userId: currentUser.id,
           userName: currentUserName,
-          notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department, now unassigned.`
+          notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department.`
         };
         
         const statusForNextDept = nextStageDef.availableStatuses?.[nextStageDef.responsibleDepartment] || [];
@@ -462,20 +439,17 @@ export default function LoanDetailPage() {
           isReadyForManagerReview: false,
           stageDeadline: formatISO(addDays(new Date(), nextStageDef.defaultTimelineDays)),
           workflowVersionId: loan.workflowVersionId,
-        }, `Loan approved and promoted to ${nextStageDef.name} (${nextStageDef.responsibleDepartment} Dept).`);
+        }, `Loan promoted to ${nextStageDef.name} (${nextStageDef.responsibleDepartment} Dept).`);
     }
   };
 
   const onReturnForReworkSubmit = async (reworkNote: string, reworkAssigneeIds: string[]) => {
-    if (!userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) || !currentUser || !loan || !currentStageDef) {
-        toast({title: "Cannot Return for Rework", description: "Current stage information is missing.", variant: "destructive"});
-        return;
-    }
+    if (!userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) || !currentUser || !loan || !currentStageDef) return;
     if (!reworkNote.trim()) {
       toast({ title: "Note Required", description: "Please provide reason for returning.", variant: "destructive" });
       return;
     }
-    const currentUserName = currentUser.fullName || 'System Process (Manager Action)';
+    const currentUserName = currentUser.fullName || 'System Process';
     const newHistoryEntry: LoanHistoryEntry = {
       id: `hist-rework-${Date.now()}`,
       stageName: currentStageDef.name,
@@ -494,12 +468,9 @@ export default function LoanDetailPage() {
   };
 
   const onTerminateLoanSubmit = async (terminationReason: string) => {
-    if (!userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) || !currentUser || !loan) {
-      toast({ title: "Permission Denied", description: "You do not have permission to terminate this loan.", variant: "destructive" });
-      return;
-    }
+    if (!userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) || !currentUser || !loan) return;
     if (!terminationReason.trim()) {
-      toast({ title: "Reason Required", description: "A reason for termination is mandatory.", variant: "destructive" });
+      toast({ title: "Reason Required", variant: "destructive" });
       return;
     }
 
@@ -520,28 +491,17 @@ export default function LoanDetailPage() {
       history: [...loan.history, newHistoryEntry],
     }, "Loan process has been terminated.");
 
-    if (success) {
-      setIsTerminateLoanDialogOpen(false);
-    }
+    if (success) setIsTerminateLoanDialogOpen(false);
   };
 
   const onManualTransitionSubmit = async (newWorkflowVersionId: string, newStageId: string, reason: string) => {
-    if (!userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) || !currentUser || !loan) {
-        toast({ title: "Permission Denied", variant: "destructive" });
-        return;
-    }
+    if (!userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) || !currentUser || !loan) return;
 
     const allVersions = workflowDefinitions.flatMap(def => def.versions);
     const newVersion = allVersions.find(v => v.id === newWorkflowVersionId);
-    if (!newVersion) {
-        toast({ title: "Error", description: "Selected workflow version not found.", variant: "destructive" });
-        return;
-    }
+    if (!newVersion) return;
     const newStage = newVersion.stages.find(s => s.id === newStageId);
-    if (!newStage) {
-        toast({ title: "Error", description: "Selected stage not found in the chosen workflow.", variant: "destructive" });
-        return;
-    }
+    if (!newStage) return;
 
     const currentUserName = currentUser.fullName || 'System Process';
     const fromStageName = currentStageDef?.name || 'Unknown Stage';
@@ -551,7 +511,7 @@ export default function LoanDetailPage() {
         timestamp: formatISO(new Date()),
         userId: currentUser.id,
         userName: currentUserName,
-        notes: `MANUAL TRANSITION: Moved from '${fromStageName}' to '${newStage.name}' in workflow '${newVersion.workflowDefinitionId}'. Reason: ${reason}`,
+        notes: `MANUAL TRANSITION: Moved from '${fromStageName}' to '${newStage.name}'. Reason: ${reason}`,
     };
 
     const {success} = await handleLocalAndUpdateService({
@@ -563,11 +523,9 @@ export default function LoanDetailPage() {
         isReadyForManagerReview: false,
         history: [...loan.history, newHistoryEntry],
         stageDeadline: formatISO(addDays(new Date(), newStage.defaultTimelineDays)),
-    }, `Loan manually transitioned to ${newStage.name} (${newStage.responsibleDepartment} Dept).`);
+    }, `Loan manually transitioned to ${newStage.name}.`);
 
-    if (success) {
-        setIsManualTransitionDialogOpen(false);
-    }
+    if (success) setIsManualTransitionDialogOpen(false);
   };
 
 
@@ -582,16 +540,14 @@ export default function LoanDetailPage() {
         id: existingDocIndex > -1 ? loan.documents[existingDocIndex].id : `doc-fs-${Date.now()}`,
         name: requirement.name,
         requirementId: requirement.id,
-        status: LoanDocumentStatus.SUBMITTED,
+        status: AppLoanDocumentStatus.SUBMITTED,
         notes: `File uploaded: ${originalUploadedFileName}.`,
         uploadedAt: timestamp,
         filePath: uploadedFilePath,
     };
 
     if (existingDocIndex > -1) {
-        updatedDocuments = loan.documents.map((doc, index) =>
-            index === existingDocIndex ? { ...newDocData, id: doc.id } : doc 
-        );
+        updatedDocuments = loan.documents.map((doc, index) => index === existingDocIndex ? { ...newDocData, id: doc.id } : doc );
     } else {
         updatedDocuments = [...loan.documents, newDocData];
     }
@@ -604,24 +560,18 @@ export default function LoanDetailPage() {
     if (!loan || !userPermissions.has(PERMISSIONS.VERIFY_LOAN_DOCUMENTS)) return;
     
     const updatedDocuments = loan.documents.map(doc =>
-      doc.id === docId ? { ...doc, status: LoanDocumentStatus.VERIFIED, notes: (doc.notes || '') + `\nManually verified by ${currentUser?.fullName} on ${new Date().toLocaleDateString()}` } : doc
+      doc.id === docId ? { ...doc, status: AppLoanDocumentStatus.VERIFIED, notes: (doc.notes || '') + `\nManually verified by ${currentUser?.fullName} on ${new Date().toLocaleDateString()}` } : doc
     );
     
     const docName = loan.documents.find(d => d.id === docId)?.name || 'Unknown';
-
     await handleLocalAndUpdateService({ documents: updatedDocuments }, `Document "${docName}" marked as Verified.`);
   };
 
-  const handleCheckboxRequirementChange = async (
-    requirement: DocumentRequirement,
-    isChecked: boolean
-  ) => {
+  const handleCheckboxRequirementChange = async (requirement: DocumentRequirement, isChecked: boolean) => {
     if (!loan || !currentUser) return;
   
     let updatedDocuments = [...loan.documents];
-    const existingDocIndex = updatedDocuments.findIndex(
-      (d) => d.requirementId === requirement.id
-    );
+    const existingDocIndex = updatedDocuments.findIndex((d) => d.requirementId === requirement.id);
   
     if (isChecked) {
       if (existingDocIndex === -1) {
@@ -629,24 +579,17 @@ export default function LoanDetailPage() {
           id: `doc-chk-${Date.now()}`,
           requirementId: requirement.id,
           name: requirement.name,
-          status: LoanDocumentStatus.VERIFIED, // Checkboxes are instantly verified
-          notes: `Confirmed by ${
-            currentUser.fullName
-          } on ${new Date().toLocaleDateString()}.`,
+          status: AppLoanDocumentStatus.VERIFIED,
+          notes: `Confirmed by ${currentUser.fullName} on ${new Date().toLocaleDateString()}.`,
           uploadedAt: new Date().toISOString(),
         };
         updatedDocuments.push(newDoc);
       }
     } else {
-      if (existingDocIndex > -1) {
-        updatedDocuments.splice(existingDocIndex, 1);
-      }
+      if (existingDocIndex > -1) updatedDocuments.splice(existingDocIndex, 1);
     }
   
-    const { success } = await handleLocalAndUpdateService(
-      { documents: updatedDocuments },
-      `Requirement '${requirement.name}' status updated.`
-    );
+    await handleLocalAndUpdateService({ documents: updatedDocuments }, `Requirement '${requirement.name}' updated.`);
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -664,19 +607,12 @@ export default function LoanDetailPage() {
         notes: `Stage status changed from "${loan.currentStageStatus || 'None'}" to "${newStatus}".`,
     };
     
-    await handleLocalAndUpdateService({ 
-      currentStageStatus: newStatus,
-      history: [...loan.history, newHistoryEntry] 
-    }, `Status updated to "${newStatus}".`);
+    await handleLocalAndUpdateService({ currentStageStatus: newStatus, history: [...loan.history, newHistoryEntry] }, `Status updated to "${newStatus}".`);
   };
 
   const handleUrgencyChange = async (isUrgent: boolean) => {
     if (!loan || !userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE)) return;
-
-    await handleLocalAndUpdateService(
-      { isUrgent },
-      `Loan marked as ${isUrgent ? 'urgent' : 'not urgent'}.`
-    );
+    await handleLocalAndUpdateService({ isUrgent }, `Loan marked as ${isUrgent ? 'urgent' : 'not urgent'}.`);
   };
   
   if (authLoading || isLoading) {
@@ -694,32 +630,18 @@ export default function LoanDetailPage() {
             <AlertCircle className="h-16 w-16 text-destructive mb-4" />
             <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
             <p className="text-muted-foreground mb-6">You do not have permission to view loan details.</p>
-            <Link href="/" passHref>
-                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
-            </Link>
+            <Button variant="outline" onClick={() => router.push('/')}><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
         </div>
     );
   }
 
-  if (!loan && !isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-4">
-        <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">Loan Not Found</h1>
-        <p className="text-muted-foreground mb-6">{error || `The loan request with ID "${loanId}" could not be found or loaded.`}</p>
-        <button onClick={() => router.push('/loan-process')} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90">
-          Go Back to Loan Pipeline
-        </button>
-      </div>
-    );
-  }
-
-
   if (!loan) { 
     return (
-        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
-            <AlertCircle className="h-8 w-8 text-destructive mr-2" />
-            <p className="text-lg text-destructive">Critical Error: Loan data is unexpectedly null.</p>
+        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Loan Not Found</h1>
+            <p className="text-muted-foreground mb-6">{error || `Could not find loan.`}</p>
+            <Button onClick={() => router.push('/loan-process')}>Back to Pipeline</Button>
         </div>
     );
   }
@@ -729,16 +651,13 @@ export default function LoanDetailPage() {
   if (currentWorkflowVersion && loan?.currentStageId) {
       const currentStageIndexInWorkflow = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
       if (currentStageIndexInWorkflow > -1 && currentWorkflowVersion.stages.length > 0) {
-          progressPercentage = currentWorkflowVersion.stages
-              .slice(0, currentStageIndexInWorkflow)
-              .reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
+          progressPercentage = currentWorkflowVersion.stages.slice(0, currentStageIndexInWorkflow).reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
       }
   }
   progressPercentage = Math.min(100, Math.max(0, progressPercentage));
 
   const loanCurrentDept = loan.assignedDepartment || currentStageDef?.responsibleDepartment;
   const usersForDialog = users.filter(user => user.department === loanCurrentDept);
-  
   const availableStatuses = (currentStageDef?.availableStatuses && loanCurrentDept && currentStageDef.availableStatuses[loanCurrentDept]) || [];
 
   const latestReworkNote = [...loan.history]
@@ -779,13 +698,9 @@ export default function LoanDetailPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Status:</span>
                     <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving}>
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder="Set Status" />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Set Status" /></SelectTrigger>
                       <SelectContent>
-                        {availableStatuses.map(status => (
-                          <SelectItem key={status} value={status}>{status}</SelectItem>
-                        ))}
+                        {availableStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -793,72 +708,39 @@ export default function LoanDetailPage() {
                   loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge>
                 )}
                  <Badge variant="outline" className="text-sm">Dept: {loanCurrentDept || 'N/A'}</Badge>
-                {loan.isUrgent && (
-                    <Badge variant="destructive" className="bg-red-500 text-white">
-                        <Flame className="mr-1 h-3 w-3"/> Urgent
-                    </Badge>
-                )}
-                {loan.isReadyForManagerReview && isActionable && (
-                    <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-300">
-                        Awaiting Manager Review
-                    </Badge>
-                )}
-                {loan.isTerminalStage && (
-                     <Badge variant="destructive" className="text-base py-1.5 px-3 h-auto">
-                        <span className="font-semibold">Terminated:</span>&nbsp;<span className="font-normal">{terminationReason}</span>
-                     </Badge>
-                )}
+                {loan.isUrgent && <Badge variant="destructive" className="bg-red-500 text-white"><Flame className="mr-1 h-3 w-3"/> Urgent</Badge>}
+                {loan.isReadyForManagerReview && isActionable && <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50">Awaiting Manager Review</Badge>}
+                {loan.isTerminalStage && <Badge variant="destructive" className="text-base py-1.5 px-3 h-auto"><span className="font-semibold">Terminated:</span>&nbsp;<span className="font-normal">{terminationReason}</span></Badge>}
             </div>
           </div>
            {userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE) && isActionable && (
               <div className="flex items-center space-x-2 pt-4">
-                <Switch
-                  id="urgent-switch"
-                  checked={loan.isUrgent}
-                  onCheckedChange={handleUrgencyChange}
-                  disabled={isSaving}
-                />
-                <Label htmlFor="urgent-switch" className="text-red-600 font-semibold">
-                  Mark as Urgent
-                </Label>
+                <Switch id="urgent-switch" checked={loan.isUrgent} onCheckedChange={handleUrgencyChange} disabled={isSaving} />
+                <Label htmlFor="urgent-switch" className="text-red-600 font-semibold">Mark as Urgent</Label>
               </div>
             )}
         </CardHeader>
         <CardContent className="p-6">
-          {error && error.toLowerCase().includes("workflow") && !isLoading && (
-            <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitleShadCN>Workflow Configuration Issue</AlertTitleShadCN>
-                <AlertDescriptionShadCN>{error}</AlertDescriptionShadCN>
-            </Alert>
-          )}
-
           {latestReworkNote && (
-            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-400 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-600 [&>svg]:text-amber-600">
+            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-400 text-amber-800">
               <MessageSquareWarning className="h-5 w-5" />
               <AlertTitleShadCN>Returned for Rework by {latestReworkNote.userName} on {format(parseISO(latestReworkNote.timestamp), 'MMM dd, yyyy')}</AlertTitleShadCN>
-              <AlertDescriptionShadCN className="font-medium whitespace-pre-wrap">
-                {latestReworkNote.notes?.replace("Manager returned case for rework. Reason: ", "")}
-              </AlertDescriptionShadCN>
+              <AlertDescriptionShadCN className="font-medium whitespace-pre-wrap">{latestReworkNote.notes?.replace("Manager returned case for rework. Reason: ", "")}</AlertDescriptionShadCN>
             </Alert>
           )}
 
           <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
           
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-8 h-12">
-              <TabsTrigger value="overview" className="gap-2 text-base">
-                <InfoIcon className="h-4 w-4" /> Overview & Documents
-              </TabsTrigger>
-              <TabsTrigger value="history" className="gap-2 text-base">
-                <History className="h-4 w-4" /> Case History & Audit Trail
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="space-y-8 animate-in fade-in-50 duration-300">
-              <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 mt-8">
+            <div className="xl:col-span-3 space-y-10">
+              <section>
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><InfoIcon className="h-5 w-5 text-primary" /> Application Overview</h3>
+                <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
+              </section>
+              
               <Separator />
-              <div className="max-w-3xl">
+              
+              <section className="max-w-3xl">
                 <LoanDocumentsManager
                   loan={loan}
                   currentStageDef={currentStageDef}
@@ -867,23 +749,20 @@ export default function LoanDetailPage() {
                   onCheckboxChange={handleCheckboxRequirementChange}
                   isSavingGlobal={isSaving}
                 />
-              </div>
-            </TabsContent>
+              </section>
+            </div>
 
-            <TabsContent value="history" className="animate-in fade-in-50 duration-300">
+            <div className="xl:col-span-1 border-l pl-6">
               <LoanAuditTrail 
                 loan={loan} 
                 onRespondToRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) && isActionable ? (entry) => { setSelectedEntryForResponse(entry); setIsRespondToInfoDialogOpen(true); } : undefined}
                 isSavingGlobal={isSaving}
               />
-            </TabsContent>
-          </Tabs>
-
+            </div>
+          </div>
         </CardContent>
          <CardFooter className="p-6 border-t">
-            <p className="text-xs text-muted-foreground">
-                Last Updated: {loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'PPpp') : 'N/A'}
-            </p>
+            <p className="text-xs text-muted-foreground">Last Updated: {loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'PPpp') : 'N/A'}</p>
         </CardFooter>
       </Card>
 
@@ -893,27 +772,8 @@ export default function LoanDetailPage() {
       {userPermissions.has(PERMISSIONS.UPLOAD_LOAN_DOCUMENTS) && <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={(isOpen) => { setIsUploadDocDialogOpen(isOpen); if (!isOpen) setCurrentDocumentRequirementToUpload(null);}} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={handleDocumentUploaded} isParentSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={usersForDialog} currentDepartment={loanCurrentDept} onSubmit={onReturnForReworkSubmit} isSaving={isSaving} />}
       {userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && <TerminateLoanDialog isOpen={isTerminateLoanDialogOpen} onOpenChange={setIsTerminateLoanDialogOpen} loan={loan} onSubmit={onTerminateLoanSubmit} isSaving={isSaving} />}
-      
-      {userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
-        <ManualTransitionDialog
-          isOpen={isManualTransitionDialogOpen}
-          onOpenChange={setIsManualTransitionDialogOpen}
-          currentLoan={loan}
-          workflowDefinitions={workflowDefinitions}
-          onSubmit={onManualTransitionSubmit}
-          isSaving={isSaving}
-        />
-      )}
-
-      {selectedEntryForResponse && (
-        <RespondToInfoRequestDialog
-          isOpen={isRespondToInfoDialogOpen}
-          onOpenChange={(isOpen) => { setIsRespondToInfoDialogOpen(isOpen); if(!isOpen) setSelectedEntryForResponse(null); }}
-          entry={selectedEntryForResponse}
-          onSubmit={onRespondToInfoRequestSubmit}
-          isSaving={isSaving}
-        />
-      )}
+      {userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && <ManualTransitionDialog isOpen={isManualTransitionDialogOpen} onOpenChange={setIsManualTransitionDialogOpen} currentLoan={loan} workflowDefinitions={workflowDefinitions} onSubmit={onManualTransitionSubmit} isSaving={isSaving} />}
+      {selectedEntryForResponse && <RespondToInfoRequestDialog isOpen={isRespondToInfoDialogOpen} onOpenChange={(isOpen) => { setIsRespondToInfoDialogOpen(isOpen); if(!isOpen) setSelectedEntryForResponse(null); }} entry={selectedEntryForResponse} onSubmit={onRespondToInfoRequestSubmit} isSaving={isSaving} />}
     </div>
   );
 }
