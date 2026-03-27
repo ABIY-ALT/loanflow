@@ -17,7 +17,7 @@ interface MockAppUser {
   customRoleName?: string;
 }
 
-const mockUsers: MockAppUser[] = [
+const appMockUsers: MockAppUser[] = [
     { id: '00000001-aaaa-4b0b-a81f-000000000001', userId: '11111111-bbbb-49f0-b7c2-000000000001', name: 'Mihretu Mengistu', email: 'mihretu.mengistu@nibbank.com.et', firstName: 'Mihretu', lastName: 'Mengistu', phoneNumber: '0962992535' },
     { id: '00000002-aaaa-4b0b-a81f-000000000002', userId: '11111112-bbbb-49f0-b7c2-000000000002', name: 'Abinet Wondimu', email: 'abinet.wondimu@nibbank.com.et', firstName: 'Abinet', lastName: 'Wondimu', phoneNumber: '0938027756' },
     { id: '00000003-aaaa-4b0b-a81f-000000000003', userId: '11111113-bbbb-49f0-b7c2-000000000003', name: 'Zelalem Ashenafi', email: 'zelalem.ashenafi@nibbank.com.et', firstName: 'Zelalem', lastName: 'Ashenafi', phoneNumber: '0913046524' },
