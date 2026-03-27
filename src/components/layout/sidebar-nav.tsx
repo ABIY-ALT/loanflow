@@ -210,7 +210,7 @@ export default function SidebarNav() {
           !l.isTerminalStage
         ).length;
 
-        // 3. My Assigned Cases (Specifically assigned to user)
+        // 3. My Assigned Cases (Specifically assigned to user AND not yet for review)
         const assigned = loans.filter(l => 
           l.assignedToUsers.some(u => u.id === user.id) && 
           !l.isReadyForManagerReview &&
