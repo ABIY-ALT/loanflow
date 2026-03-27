@@ -1,3 +1,4 @@
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -115,7 +116,7 @@ const mapPrismaLoanToAppLoan = (
     assignedToUsers: prismaLoan.assignedToUsers.map(mapPrismaUserToAppUser),
     stageCompletedBy: prismaLoan.stageCompletedBy.map(mapPrismaUserToAppUser),
     
-    assignedById: prismaLoan.assignedBy?.id || (prismaLoan as any).assignedById || undefined,
+    assignedById: prismaLoan.assignedBy?.id || undefined,
 
     submittedDate: formatISO(new Date(prismaLoan.submittedDate)),
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
@@ -408,7 +409,6 @@ export async function updateLoanRequest(
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
-        // FIX: Use relation syntax for assignedBy
         updatePayload.assignedBy = { connect: { id: user.id } };
       }
 
@@ -437,7 +437,6 @@ export async function updateLoanRequest(
         updatePayload.stageCompletedBy = { set: [] };
         updatePayload.assignedToUsers = { set: [] };
         
-        // FIX: Use relation syntax for assignedBy disconnect
         updatePayload.assignedBy = { disconnect: true };
         
         updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
@@ -590,6 +589,8 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           percentageWeight: s.percentageWeight,
           order: s.order,
           availableStatuses: safeJsonParse(s.availableStatuses, {}),
+          allowedRoles: safeJsonParse(s.allowedRoles, []),
+          requiresApproval: s.requiresApproval,
           createdAt: s.createdAt ? formatISO(new Date(s.createdAt)) : undefined,
           updatedAt: s.updatedAt ? formatISO(new Date(s.updatedAt)) : undefined,
         })),
@@ -647,8 +648,8 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
             const { documentRequirements, ...stageData } = stage;
             const upsertedStage = await tx.workflowStageDefinition.upsert({
               where: { id: stage.id || `_non_existent_stage_id_${Date.now()}` },
-              create: { ...stageData, id: stage.id || undefined, availableStatuses: JSON.stringify(stage.availableStatuses || {}), workflowVersion: { connect: { id: versionId } }, responsibleDepartment: { connect: { id: department.id } } },
-              update: { ...stageData, id: undefined, availableStatuses: JSON.stringify(stage.availableStatuses || {}), updatedAt: new Date(), responsibleDepartment: { connect: { id: department.id } } },
+              create: { ...stageData, id: stage.id || undefined, availableStatuses: JSON.stringify(stage.availableStatuses || {}), allowedRoles: JSON.stringify(stage.allowedRoles || []), requiresApproval: stage.requiresApproval, workflowVersion: { connect: { id: versionId } }, responsibleDepartment: { connect: { id: department.id } } },
+              update: { ...stageData, id: undefined, availableStatuses: JSON.stringify(stage.availableStatuses || {}), allowedRoles: JSON.stringify(stage.allowedRoles || []), requiresApproval: stage.requiresApproval, updatedAt: new Date(), responsibleDepartment: { connect: { id: department.id } } },
             });
 
             for (const req of documentRequirements) {
@@ -772,7 +773,7 @@ export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[
     const { user } = await getCurrentUser();
     if (!user || !user.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES)) return { error: "Unauthorized" };
     const prismaLoans = await prisma.loanRequest.findMany({
-      where: { createdBy: { id: user.id } }, // FIX: Use relation path
+      where: { createdBy: { id: user.id } }, 
       orderBy: { submittedDate: 'desc' },
       include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, assignedBy: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
     });

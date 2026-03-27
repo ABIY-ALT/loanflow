@@ -91,6 +91,8 @@ export interface WorkflowStageDefinition {
   percentageWeight: number;
   order: number;
   availableStatuses?: Record<Department, string[]>; // Department-specific statuses
+  allowedRoles: string[]; // Role names allowed to act on this stage
+  requiresApproval: boolean; // If false, user can promote stage directly
   createdAt?: string;
   updatedAt?: string;
 }

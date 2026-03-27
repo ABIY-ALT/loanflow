@@ -1,7 +1,7 @@
 
 'use client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Edit, StickyNote, Edit3, CheckSquare, ArrowRight, Undo2, Loader2, UserPlus, ShieldX, Shuffle, BadgeCheck, CheckCircle2 } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useAuth } from '@/contexts/auth-context';
@@ -21,11 +21,12 @@ interface LoanDetailHeaderProps {
   onOpenManualTransitionDialog: () => void;
   isSaving: boolean;
   isActionableStage: boolean;
+  canPromote: boolean;
+  requiresApproval: boolean;
 }
 
 export function LoanDetailHeader({
   loan,
-  currentStageName,
   onBack,
   onOpenEditDialog,
   onOpenAddNoteDialog,
@@ -37,6 +38,8 @@ export function LoanDetailHeader({
   onOpenManualTransitionDialog,
   isSaving,
   isActionableStage,
+  canPromote,
+  requiresApproval,
 }: LoanDetailHeaderProps) {
   const { user: currentUser } = useAuth();
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
@@ -56,27 +59,30 @@ export function LoanDetailHeader({
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0 justify-end flex-grow">
         {(canEditDetails || canAssignStaff) && isActionableStage &&
             <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
-                {canEditDetails && canAssignStaff ? <Edit className="mr-2 h-4 w-4" /> : (canAssignStaff ? <UserPlus className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />)}
-                {canEditDetails ? 'Edit / Assign' : 'Assign Staff'}
+                <UserPlus className="mr-2 h-4 w-4" /> Edit / Assign
             </Button>
         }
         {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && isActionableStage && 
             <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
         }
         {isActionableStage && userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) &&
-            <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Info Request</Button>
+            <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Request</Button>
         }
 
-        {isActionableStage && userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE) && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
-          <Button onClick={onMarkStageComplete} disabled={isSaving || hasCurrentUserCompleted}>
+        {isActionableStage && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
+          <Button 
+            onClick={onMarkStageComplete} 
+            disabled={isSaving || hasCurrentUserCompleted}
+            className={!requiresApproval ? "bg-green-600 hover:bg-green-700" : ""}
+          >
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {hasCurrentUserCompleted ? <BadgeCheck className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
-            {hasCurrentUserCompleted ? 'Part Submitted' : 'Mark Stage Complete & Submit'}
+            {hasCurrentUserCompleted ? <BadgeCheck className="mr-2 h-4 w-4" /> : (!requiresApproval ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />)}
+            {hasCurrentUserCompleted ? 'Part Submitted' : (!requiresApproval ? 'Complete & Promote' : 'Mark Stage Complete & Submit')}
           </Button>
         )}
         
-        {isActionableStage && userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) && loan.isReadyForManagerReview && (
-            <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
+        {isActionableStage && canPromote && loan.isReadyForManagerReview && (
+            <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white font-bold">
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                <ArrowRight className="mr-2 h-4 w-4" /> Approve & Promote
             </Button>
@@ -93,7 +99,7 @@ export function LoanDetailHeader({
         )}
         {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
             <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
-                <ShieldX className="mr-2 h-4 w-4" /> Terminate Process
+                <ShieldX className="mr-2 h-4 w-4" /> Terminate
             </Button>
         )}
       </div>
