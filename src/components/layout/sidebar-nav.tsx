@@ -42,9 +42,8 @@ interface NavItemConfig {
   href: string;
   label: string;
   icon: React.ElementType;
-  requiredPermissions?: AppPermission[]; // Permissions needed to see this item
+  requiredPermissions?: AppPermission[];
   subItems?: NavItemConfig[];
-  badgeCount?: number;
 }
 
 const navItemsConfig: NavItemConfig[] = [
@@ -112,7 +111,7 @@ const navItemsConfig: NavItemConfig[] = [
     href: '/track-loan',
     label: 'Public Loan Tracker',
     icon: FileSearch,
-    requiredPermissions: [] // Public page, but shown to logged-in users for convenience
+    requiredPermissions: []
   },
   {
     href: '/reports',
@@ -177,28 +176,56 @@ export default function SidebarNav() {
   const currentPathname = usePathname();
   const { user, isLoading: authLoading } = useAuth();
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
-  const [incomingCount, setIncomingCount] = useState(0);
   const { toast } = useToast();
   
-  // Use a ref to track the previous count without triggering re-renders
-  const prevCountRef = useRef<number>(0);
+  // Badge counts state
+  const [counts, setCounts] = useState({
+    incoming: 0,
+    review: 0,
+    assigned: 0,
+    submitted: 0,
+  });
+  
+  const prevIncomingCountRef = useRef<number>(0);
 
-  const fetchIncomingCount = useCallback(async (isInitial = false) => {
-    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES)) return;
+  const fetchCounts = useCallback(async (isInitial = false) => {
+    if (!user) return;
     try {
       const result = await getLoanRequests();
-      if (result.loans && user.department) {
-        const currentIncomingLoans = result.loans.filter(loan => 
-          loan.assignedDepartment === user.department && 
-          loan.assignedToUsers.length === 0 && 
-          !loan.isReadyForManagerReview
-        );
+      if (result.loans) {
+        const loans = result.loans;
         
-        const newCount = currentIncomingLoans.length;
-        
-        // Trigger notification if count increased
-        if (!isInitial && newCount > prevCountRef.current) {
-          const diff = newCount - prevCountRef.current;
+        // 1. Incoming (Unassigned cases in user's dept)
+        const incoming = loans.filter(l => 
+          l.assignedDepartment === user.department && 
+          l.assignedToUsers.length === 0 && 
+          !l.isReadyForManagerReview &&
+          !l.isTerminalStage
+        ).length;
+
+        // 2. Manager Review (Ready for review in manager's dept)
+        const review = loans.filter(l => 
+          l.assignedDepartment === user.department && 
+          l.isReadyForManagerReview === true &&
+          !l.isTerminalStage
+        ).length;
+
+        // 3. My Assigned Cases (Specifically assigned to user)
+        const assigned = loans.filter(l => 
+          l.assignedToUsers.some(u => u.id === user.id) && 
+          !l.isReadyForManagerReview &&
+          !l.isTerminalStage
+        ).length;
+
+        // 4. My Submitted Cases (Created by user and active)
+        const submitted = loans.filter(l => 
+          l.createdById === user.id && 
+          !l.isTerminalStage
+        ).length;
+
+        // Trigger notification if incoming count increased
+        if (!isInitial && incoming > prevIncomingCountRef.current && user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES)) {
+          const diff = incoming - prevIncomingCountRef.current;
           toast({
             title: "New Incoming Cases",
             description: `${diff} new loan request(s) have arrived in the ${user.department} department.`,
@@ -206,17 +233,16 @@ export default function SidebarNav() {
           });
         }
         
-        prevCountRef.current = newCount;
-        setIncomingCount(newCount);
+        prevIncomingCountRef.current = incoming;
+        setCounts({ incoming, review, assigned, submitted });
       }
     } catch (e) {
-      console.error("Error fetching incoming count for sidebar", e);
+      console.error("Error fetching counts for sidebar", e);
     }
   }, [user, toast]);
 
   useEffect(() => {
     setIsClient(true);
-    // Auto-open parent menu if on a sub-item page
     const parentMenu = navItemsConfig.find(item => 
         item.subItems?.some(sub => currentPathname.startsWith(sub.href))
     );
@@ -224,13 +250,10 @@ export default function SidebarNav() {
         setOpenMenus(prev => new Set(prev).add(parentMenu.href));
     }
     
-    // Initial fetch
-    fetchIncomingCount(true);
-    
-    // Polling interval: 30 seconds for better perceived "real-time" responsiveness
-    const interval = setInterval(() => fetchIncomingCount(false), 30000); 
+    fetchCounts(true);
+    const interval = setInterval(() => fetchCounts(false), 30000); 
     return () => clearInterval(interval);
-  }, [currentPathname, fetchIncomingCount]);
+  }, [currentPathname, fetchCounts]);
 
   if (!isClient || authLoading) {
     return (
@@ -244,23 +267,11 @@ export default function SidebarNav() {
     );
   }
 
-  // Hide nav if user is not logged in and not on a public page
-  const publicPaths = ['/track-loan'];
-  const isPublicPage = publicPaths.some(p => currentPathname.startsWith(p));
-  if (!user && !isPublicPage) {
-    return null;
-  }
-  
-  if (!user && isPublicPage) {
-     return null; // Don't show sidebar on public pages for non-logged in users
-  }
-
-
   const userPermissions = new Set(user?.permissions || []);
 
   const canView = (itemRequiredPermissions?: AppPermission[]): boolean => {
-    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true; // Public items
-    if (!user) return false; // Must be logged in for permissioned items
+    if (!itemRequiredPermissions || itemRequiredPermissions.length === 0) return true;
+    if (!user) return false;
     return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
   
@@ -283,6 +294,14 @@ export default function SidebarNav() {
     });
   };
 
+  const getBadgeCount = (href: string) => {
+    if (href === '/incoming-cases') return counts.incoming;
+    if (href === '/manager-review') return counts.review;
+    if (href === '/my-assigned-cases') return counts.assigned;
+    if (href === '/my-submitted-cases') return counts.submitted;
+    return 0;
+  };
+
   return (
     <SidebarMenu>
       {visibleNavItems.map((item) => {
@@ -293,8 +312,7 @@ export default function SidebarNav() {
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
         const isMenuOpen = openMenus.has(item.href);
         
-        // Handle badge for Incoming Cases
-        const showBadge = item.href === '/incoming-cases' && incomingCount > 0;
+        const count = getBadgeCount(item.href);
 
         return (
           <SidebarMenuItem key={item.href}>
@@ -307,9 +325,15 @@ export default function SidebarNav() {
               <Link href={item.href} className="flex items-center gap-2">
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
-                {showBadge && (
-                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full bg-red-600 animate-pulse">
-                    {incomingCount}
+                {count > 0 && (
+                  <Badge 
+                    variant={item.href === '/incoming-cases' ? "destructive" : "secondary"} 
+                    className={cn(
+                      "ml-auto h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full",
+                      item.href === '/incoming-cases' && "bg-red-600 animate-pulse"
+                    )}
+                  >
+                    {count}
                   </Badge>
                 )}
               </Link>
