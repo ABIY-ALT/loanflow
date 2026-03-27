@@ -129,17 +129,21 @@ async function main() {
     else if (userData.jobTitle.includes("Chief")) roleName = "Chief";
 
     const role = await prisma.role.findUnique({ where: { name: roleName } });
+    const finalUserId = userData.userId || userData.id;
 
     await prisma.user.upsert({
       where: { email: userData.email },
       update: {
+        name: userData.name,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phoneNumber: userData.phoneNumber,
         departmentId: dept?.id,
         customRoleId: role?.id,
         isActive: true,
       },
       create: {
-        id: userData.id,
-        userId: userData.userId,
+        userId: finalUserId,
         name: userData.name,
         email: userData.email,
         firstName: userData.firstName,
@@ -159,7 +163,6 @@ async function main() {
     where: { email: 'system@loanflow.app' },
     update: {},
     create: {
-      id: 'system-admin',
       userId: 'system-admin',
       name: 'System Admin',
       email: 'system@loanflow.app',
@@ -260,7 +263,7 @@ const appMockUsers = [
   { id: '00000039-aaaa-4b0b-a81f-000000000039', userId: '11111137-bbbb-49f0-b7c2-000000000039', name: 'Eyuel Moges', email: 'Eyuel.Moges@nibbank.com.et', firstName: 'Eyuel', lastName: 'Moges', phoneNumber: '251922586666', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
   { id: '00000040-aaaa-4b0b-a81f-000000000040', userId: '11111138-bbbb-49f0-b7c2-000000000040', name: 'Tsigab Kube', email: 'Tsigab.Kube@nibbank.com.et', firstName: 'Tsigab', lastName: 'Kube', phoneNumber: '251904185695', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
   { id: '00000041-aaaa-4b0b-a81f-000000000041', userId: '11111139-bbbb-49f0-b7c2-000000000041', name: 'Alazar Eliyas', email: 'Alazar.Eliyas@nibbank.com.et', firstName: 'Alazar', lastName: 'Eliyas', phoneNumber: '251920893000', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
-  { id: '00000042-aaaa-4b0b-a81f-000000000042', userId: '1111113a-bbbb-49f0-b7c2-000000000042', name: 'Bezawit Desalegn', email: 'Bezawit.Desalegn@nibbank.com.et', firstName: 'Bezawit', lastName: 'Desalegn', phoneNumber: '251977442751', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000042-aaaa-4b0b-a81f-000000000042', userId: '1111113a-bbbb-49f0-b7c2-000000000042', name: 'Bezawit Desalegn', email: 'Bezawit.Desalegn@nibbank.com.et', firstName: 'Bezawit', lastName: 'Bezawit', phoneNumber: '251977442751', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
   { id: '00000043-aaaa-4b0b-a81f-000000000043', userId: '1111113b-bbbb-49f0-b7c2-000000000043', name: 'Hailemariam Sewale', email: 'Hailemariam.Sewale@nibbank.com.et', firstName: 'Hailemariam', lastName: 'Sewale', phoneNumber: '251927686103', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
   { id: '00000044-aaaa-4b0b-a81f-000000000044', userId: '1111113c-bbbb-49f0-b7c2-000000000044', name: 'Natnael Tesfaye', email: 'Natnael.Tesfaye@nibbank.com.et', firstName: 'Natnael', lastName: 'Tesfaye', phoneNumber: '251910133800', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
   { id: '00000045-aaaa-4b0b-a81f-000000000045', userId: '1111113d-bbbb-49f0-b7c2-000000000045', name: 'Abinet Getahun', email: 'Abinet.Getahun@nibbank.com.et', firstName: 'Abinet', lastName: 'Getahun', phoneNumber: '251910979074', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
@@ -268,6 +271,8 @@ const appMockUsers = [
   { id: '00000047-aaaa-4b0b-a81f-000000000047', userId: '1111113f-bbbb-49f0-b7c2-000000000047', name: 'Hagos G/medhin', email: 'Hagos.G/medhin@nibbank.com.et', firstName: 'Hagos', lastName: 'G/medhin', phoneNumber: '251910349069', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
   { id: '00000048-aaaa-4b0b-a81f-000000000048', userId: '11111140-bbbb-49f0-b7c2-000000000048', name: 'Nardos Eshetu', email: 'Nardos.Eshetu@nibbank.com.et', firstName: 'Nardos', lastName: 'Eshetu', phoneNumber: '251921253113', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
   { id: '00000049-aaaa-4b0b-a81f-000000000049', userId: '11111141-bbbb-49f0-b7c2-000000000049', name: 'Nuria Jibril', email: 'Nuria.Jibril@nibbank.com.et', firstName: 'Nuria', lastName: 'Jibril', phoneNumber: '251942776855', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
+
+  // Credit Analysis & Appraisal Department
   { id: '00000050-aaaa-4b0b-a81f-000000000050', userId: '11111142-bbbb-49f0-b7c2-000000000050', name: 'Hana Mulugeta Fekadu', email: 'Hana.Mulugeta@nibbank.com.et', firstName: 'Hana', lastName: 'Mulugeta', phoneNumber: '251946661246', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Credit Analysis & Appraisal Officer' },
   { id: '00000051-aaaa-4b0b-a81f-000000000051', userId: '11111143-bbbb-49f0-b7c2-000000000051', name: 'Fasil Baraki G/Meskel', email: 'Fasil.Baraki@nibbank.com.et', firstName: 'Fasil', lastName: 'Baraki', phoneNumber: '251911425395', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Manager' },
   { id: '00000052-aaaa-4b0b-a81f-000000000052', userId: '11111144-bbbb-49f0-b7c2-000000000052', name: 'Birtukan Kuliche', email: 'Birtukan.Kuliche@nibbank.com.et', firstName: 'Birtukan', lastName: 'Kuliche', phoneNumber: '251911026688', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Officer' },
@@ -318,7 +323,7 @@ const districtsToSeed = {
     'Bole 24', 'Bole Atlas', 'Bole Brass', 'Bole Chefe', 'Bole Eniredada', 'Bole M/Alem', 'Bole Stadium', 'CMC',
     'Gerji Giorgis', 'Gerji Mebrat Haile', 'Goro', 'Gurd Shola', 'Hayahulet Mazoria', 'Hayahulet Megenanga',
     'Imperial', 'Imperial Sport Acadamy', 'Jacros', 'Jacros Beshale', 'Kara Alo', 'Karamara', 'Lamberet', 'Main',
-    'Megenagna Athlete Derartu Tulu', 'Megenanga', 'Megenanga Gurd shola', 'Mehal Summit', 'Meri Loque', 'Moenco',
+    'Megenagna Athlete Derartu Tulu', 'Megenagna', 'Megenagna Gurd shola', 'Mehal Summit', 'Meri Loque', 'Moenco',
     'Peacock', 'Sealite Mehret', 'Shala Area', 'Summit', 'Summit CMC Adebabay', 'Summit Figa', 'Urael', 'Yerer Ber',
     'Atse Zerayakob', 'Debre Eba', 'Debrebirehan', 'Legetafo', 'Sheno'
   ],
