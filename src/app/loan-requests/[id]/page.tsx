@@ -66,11 +66,23 @@ export default function LoanDetailPage() {
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
   // Logical access levels
-  const canViewFullDetails = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS), [userPermissions]);
   const isCreator = useMemo(() => loan?.createdById === currentUser?.id, [loan, currentUser]);
+  const isAssigned = useMemo(() => loan?.assignedToUsers.some(u => u.id === currentUser?.id), [loan, currentUser]);
+  const isInActiveDept = useMemo(() => currentUser?.department === loan?.assignedDepartment, [currentUser, loan]);
+  const isManagerInDept = useMemo(() => isInActiveDept && (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)), [isInActiveDept, userPermissions]);
+  const isAdmin = useMemo(() => userPermissions.has(PERMISSIONS.MANAGE_USERS), [userPermissions]);
+
+  // VITAL: Determine if user can see sensitive financials and docs
+  const canViewFullDetails = useMemo(() => {
+    if (!currentUser || !loan) return false;
+    if (isAdmin) return true;
+    if (isAssigned) return true;
+    if (isManagerInDept) return true;
+    return false;
+  }, [currentUser, loan, isAdmin, isAssigned, isManagerInDept]);
   
   // Can only act if they have full permissions AND are assigned/permitted
-  const canActOnLoan = useMemo(() => canViewFullDetails && !loan?.isTerminalStage, [canViewFullDetails, loan]);
+  const canActOnLoan = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -92,16 +104,17 @@ export default function LoanDetailPage() {
     if (!currentUser || !currentStageDef || !canActOnLoan || !loan) return false;
 
     // Administrators can always act
-    if (userPermissions.has(PERMISSIONS.MANAGE_USERS)) return true;
+    if (isAdmin) return true;
 
-    // Enforce Department boundary: 
-    // Users can only act on cases currently assigned to their department
-    if (currentUser.department !== loan.assignedDepartment) return false;
+    // Officers must be assigned to act. Managers can act (assign/promote) regardless of assignment if in dept.
+    if (isAssigned || isManagerInDept) {
+        const allowedRoles = currentStageDef.allowedRoles || [];
+        if (allowedRoles.length === 0) return true; 
+        return currentUser.customRoleName && allowedRoles.includes(currentUser.customRoleName);
+    }
 
-    const allowedRoles = currentStageDef.allowedRoles || [];
-    if (allowedRoles.length === 0) return true; 
-    return currentUser.customRoleName && allowedRoles.includes(currentUser.customRoleName);
-  }, [currentUser, currentStageDef, canActOnLoan, loan, userPermissions]);
+    return false;
+  }, [currentUser, currentStageDef, canActOnLoan, loan, isAdmin, isAssigned, isManagerInDept]);
 
   const fetchLoanData = useCallback(async () => {
     if (!loanId) {
@@ -431,7 +444,7 @@ export default function LoanDetailPage() {
   if (!loan) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" /><h1 className="text-xl font-bold">Loan Not Found</h1><Button className="mt-4" onClick={() => router.push('/')}>Dashboard</Button></div>;
 
   // --- RENDER RESTRICTED VIEW ---
-  if (!canViewFullDetails && isCreator) {
+  if (!canViewFullDetails) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
