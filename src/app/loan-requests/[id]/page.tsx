@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, Info as InfoIcon, FileText, ClipboardList } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, Info as InfoIcon, FileText, ClipboardList, Clock, Building, User, LayoutDashboard, SearchCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -64,7 +64,13 @@ export default function LoanDetailPage() {
   const [selectedEntryForResponse, setSelectedEntryForResponse] = useState<LoanHistoryEntry | null>(null);
   
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
-  const canViewPage = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS), [userPermissions]);
+  
+  // Logical access levels
+  const canViewFullDetails = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS), [userPermissions]);
+  const isCreator = useMemo(() => loan?.createdById === currentUser?.id, [loan, currentUser]);
+  
+  // Can only act if they have full permissions AND are assigned/permitted
+  const canActOnLoan = useMemo(() => canViewFullDetails && !loan?.isTerminalStage, [canViewFullDetails, loan]);
 
   const currentWorkflowVersion = useMemo(() => {
     if (!loan || !workflowDefinitions || !loan.workflowVersionId) return null;
@@ -83,15 +89,14 @@ export default function LoanDetailPage() {
   }, [currentWorkflowVersion, workflowDefinitions]);
   
   const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef) return false;
-    // Standard role-based act check
+    if (!currentUser || !currentStageDef || !canActOnLoan) return false;
     const allowedRoles = currentStageDef.allowedRoles || [];
-    if (allowedRoles.length === 0) return true; // Anyone in dept can act if none specified
+    if (allowedRoles.length === 0) return true; 
     return currentUser.customRoleName && allowedRoles.includes(currentUser.customRoleName);
-  }, [currentUser, currentStageDef]);
+  }, [currentUser, currentStageDef, canActOnLoan]);
 
   const fetchLoanData = useCallback(async () => {
-    if (!loanId || !canViewPage) {
+    if (!loanId) {
         setIsLoading(false);
         return;
     };
@@ -122,7 +127,7 @@ export default function LoanDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [loanId, canViewPage]);
+  }, [loanId]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -250,10 +255,8 @@ export default function LoanDetailPage() {
     const allAssignedHaveCompleted = assignedUserIds.size === 0 || Array.from(assignedUserIds).every(id => completedUserIds.has(id));
 
     if (!isApprovalRequired && allAssignedHaveCompleted) {
-        // Direct Promotion (CRM logic)
         await handleManagerPromoteLoan(true); 
     } else {
-        // Normal path (Submit for Review)
         const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
         const newHistoryEntry: LoanHistoryEntry = {
           id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
@@ -416,9 +419,99 @@ export default function LoanDetailPage() {
   };
 
   if (authLoading || isLoading) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-  if (!canViewPage) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" /><h1 className="text-xl font-bold">Access Denied</h1></div>;
+  if (error) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" /><h1 className="text-xl font-bold">{error}</h1><Button className="mt-4" onClick={() => router.back()}>Go Back</Button></div>;
   if (!loan) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" /><h1 className="text-xl font-bold">Loan Not Found</h1><Button className="mt-4" onClick={() => router.push('/')}>Dashboard</Button></div>;
 
+  // --- RENDER RESTRICTED VIEW ---
+  if (!canViewFullDetails && isCreator) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to List
+          </Button>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 flex items-center gap-1.5 py-1 px-3">
+              <SearchCheck className="h-3.5 w-3.5" />
+              Tracking Mode
+            </Badge>
+          </div>
+        </div>
+
+        <Card className="shadow-lg border-primary/10 overflow-hidden">
+          <CardHeader className="bg-muted/30 border-b p-6">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div>
+                <CardTitle className="text-2xl font-bold text-primary flex items-center gap-3">
+                  <LayoutDashboard className="h-6 w-6" />
+                  Loan Status Tracker
+                </CardTitle>
+                <CardDescription className="text-base mt-1">
+                  Real-time status for <span className="font-semibold text-foreground">{loan.customerName}</span> (ID: {loan.loanNumber})
+                </CardDescription>
+              </div>
+              <div className="flex flex-col items-end gap-2 text-right">
+                  <Badge className="px-3 py-1.5 font-bold uppercase tracking-wider">{currentStageDef?.name || loan.currentStageName || 'Processing'}</Badge>
+                  {loan.currentStageStatus && <Badge variant="secondary" className="font-medium">{loan.currentStageStatus}</Badge>}
+                  {loan.isTerminalStage && <Badge variant="destructive">Terminated</Badge>}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="px-6 py-8 border-b bg-background">
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-6 flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Processing Progress
+              </h3>
+              <LoanProgressDisplay loan={loan} progressPercentage={0} currentStageName={currentStageDef?.name || 'Current Stage'}/>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                <div className="p-4 rounded-xl border bg-muted/10 space-y-3">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Active Department</p>
+                  <p className="font-bold text-lg flex items-center gap-2">
+                    <Building className="h-5 w-5 text-primary" />
+                    {loan.assignedDepartment || 'Pending Assignment'}
+                  </p>
+                </div>
+                <div className="p-4 rounded-xl border bg-muted/10 space-y-3">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Assigned Personnel</p>
+                  <div className="flex flex-wrap gap-2">
+                    {loan.assignedToUsers.length > 0 ? (
+                      loan.assignedToUsers.map(u => (
+                        <Badge key={u.id} variant="secondary" className="flex items-center gap-1.5">
+                          <User className="h-3 w-3" /> {u.fullName}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm italic text-muted-foreground">Awaiting staff delegation</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <Tabs defaultValue="history" className="w-full">
+                <TabsList className="bg-muted/50 p-1">
+                  <TabsTrigger value="history" className="gap-2">
+                    <ClipboardList className="h-4 w-4"/> Movement History
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="history" className="pt-6">
+                  <LoanAuditTrail loan={loan} />
+                </TabsContent>
+              </Tabs>
+            </div>
+          </CardContent>
+          <CardFooter className="bg-muted/20 p-4 border-t flex justify-center italic text-xs text-muted-foreground">
+            Sensitive loan data and documents are hidden in this tracking view.
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  // --- RENDER FULL VIEW ---
   const isActionable = !loan.isTerminalStage;
   const availableStatuses = (currentStageDef?.availableStatuses && loan.assignedDepartment && currentStageDef.availableStatuses[loan.assignedDepartment]) || [];
 

@@ -125,7 +125,7 @@ const mapPrismaLoanToAppLoan = (
     isUrgent: prismaLoan.isUrgent,
     isOverdue: isOverdueCalc,
     isTerminalStage: !!isTerminal,
-    createdById: (prismaLoan as any).createdById || undefined,
+    createdById: prismaLoan.createdById || undefined,
     history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,
@@ -341,9 +341,7 @@ export async function getLoanRequests() {
 export async function getLoanRequestById(id: string): Promise<{ loan?: LoanRequest | null; users?: User[]; error?: string; workflowDefinitions?: WorkflowDefinition[] }> {
   try {
     const { user } = await getCurrentUser();
-    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_LOAN_DETAILS)) {
-        return { error: "Unauthorized" };
-    }
+    if (!user) return { error: "Unauthorized" };
 
     const prismaLoan = await prisma.loanRequest.findUnique({
       where: { id },
@@ -369,6 +367,13 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
 
     if (!prismaLoan) {
       return { loan: null, users: [], error: `Loan not found.` };
+    }
+
+    const isCreator = prismaLoan.createdById === user.id;
+    const hasFullView = user.permissions.includes(PERMISSIONS.VIEW_LOAN_DETAILS);
+
+    if (!hasFullView && !isCreator) {
+        return { error: "Unauthorized access to this loan record." };
     }
 
     const appLoan = mapPrismaLoanToAppLoan(prismaLoan as any);
