@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -493,7 +492,7 @@ export default function SettingsPage() {
     childSectorId: '',
     description: '',
     insertMode: 'after' as 'before' | 'after',
-    referenceId: ''
+    referenceId: 'top' // Changed from '' to 'top'
   });
 
   const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
@@ -584,7 +583,7 @@ export default function SettingsPage() {
     };
 
     let updatedList = [...workflowDefinitions];
-    if (referenceId) {
+    if (referenceId && referenceId !== 'top') {
       const idx = updatedList.findIndex(wf => wf.id === referenceId);
       const targetIdx = insertMode === 'after' ? idx + 1 : idx;
       updatedList.splice(targetIdx, 0, newWf);
@@ -593,7 +592,7 @@ export default function SettingsPage() {
     }
 
     setWorkflowDefinitions(updatedList.map((wf, i) => ({ ...wf, order: i })));
-    setNewWorkflowForm({ ...newWorkflowForm, name: '', description: '' });
+    setNewWorkflowForm({ ...newWorkflowForm, name: '', description: '', referenceId: 'top' });
     toast({ title: "Workflow Added Locally", description: "Click Save to persist changes." });
   };
 
@@ -747,7 +746,7 @@ export default function SettingsPage() {
               <div><Label className="text-[10px] uppercase font-bold text-primary/70">Workflow Name</Label><Input value={newWorkflowForm.name} onChange={e => setNewWorkflowForm({...newWorkflowForm, name: e.target.value})} placeholder="e.g. SME Credit Line" className="h-11" /></div>
               <div>
                 <Label className="text-[10px] uppercase font-bold text-primary/70">Parent Sector Path</Label>
-                <Select value={newWorkflowForm.parentSectorId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, parentSectorId: v, referenceId: ''})}>
+                <Select value={newWorkflowForm.parentSectorId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, parentSectorId: v, referenceId: 'top'})}>
                   <SelectTrigger className="h-11"><SelectValue placeholder="Select Parent Sector"/></SelectTrigger>
                   <SelectContent>{parentSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
@@ -782,7 +781,7 @@ export default function SettingsPage() {
                   <Select value={newWorkflowForm.referenceId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, referenceId: v})} disabled={!newWorkflowForm.parentSectorId}>
                     <SelectTrigger className="h-11"><SelectValue placeholder="Relative To..."/></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Initial (Top of List)</SelectItem>
+                      <SelectItem value="top">Initial (Top of List)</SelectItem>
                       {referenceWfOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -863,7 +862,7 @@ export default function SettingsPage() {
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-3 shrink-0">
-                                <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase hover:text-primary gap-1.5"><Edit3 className="h-3.5 w-3.5"/> Edit Definition</Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleOpenEditDefinitionDialog(wf)} className="h-8 text-[10px] font-black uppercase hover:text-primary gap-1.5"><Edit3 className="h-3.5 w-3.5"/> Edit Definition</Button>
                                 <div className="flex items-center gap-3">
                                   {activeVer && (
                                     <Badge variant="outline" className="h-10 px-4 font-black uppercase text-xs border-primary/20 bg-primary/5 text-primary">
