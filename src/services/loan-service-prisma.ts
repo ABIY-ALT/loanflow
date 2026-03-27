@@ -1,4 +1,3 @@
-
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -28,7 +27,6 @@ import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  // We return a string error, but log the full object for debugging
   return { error: message };
 };
 
@@ -77,6 +75,7 @@ const mapPrismaLoanToAppLoan = (
         currentWorkflowStage?: (PrismaWorkflowStageDefinition & { responsibleDepartment: PrismaDepartment, documentRequirements: PrismaDocumentRequirement[] }) | null;
         workflowVersion?: (PrismaWorkflowVersion & { workflowDefinition: PrismaWorkflowDefinition & { sector: PrismaSector & { parent?: PrismaSector | null}, department: PrismaDepartment } }) | null;
         assignedDepartment?: PrismaDepartment | null;
+        assignedBy?: PrismaUser | null;
         history?: (PrismaLoanHistoryEntry & { user?: (PrismaUser & { department?: PrismaDepartment | null, customRole?: PrismaRole | null }) | null })[];
         documents?: (PrismaLoanDocument & { requirement: PrismaDocumentRequirement | null })[];
     }
@@ -116,7 +115,7 @@ const mapPrismaLoanToAppLoan = (
     assignedToUsers: prismaLoan.assignedToUsers.map(mapPrismaUserToAppUser),
     stageCompletedBy: prismaLoan.stageCompletedBy.map(mapPrismaUserToAppUser),
     
-    assignedById: prismaLoan.assignedById || undefined,
+    assignedById: prismaLoan.assignedBy?.id || (prismaLoan as any).assignedById || undefined,
 
     submittedDate: formatISO(new Date(prismaLoan.submittedDate)),
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
@@ -125,7 +124,7 @@ const mapPrismaLoanToAppLoan = (
     isUrgent: prismaLoan.isUrgent,
     isOverdue: isOverdueCalc,
     isTerminalStage: !!isTerminal,
-    createdById: prismaLoan.createdById || undefined,
+    createdById: (prismaLoan as any).createdById || undefined,
     history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,
@@ -278,13 +277,11 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
     const isFullAdmin = userPermissions.has(PERMISSIONS.MANAGE_USERS);
 
     if (isFullAdmin) {
-      // Admins see everything
       whereClause = {};
     } else {
-      // Everyone else is strictly scoped to their department or involvement
       const orConditions: any[] = [
-        { createdById: user.id },
-        { assignedById: user.id },
+        { createdBy: { id: user.id } },
+        { assignedBy: { id: user.id } },
         { assignedToUsers: { some: { id: user.id } } }
       ];
 
@@ -309,6 +306,7 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
         currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
         workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
         assignedDepartment: true,
+        assignedBy: true,
         history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
@@ -362,6 +360,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
           },
         },
         assignedDepartment: true,
+        assignedBy: true,
         history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },
@@ -409,8 +408,8 @@ export async function updateLoanRequest(
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
-        // Track who performed the assignment
-        updatePayload.assignedById = user.id;
+        // FIX: Use relation syntax for assignedBy
+        updatePayload.assignedBy = { connect: { id: user.id } };
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
@@ -434,13 +433,13 @@ export async function updateLoanRequest(
         updatePayload.stageEntryDate = new Date();
         updatePayload.stageDeadline = addDays(new Date(), newStageDef.defaultTimelineDays);
         
-        // Reset stage-specific assignment data when moving to a new stage
         updatePayload.isReadyForManagerReview = false;
         updatePayload.stageCompletedBy = { set: [] };
         updatePayload.assignedToUsers = { set: [] };
-        updatePayload.assignedById = null; // Reset assigner for new stage
         
-        // Update assigned department to the one responsible for the new stage
+        // FIX: Use relation syntax for assignedBy disconnect
+        updatePayload.assignedBy = { disconnect: true };
+        
         updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
         
         const availableStatusesObj = safeJsonParse(newStageDef.availableStatuses, {});
@@ -448,7 +447,6 @@ export async function updateLoanRequest(
         updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
       }
 
-      // Handle specific Info Request Response
       if (dataToUpdate.respondToInfoRequest) {
           const { entryId, response, markFulfilled } = dataToUpdate.respondToInfoRequest;
           await tx.loanHistoryEntry.update({
@@ -461,7 +459,6 @@ export async function updateLoanRequest(
           });
       }
 
-      // Handle History (General entries)
       if (dataToUpdate.hasOwnProperty('history')) {
         const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
         const newEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
@@ -481,7 +478,6 @@ export async function updateLoanRequest(
         }
       }
 
-      // Handle Documents (Checkboxes and Uploads)
       if (dataToUpdate.documents !== undefined) {
         const currentDocIds = new Set(existingLoan.documents.map(d => d.id));
         const updatedDocIds = new Set(dataToUpdate.documents.map(d => d.id));
@@ -525,6 +521,7 @@ export async function updateLoanRequest(
           currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
           workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
           assignedDepartment: true,
+          assignedBy: true,
           history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
           documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
         },
@@ -775,9 +772,9 @@ export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[
     const { user } = await getCurrentUser();
     if (!user || !user.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES)) return { error: "Unauthorized" };
     const prismaLoans = await prisma.loanRequest.findMany({
-      where: { createdById: user.id },
+      where: { createdBy: { id: user.id } }, // FIX: Use relation path
       orderBy: { submittedDate: 'desc' },
-      include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
+      include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, assignedBy: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
     });
     return { loans: prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any)) };
   } catch (e: any) {
