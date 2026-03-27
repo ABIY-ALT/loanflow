@@ -28,8 +28,21 @@ import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  // We return a string error, but log the full object for debugging
   return { error: message };
 };
+
+/**
+ * Helper to safely parse JSON strings or return the object if already parsed
+ */
+function safeJsonParse<T>(value: any, defaultValue: T): T {
+  if (typeof value === 'object' && value !== null) return value as T;
+  try {
+    return value ? JSON.parse(value) : defaultValue;
+  } catch (error) {
+    return defaultValue;
+  }
+}
 
 const mapPrismaUserToAppUser = (
   prismaUser: PrismaUser & {
@@ -48,7 +61,7 @@ const mapPrismaUserToAppUser = (
     department: prismaUser.department?.name as Department | undefined,
     customRoleId: prismaUser.customRoleId || undefined,
     customRoleName: prismaUser.customRole?.name || undefined,
-    permissions: JSON.parse(prismaUser.customRole?.permissions || '[]') as AppPermission[],
+    permissions: safeJsonParse<AppPermission[]>(prismaUser.customRole?.permissions, []),
     isPasswordChanged: prismaUser.isPasswordChanged,
     isActive: prismaUser.isActive,
   };
@@ -150,8 +163,7 @@ const mapPrismaLoanToAppLoan = (
 
 async function addLoanRequestInternal(
   user: User,
-  loanData: Omit<LoanRequest, 'id' | 'submittedDate' | 'lastUpdatedDate' | 'history' | 'documents' | 'isOverdue' | 'loanNumber' | 'customerId' | 'stageDeadline' | 'assignedToUsers' | 'isReadyForManagerReview' | 'currentStageId' | 'assignedDepartmentId' | 'assignedDepartment' | 'currentStageName' | 'isTerminalStage' | 'createdAt' | 'updatedAt' | 'currentStageStatus' | 'isUrgent' | 'stageEntryDate' | 'stageCompletedBy' | 'sectorName' | 'requestTypeName' | 'parentSectorId' | 'parentSectorName' | 'isActive'>
-  & { sectorId: string; requestTypeId: string; }
+  loanData: any
 ): Promise<{ id?: string; error?: string }> {
   try {
     const selectedChildSector = await prisma.sector.findUnique({
@@ -203,7 +215,7 @@ async function addLoanRequestInternal(
     const systemUserId = 'system-prisma';
     const initialHistoryNote = `Loan application submitted by ${user.fullName}. Initial Department: ${initialDepartment.name}. Workflow: ${firstWorkflowInSequence.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
     
-    const availableStatusesObj = JSON.parse(firstStage.availableStatuses || '{}');
+    const availableStatusesObj = safeJsonParse(firstStage.availableStatuses, {});
     const availableStatusesForDept = availableStatusesObj[firstStage.responsibleDepartment.name] || [];
     const initialStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
@@ -270,25 +282,19 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
       whereClause = {};
     } else {
       // Everyone else is strictly scoped to their department or involvement
+      const orConditions: any[] = [
+        { createdById: user.id },
+        { assignedById: user.id },
+        { assignedToUsers: { some: { id: user.id } } }
+      ];
+
       if (user.departmentId) {
-        whereClause = {
-          OR: [
-            { assignedDepartmentId: user.departmentId },
-            { createdById: user.id },
-            { assignedById: user.id },
-            { assignedToUsers: { some: { id: user.id } } }
-          ]
-        };
-      } else {
-        // Fallback for users with no department: only show loans specifically assigned to/by them or created by them
-        whereClause = {
-          OR: [
-            { assignedToUsers: { some: { id: user.id } } },
-            { createdById: user.id },
-            { assignedById: user.id }
-          ]
-        };
+        orConditions.push({ assignedDepartmentId: user.departmentId });
       }
+
+      whereClause = {
+        OR: orConditions
+      };
     }
 
     const prismaLoans = await prisma.loanRequest.findMany({
@@ -437,7 +443,7 @@ export async function updateLoanRequest(
         // Update assigned department to the one responsible for the new stage
         updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
         
-        const availableStatusesObj = JSON.parse(newStageDef.availableStatuses || '{}');
+        const availableStatusesObj = safeJsonParse(newStageDef.availableStatuses, {});
         const availableStatusesForDept = availableStatusesObj[newStageDef.responsibleDepartment.name] || [];
         updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
       }
@@ -586,7 +592,7 @@ export async function getWorkflowDefinitions(): Promise<{ workflows?: WorkflowDe
           })),
           percentageWeight: s.percentageWeight,
           order: s.order,
-          availableStatuses: JSON.parse(s.availableStatuses || '{}') as Record<Department, string[]>,
+          availableStatuses: safeJsonParse(s.availableStatuses, {}),
           createdAt: s.createdAt ? formatISO(new Date(s.createdAt)) : undefined,
           updatedAt: s.updatedAt ? formatISO(new Date(s.updatedAt)) : undefined,
         })),

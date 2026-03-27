@@ -14,6 +14,19 @@ import { encrypt, decrypt } from '@/lib/session';
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 1;
 
+/**
+ * Helper to safely parse JSON strings or return the object if already parsed
+ */
+function safeJsonParse<T>(value: any, defaultValue: T): T {
+  if (typeof value === 'object' && value !== null) return value as T;
+  try {
+    return value ? JSON.parse(value) : defaultValue;
+  } catch (error) {
+    console.warn("JSON Parse Error:", error);
+    return defaultValue;
+  }
+}
+
 function mapPrismaUserToAppUser(
   prismaUser: PrismaUser & {
     department?: PrismaDepartment | null;
@@ -31,7 +44,7 @@ function mapPrismaUserToAppUser(
     department: prismaUser.department?.name as DepartmentType | undefined,
     customRoleId: prismaUser.customRoleId || undefined,
     customRoleName: prismaUser.customRole?.name || undefined,
-    permissions: (prismaUser.customRole?.permissions as AppPermission[]) || [],
+    permissions: safeJsonParse<AppPermission[]>(prismaUser.customRole?.permissions, []),
     isPasswordChanged: prismaUser.isPasswordChanged,
     isActive: prismaUser.isActive,
   };
@@ -108,7 +121,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     const session = await encrypt({ userId: user.id, expires });
 
     const cookieStore = await cookies();
-    cookieStore.set('session', session, { expires, httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+    cookieStore.set('session', session, { expires, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
 
     return { success: true, user: appUser };
 
@@ -130,19 +143,17 @@ export async function logoutUser(): Promise<{ success: boolean; error?: string }
 }
 
 export async function getCurrentUser(): Promise<{ user: User | null }> {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('session')?.value;
-  if (!sessionCookie) return { user: null };
-
-  const session = await decrypt(sessionCookie);
-
-  if (!session || !session.userId) {
-    const cookieStoreInternal = await cookies();
-    cookieStoreInternal.delete('session');
-    return { user: null };
-  }
-
   try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('session')?.value;
+    if (!sessionCookie) return { user: null };
+
+    const session = await decrypt(sessionCookie);
+
+    if (!session || !session.userId) {
+      return { user: null };
+    }
+
     const prismaUser = await prisma.user.findUnique({
       where: { id: session.userId },
       include: {
@@ -158,7 +169,7 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
     const appUser = mapPrismaUserToAppUser(prismaUser);
     return { user: appUser };
   } catch (error) {
-     console.error("Error fetching user by session ID:", error);
+     console.error("Error fetching current user:", error);
      return { user: null };
   }
 }
