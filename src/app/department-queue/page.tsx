@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -7,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getLoanRequests, getSectors } from '@/services/loan-service-prisma';
+import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getSectors } from '@/services/sector-and-request-type-service';
 import type { LoanRequest, Sector } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -47,7 +47,7 @@ export default function DepartmentQueuePage() {
           setUnassignedLoans([]);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedDepartment && loan.assignedToUsers.length === 0 && !loan.isReadyForManagerReview
+            loan.assignedDepartment === user?.department && loan.assignedToUsers.length === 0 && !loan.isReadyForManagerReview
           );
           setUnassignedLoans(filteredLoans);
         }
@@ -62,7 +62,7 @@ export default function DepartmentQueuePage() {
       }
     }
     fetchPageData();
-  }, [authLoading, canViewPage]);
+  }, [authLoading, canViewPage, user?.department]);
 
   const filteredLoans = useMemo(() => {
     let list = [...unassignedLoans];

@@ -1,5 +1,3 @@
-
-
 'use server';
 
 import prisma from '@/lib/prisma';
@@ -25,9 +23,8 @@ interface ServiceResult<T> {
 }
 
 const createErrorResult = <T>(message: string, context?: string, originalError?: any): ServiceResult<T> => {
-  const genericMessage = `An unexpected error occurred in the configuration service for ${context}.`;
   console.error(`[ConfigService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: message }; // For admin settings, it's okay to return a more specific message
+  return { error: message };
 };
 
 const hasPermission = async (isForCreatingLoan: boolean = false): Promise<boolean> => {
@@ -44,17 +41,16 @@ const hasPermission = async (isForCreatingLoan: boolean = false): Promise<boolea
 // --- Sector Functions ---
 
 export async function getSectors(): Promise<{ sectors?: Sector[]; error?: string }> {
-  // Allow users who can create loans OR manage settings to see sectors
+  // Allow any authenticated user to view sectors for filtering and navigation
   const { user } = await getCurrentUser();
-  const canView = user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
-
-  if (!canView) return { error: "Unauthorized" };
+  if (!user) return { error: "Unauthorized" };
   
   try {
     const sectors = await prisma.sector.findMany({ orderBy: { name: 'asc' } });
     return { sectors: sectors.map(mapPrismaToApp) };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch sectors.", "getSectors", e);
+    const result = createErrorResult<Sector[]>("Failed to fetch sectors.", "getSectors", e);
+    return { error: result.error };
   }
 }
 
@@ -74,9 +70,10 @@ export async function addSector(name: string, parentId: string | null): Promise<
     return { id: newSector.id };
   } catch (e: any) {
     if ((e as any).code === 'P2003' && (e as any).meta?.field_name?.includes('parentId')) {
-        return createErrorResult("Invalid Parent Sector selected.", "addSector", e);
+        return { error: "Invalid Parent Sector selected." };
     }
-    return createErrorResult("Failed to add sector.", "addSector", e);
+    const result = createErrorResult<string>("Failed to add sector.", "addSector", e);
+    return { error: result.error };
   }
 }
 
@@ -90,8 +87,8 @@ export async function updateSector(id: string, name: string): Promise<ServiceRes
         const updatedSector = await prisma.sector.update({ where: { id }, data: { name: name.trim(), updatedAt: new Date() } });
         return { data: mapPrismaToApp(updatedSector) };
     } catch (e: any) {
-        if ((e as any).code === 'P2025') return createErrorResult(`Sector not found.`, "updateSector", e);
-        return createErrorResult(`Failed to update sector.`, "updateSector", e);
+        if ((e as any).code === 'P2025') return createErrorResult<Sector>(`Sector not found.`, "updateSector", e);
+        return createErrorResult<Sector>(`Failed to update sector.`, "updateSector", e);
     }
 }
 
@@ -112,23 +109,23 @@ export async function deleteSector(id: string): Promise<{ success?: boolean; err
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true };
-    return createErrorResult(`Failed to delete sector.`, "deleteSector", e);
+    const result = createErrorResult<boolean>(`Failed to delete sector.`, "deleteSector", e);
+    return { error: result.error };
   }
 }
 
 // --- RequestType Functions ---
 
 export async function getRequestTypes(): Promise<{ requestTypes?: ConfigurableListItem[]; error?: string }> {
-  // Allow users who can create loans OR manage settings to see request types
   const { user } = await getCurrentUser();
-  const canView = user?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS) || user?.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST);
-  if(!canView) return { error: "Unauthorized" };
+  if(!user) return { error: "Unauthorized" };
 
   try {
     const requestTypes = await prisma.requestType.findMany({ orderBy: { name: 'asc' } });
     return { requestTypes };
   } catch (e: any) {
-    return createErrorResult("Failed to fetch request types.", "getRequestTypes", e);
+    const result = createErrorResult<ConfigurableListItem[]>("Failed to fetch request types.", "getRequestTypes", e);
+    return { error: result.error };
   }
 }
 
@@ -142,7 +139,8 @@ export async function addRequestType(name: string): Promise<{ id?: string; error
     const newRequestType = await prisma.requestType.create({ data: { name: name.trim() } });
     return { id: newRequestType.id };
   } catch (e: any) {
-    return createErrorResult("Failed to add request type.", "addRequestType", e);
+    const result = createErrorResult<string>("Failed to add request type.", "addRequestType", e);
+    return { error: result.error };
   }
 }
 
@@ -156,8 +154,8 @@ export async function updateRequestType(id: string, name: string): Promise<Servi
         const updatedRequestType = await prisma.requestType.update({ where: { id }, data: { name: name.trim(), updatedAt: new Date() } });
         return { data: { id: updatedRequestType.id, name: updatedRequestType.name } };
     } catch (e: any) {
-        if ((e as any).code === 'P2025') return createErrorResult(`Request type not found.`, "updateRequestType", e);
-        return createErrorResult(`Failed to update request type.`, "updateRequestType", e);
+        if ((e as any).code === 'P2025') return createErrorResult<ConfigurableListItem>(`Request type not found.`, "updateRequestType", e);
+        return createErrorResult<ConfigurableListItem>(`Failed to update request type.`, "updateRequestType", e);
     }
 }
 
@@ -172,6 +170,7 @@ export async function deleteRequestType(id: string): Promise<{ success?: boolean
     return { success: true };
   } catch (e: any) {
     if ((e as any).code === 'P2025') return { success: true };
-    return createErrorResult(`Failed to delete request type.`, "deleteRequestType", e);
+    const result = createErrorResult<boolean>(`Failed to delete request type.`, "deleteRequestType", e);
+    return { error: result.error };
   }
 }
