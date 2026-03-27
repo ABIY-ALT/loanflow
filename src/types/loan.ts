@@ -188,6 +188,8 @@ export interface LoanRequest {
   assignedToUsers: User[]; // Now an array for multiple assignees
   stageCompletedBy: User[]; // Users who have marked this stage as complete
 
+  assignedById?: string; // ID of the user who assigned the staff
+
   documents: LoanDocument[];
   history: LoanHistoryEntry[];
 

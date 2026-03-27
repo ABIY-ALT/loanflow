@@ -1,3 +1,4 @@
+
 'use server';
 import prisma from '@/lib/prisma';
 import type {
@@ -101,6 +102,9 @@ const mapPrismaLoanToAppLoan = (
 
     assignedToUsers: prismaLoan.assignedToUsers.map(mapPrismaUserToAppUser),
     stageCompletedBy: prismaLoan.stageCompletedBy.map(mapPrismaUserToAppUser),
+    
+    assignedById: prismaLoan.assignedById || undefined,
+
     submittedDate: formatISO(new Date(prismaLoan.submittedDate)),
     lastUpdatedDate: formatISO(new Date(prismaLoan.lastUpdatedDate)),
     stageDeadline: prismaLoan.stageDeadline ? formatISO(new Date(prismaLoan.stageDeadline)) : undefined,
@@ -263,12 +267,25 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
       // Admins see everything
       whereClause = {};
     } else {
-      // Everyone else is strictly scoped to their department
+      // Everyone else is strictly scoped to their department or involvement
       if (user.departmentId) {
-        whereClause = { assignedDepartmentId: user.departmentId };
+        whereClause = {
+          OR: [
+            { assignedDepartmentId: user.departmentId },
+            { createdById: user.id },
+            { assignedById: user.id },
+            { assignedToUsers: { some: { id: user.id } } }
+          ]
+        };
       } else {
-        // Fallback for users with no department: only show loans specifically assigned to them
-        whereClause = { assignedToUsers: { some: { id: user.id } } };
+        // Fallback for users with no department: only show loans specifically assigned to/by them or created by them
+        whereClause = {
+          OR: [
+            { assignedToUsers: { some: { id: user.id } } },
+            { createdById: user.id },
+            { assignedById: user.id }
+          ]
+        };
       }
     }
 
@@ -366,11 +383,8 @@ export async function updateLoanRequest(
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "updateLoanRequest");
     
-    const userPermissions = new Set(user.permissions || []);
     const existingLoan = await prisma.loanRequest.findUnique({ where: { id }, include: { history: true, documents: true } });
     if (!existingLoan) throw new Error(`Loan not found.`);
-    
-    // Authorization check would go here based on user and existingLoan
     
     const updatedPrismaLoan = await prisma.$transaction(async (tx) => {
       const updatePayload: any = { lastUpdatedDate: new Date() };
@@ -387,6 +401,8 @@ export async function updateLoanRequest(
       if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
         const userIds = dataToUpdate.assignedToUsers?.map(u => ({ id: u.id })) || [];
         updatePayload.assignedToUsers = { set: userIds };
+        // Track who performed the assignment
+        updatePayload.assignedById = user.id;
       }
 
       if (dataToUpdate.hasOwnProperty('stageCompletedBy')) {
@@ -414,6 +430,7 @@ export async function updateLoanRequest(
         updatePayload.isReadyForManagerReview = false;
         updatePayload.stageCompletedBy = { set: [] };
         updatePayload.assignedToUsers = { set: [] };
+        updatePayload.assignedById = null; // Reset assigner for new stage
         
         // Update assigned department to the one responsible for the new stage
         updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
