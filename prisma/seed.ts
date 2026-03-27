@@ -1,16 +1,18 @@
 
 import { PrismaClient, DocumentRequirementType } from '@prisma/client';
-import { mockUsers as appMockUsers, mockDepartments } from '../src/lib/mock-data';
-import type { Department as AppDepartment } from '../src/types/loan';
 import { ALL_PERMISSIONS, PERMISSIONS } from '../src/lib/permissions';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log(`Start seeding ...`);
+  console.log(`🚀 Start seeding ...`);
 
-  // --- Seed Sectors ---
+  // ==================== DEFAULT PASSWORD ====================
+  const DEFAULT_PASSWORD = "password123";
+  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+
+  // ==================== SEED SECTORS ====================
   console.log('Seeding Sectors...');
   const parentSectors = [
     'Institutional Banking & Green Financing', 
@@ -40,42 +42,32 @@ async function main() {
       update: {},
       create: { name: sectorName },
     });
-    console.log(`Created/verified parent sector: ${sectorName}`);
 
     if (childSectors[sectorName]) {
       for (const childName of childSectors[sectorName]) {
         await prisma.sector.upsert({
           where: { name: childName },
-          update: {
-            parent: {
-              connect: { id: parent.id }
-            }
-          },
-          create: {
-            name: childName,
-            parent: {
-              connect: { id: parent.id }
-            }
-          },
+          update: { parentId: parent.id },
+          create: { name: childName, parentId: parent.id },
         });
-        console.log(`  - Created/verified child sector: ${childName}`);
       }
     }
   }
 
-  // --- Seed Request Types ---
+  // ==================== SEED REQUEST TYPES ====================
   const requestTypes = ['New Loan', 'Restructuring', 'Additional Facility'];
-  for (const requestTypeName of requestTypes) {
+  for (const name of requestTypes) {
     await prisma.requestType.upsert({
-      where: { name: requestTypeName },
+      where: { name },
       update: {},
-      create: { name: requestTypeName },
+      create: { name },
     });
   }
 
-  // Seed Departments
+  // ==================== SEED DEPARTMENTS ====================
   console.log('Seeding Departments...');
-  for (const deptName of mockDepartments) {
+  const uniqueDepts = Array.from(new Set(appMockUsers.map(u => u.department)));
+  for (const deptName of uniqueDepts) {
     await prisma.department.upsert({
       where: { nameLowercase: deptName.toLowerCase() },
       update: {},
@@ -86,139 +78,312 @@ async function main() {
     });
   }
 
-  // Seed Districts and Branches
-  const districtsToSeed = {
-    'South District': ['Gotera Ibex'],
-    'North District': ['Abinet Adebabay'],
-    'West District': [],
-    'East District': [],
-  };
-
-  for (const districtName of Object.keys(districtsToSeed)) {
-      const district = await prisma.district.upsert({
-          where: { name: districtName },
-          update: {},
-          create: { name: districtName },
+  // ==================== SEED DISTRICTS & BRANCHES ====================
+  console.log('Seeding Districts and Branches...');
+  for (const [districtName, branches] of Object.entries(districtsToSeed)) {
+    const district = await prisma.district.upsert({
+      where: { name: districtName },
+      update: {},
+      create: { name: districtName },
+    });
+    for (const branchName of branches) {
+      await prisma.branch.upsert({
+        where: { name_districtId: { name: branchName, districtId: district.id } },
+        update: {},
+        create: { name: branchName, districtId: district.id }
       });
-      const branchesForDistrict = districtsToSeed[districtName as keyof typeof districtsToSeed];
-      for (const branchName of branchesForDistrict) {
-          await prisma.branch.upsert({
-              where: { name_districtId: { name: branchName, districtId: district.id } },
-              update: {},
-              create: { name: branchName, districtId: district.id }
-          });
-      }
+    }
   }
 
-  // Seed Roles
-  console.log('Seeding Custom Roles...');
+  // ==================== SEED ROLES ====================
+  console.log('Seeding Roles...');
   const rolesToSeed = [
-    { name: "Administrator", description: "Full access", permissions: ALL_PERMISSIONS },
-    { name: "Chief", description: "High-level management", permissions: ALL_PERMISSIONS },
-    { name: "CRM", description: "Customer Relationship Manager", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.VIEW_OWN_SUBMITTED_CASES, PERMISSIONS.MARK_STAGE_COMPLETE, PERMISSIONS.PROMOTE_LOAN_STAGE] },
-    { name: "Loan Officer", description: "Standard Loan Officer", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.VIEW_OWN_SUBMITTED_CASES, PERMISSIONS.MARK_STAGE_COMPLETE] },
-    { name: "Secretary", description: "Submission and tracking", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.VIEW_OWN_SUBMITTED_CASES] }
+    { name: "Administrator", permissions: ALL_PERMISSIONS },
+    { name: "Chief", permissions: ALL_PERMISSIONS },
+    { name: "Director", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK] },
+    { name: "Manager", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.ASSIGN_LOAN_TO_STAFF] },
+    { name: "CRM", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE] },
+    { name: "Loan Officer", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE] },
+    { name: "Secretary", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.VIEW_OWN_SUBMITTED_CASES] }
   ];
 
   for (const roleData of rolesToSeed) {
     await prisma.role.upsert({
       where: { name: roleData.name },
-      update: { description: roleData.description, permissions: roleData.permissions },
-      create: { name: roleData.name, description: roleData.description, permissions: roleData.permissions },
+      update: { permissions: roleData.permissions },
+      create: { name: roleData.name, permissions: roleData.permissions },
     });
   }
 
-  // Define specialized department mapping
-  const workflowDeptMapping: Record<string, string> = {
-    'WF-01': 'RM', // Will use sector default
-    'WF-02': 'Director Property Valuation',
-    'WF-03': 'RM',
-    'WF-04': 'Director Property Valuation',
-    'WF-05': 'Director Credit Analysis and Appraisal',
-    'WF-06': 'RM',
-    'WF-07': 'Director Credit Analysis and Appraisal',
-    'WF-08': 'RM',
-  };
-
-  const standardWorkflowsToSeed = [
-    { code: 'WF-01', name: 'WF-01 – RM Request Registration (Acceptance)', purpose: 'Initial registration.' },
-    { code: 'WF-02', name: 'WF-02 – Valuation', purpose: 'Asset valuation.' },
-    { code: 'WF-03', name: 'WF-03 – RM Valuation Result', purpose: 'Review results.' },
-    { code: 'WF-04', name: 'WF-04 – Valuation Appeal', purpose: 'Handle appeals.' },
-    { code: 'WF-05', name: 'WF-05 – Appraisal', purpose: 'Credit appraisal.' },
-    { code: 'WF-06', name: 'WF-06 – RM Disbursement', purpose: 'Initial disbursement.' },
-    { code: 'WF-07', name: 'WF-07 – Appraisal Appeal', purpose: 'Appraisal appeals.' },
-    { code: 'WF-08', name: 'WF-08 – RM Final Disbursement', purpose: 'Final RM processing.' },
-  ];
-  
-  const seedWorkflowPath = async (parentSectorName: string, childSectorName: string, sectorDeptName: string) => {
-    console.log(`--- Seeding Workflows for ${parentSectorName} (${childSectorName})...`);
-    const parentSector = await prisma.sector.findUnique({ where: { name: parentSectorName } });
-    const childSector = await prisma.sector.findUnique({ where: { name: childSectorName } });
-    const sectorDept = await prisma.department.findUnique({ where: { nameLowercase: sectorDeptName.toLowerCase() } });
-  
-    if (!parentSector || !childSector || !sectorDept) return;
-
-    let currentMaxOrder = -1;
-  
-    for (const [index, wf] of standardWorkflowsToSeed.entries()) {
-      const targetDeptName = workflowDeptMapping[wf.code] === 'RM' ? sectorDeptName : workflowDeptMapping[wf.code];
-      const dept = await prisma.department.findUnique({ where: { nameLowercase: targetDeptName.toLowerCase() } });
-      if (!dept) continue;
-
-      const workflowDefinition = await prisma.workflowDefinition.create({
-        data: {
-          name: wf.name,
-          description: wf.purpose,
-          order: index,
-          department: { connect: { id: dept.id } },
-          sector: { connect: { id: childSector.id } },
-        },
-      });
-  
-      const workflowVersion = await prisma.workflowVersion.create({
-        data: { workflowDefinitionId: workflowDefinition.id, versionNumber: 1, isActive: true },
-      });
-      
-      const stageName = wf.name.includes('–') ? wf.name.split('–')[1].trim() : 'Initial Stage';
-      await prisma.workflowStageDefinition.create({
-        data: {
-          name: stageName,
-          order: 0,
-          defaultTimelineDays: 5,
-          percentageWeight: 100,
-          workflowVersionId: workflowVersion.id,
-          responsibleDepartmentId: dept.id,
-          availableStatuses: JSON.stringify({ [dept.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Returned'] }),
-        },
-      });
-    }
-  };
-
-  await seedWorkflowPath('Institutional Banking & Green Financing', 'Financial Institution', 'Director Institutional Banking and Green Financing');
-  await seedWorkflowPath('Service & Mining Sectors', 'Domestic Trade and Service', 'Director Service and Mining Sector');
-  await seedWorkflowPath('Manufacturing & Agriculture Sector', 'Manufacturing Industry', 'Director Manufacturing and Agricultural Sector');
-
-  // Seed Users
-  const defaultPassword = "password123";
-  const passwordHash = await bcrypt.hash(defaultPassword, 10);
-
+  // ==================== SEED USERS ====================
+  console.log('Seeding Users...');
   for (const userData of appMockUsers) {
-    const finalUserId = userData.userId || userData.id;
+    const dept = await prisma.department.findUnique({ where: { nameLowercase: userData.department.toLowerCase() } });
+    
+    // Map job title to role
+    let roleName = "Loan Officer";
+    if (userData.jobTitle.includes("Director")) roleName = "Director";
+    else if (userData.jobTitle.includes("Manager")) roleName = "Manager";
+    else if (userData.jobTitle.includes("CRM")) roleName = "CRM";
+    else if (userData.jobTitle.includes("Secretary")) roleName = "Secretary";
+    else if (userData.jobTitle.includes("Chief")) roleName = "Chief";
+
+    const role = await prisma.role.findUnique({ where: { name: roleName } });
+
     await prisma.user.upsert({
       where: { email: userData.email },
-      update: { name: userData.name, firstName: userData.firstName, lastName: userData.lastName, phoneNumber: userData.phoneNumber, isActive: true },
-      create: { id: userData.id, userId: finalUserId, name: userData.name, email: userData.email, firstName: userData.firstName, lastName: userData.lastName, phoneNumber: userData.phoneNumber, passwordHash, isPasswordChanged: false, isActive: true },
+      update: {
+        departmentId: dept?.id,
+        customRoleId: role?.id,
+        isActive: true,
+      },
+      create: {
+        id: userData.id,
+        userId: userData.userId,
+        name: userData.name,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phoneNumber: userData.phoneNumber,
+        passwordHash: passwordHash,
+        isPasswordChanged: false,
+        isActive: true,
+        departmentId: dept?.id,
+        customRoleId: role?.id,
+      },
     });
   }
-  
+
+  // Admin Account
   await prisma.user.upsert({
     where: { email: 'system@loanflow.app' },
     update: {},
-    create: { id: 'system-admin', userId: 'system-admin', name: 'System Admin', email: 'system@loanflow.app', phoneNumber: '0000000000', passwordHash, isPasswordChanged: true, isActive: true, customRole: { connect: { name: 'Administrator' } } }
+    create: {
+      id: 'system-admin',
+      userId: 'system-admin',
+      name: 'System Admin',
+      email: 'system@loanflow.app',
+      phoneNumber: '0000000000',
+      passwordHash: await bcrypt.hash("admin123", 10),
+      isPasswordChanged: true,
+      isActive: true,
+      customRole: { connect: { name: 'Administrator' } }
+    }
   });
 
-  console.log(`Seeding finished.`);
+  // ==================== SEED WORKFLOWS ====================
+  console.log('Seeding Workflows...');
+  const workflowSpecs = [
+    { code: 'WF-01', name: 'WF-01 – RM Request Registration (Acceptance)', dept: 'Service Sector Department' },
+    { code: 'WF-02', name: 'WF-02 – Valuation', dept: 'Property Valuation Department' },
+    { code: 'WF-03', name: 'WF-03 – RM Valuation Result', dept: 'Service Sector Department' },
+    { code: 'WF-05', name: 'WF-05 – Appraisal', dept: 'Credit Analysis & Appraisal Department' },
+    { code: 'WF-06', name: 'WF-06 – RM Disbursement', dept: 'Service Sector Department' },
+  ];
+
+  const serviceSectorChild = await prisma.sector.findFirst({ where: { name: 'Domestic Trade and Service' } });
+  
+  if (serviceSectorChild) {
+    for (const [index, spec] of workflowSpecs.entries()) {
+      const dept = await prisma.department.findUnique({ where: { nameLowercase: spec.dept.toLowerCase() } });
+      if (!dept) continue;
+
+      const wf = await prisma.workflowDefinition.create({
+        data: {
+          name: spec.name,
+          order: index,
+          departmentId: dept.id,
+          sectorId: serviceSectorChild.id,
+        }
+      });
+
+      const version = await prisma.workflowVersion.create({
+        data: { workflowDefinitionId: wf.id, versionNumber: 1, isActive: true }
+      });
+
+      await prisma.workflowStageDefinition.create({
+        data: {
+          name: spec.name.split('–')[1].trim(),
+          order: 0,
+          defaultTimelineDays: 5,
+          percentageWeight: 100,
+          workflowVersionId: version.id,
+          responsibleDepartmentId: dept.id,
+          availableStatuses: JSON.stringify({ [dept.name]: ['Initiated', 'In Progress', 'Completed'] }),
+        }
+      });
+    }
+  }
+
+  console.log('🎉 Seeding finished successfully!');
 }
 
-main().then(async () => { await prisma.$disconnect(); }).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
+const appMockUsers = [
+  { id: '00000001-aaaa-4b0b-a81f-000000000001', userId: '11111111-bbbb-49f0-b7c2-000000000001', name: 'Gizachew Abebaw', email: 'Gizachew.Abebaw@nibbank.com.et', firstName: 'Gizachew', lastName: 'Abebaw', phoneNumber: '251913435684', department: 'Service Sector Department', jobTitle: 'Director' },
+  { id: '00000002-aaaa-4b0b-a81f-000000000002', userId: '11111112-bbbb-49f0-b7c2-000000000002', name: 'Kalkidan Taye', email: 'Kalkidan.Taye@nibbank.com.et', firstName: 'Kalkidan', lastName: 'Taye', phoneNumber: '251927436918', department: 'Service Sector Department', jobTitle: 'Junior Secretary' },
+  { id: '00000003-aaaa-4b0b-a81f-000000000003', userId: '11111113-bbbb-49f0-b7c2-000000000003', name: 'Belachew Mada', email: 'Belachew.Mada@nibbank.com.et', firstName: 'Belachew', lastName: 'Mada', phoneNumber: '251911661927', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000004-aaaa-4b0b-a81f-000000000004', userId: '11111114-bbbb-49f0-b7c2-000000000004', name: 'Endalamaw Mequanent', email: 'Endalemaw.mequanent@nibbank.com.et', firstName: 'Endalamaw', lastName: 'Mequanent', phoneNumber: '251913832999', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000005-aaaa-4b0b-a81f-000000000005', userId: '11111115-bbbb-49f0-b7c2-000000000005', name: 'Endashaw Bekele', email: 'Endashaw.Bekele@nibbank.com.et', firstName: 'Endashaw', lastName: 'Bekele', phoneNumber: '251910324818', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000006-aaaa-4b0b-a81f-000000000006', userId: '11111116-bbbb-49f0-b7c2-000000000006', name: 'Ephrem Tadesse', email: 'Ephrem.Tadesse@nibbank.com.et', firstName: 'Ephrem', lastName: 'Tadesse', phoneNumber: '251911428127', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000007-aaaa-4b0b-a81f-000000000007', userId: '11111117-bbbb-49f0-b7c2-000000000007', name: 'Fikadu Zerga', email: 'Fikadu.Zerga@nibbank.com.et', firstName: 'Fikadu', lastName: 'Zerga', phoneNumber: '251930800098', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000008-aaaa-4b0b-a81f-000000000008', userId: '11111118-bbbb-49f0-b7c2-000000000008', name: 'Hiwot Wondosen', email: 'Hiwot.Wondesson@nibbank.com.et', firstName: 'Hiwot', lastName: 'Wondosen', phoneNumber: '251912743625', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000009-aaaa-4b0b-a81f-000000000009', userId: '11111119-bbbb-49f0-b7c2-000000000009', name: 'Kirubel Solomon', email: 'Kirubel.Solomon@nibbank.com.et', firstName: 'Kirubel', lastName: 'Solomon', phoneNumber: '251913583987', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000010-aaaa-4b0b-a81f-000000000010', userId: '1111111a-bbbb-49f0-b7c2-000000000010', name: 'Matewos Legesse', email: 'Matewos.Legesse@nibbank.com.et', firstName: 'Matewos', lastName: 'Legesse', phoneNumber: '251913561298', department: 'Service Sector Department', jobTitle: 'CRM' },
+  { id: '00000011-aaaa-4b0b-a81f-000000000011', userId: '1111111b-bbbb-49f0-b7c2-000000000011', name: 'Mihretu Mengistu', email: 'Mihretu.Mengistu@nibbank.com.et', firstName: 'Mihretu', lastName: 'Mengistu', phoneNumber: '251962992535', department: 'Industrial & Housing Department', jobTitle: 'CRM' },
+  { id: '00000012-aaaa-4b0b-a81f-000000000012', userId: '1111111c-bbbb-49f0-b7c2-000000000012', name: 'Yonas Ejersa', email: 'Yonas.Ejersa@nibbank.com.et', firstName: 'Yonas', lastName: 'Ejersa', phoneNumber: '251913938919', department: 'Industrial & Housing Department', jobTitle: 'CRM' },
+  { id: '00000013-aaaa-4b0b-a81f-000000000013', userId: '1111111d-bbbb-49f0-b7c2-000000000013', name: 'Yalew Genana Guluma', email: 'Yalew.Genana@nibbank.com.et', firstName: 'Yalew', lastName: 'Genana', phoneNumber: '251913876990', department: 'Industrial & Housing Department', jobTitle: 'CRM' },
+  { id: '00000014-aaaa-4b0b-a81f-000000000014', userId: '1111111e-bbbb-49f0-b7c2-000000000014', name: 'Amsalu Dagnew Amenu', email: 'Amsalu.Dagnew@nibbank.com.et', firstName: 'Amsalu', lastName: 'Dagnew', phoneNumber: '251910055853', department: 'Industrial & Housing Department', jobTitle: 'CRM' },
+  { id: '00000015-aaaa-4b0b-a81f-000000000015', userId: '1111111f-bbbb-49f0-b7c2-000000000015', name: 'Sophia W/ Tsadik G/Meskel', email: 'Sophia.Wtsadik@nibbank.com.et', firstName: 'Sophia', lastName: 'Wtsadik', phoneNumber: '251911609508', department: 'Industrial & Housing Department', jobTitle: 'CRM' },
+  { id: '00000016-aaaa-4b0b-a81f-000000000016', userId: '11111120-bbbb-49f0-b7c2-000000000016', name: 'Fisseha Wujra', email: 'Fisseha.Wujra@nibbank.com.et', firstName: 'Fisseha', lastName: 'Wujra', phoneNumber: '251911873867', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'Director' },
+  { id: '00000017-aaaa-4b0b-a81f-000000000017', userId: '11111121-bbbb-49f0-b7c2-000000000017', name: 'Surafel Aregahagn', email: 'Surafel.Arega@nibbank.com.et', firstName: 'Surafel', lastName: 'Aregahagn', phoneNumber: '251911619652', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000018-aaaa-4b0b-a81f-000000000018', userId: '11111122-bbbb-49f0-b7c2-000000000018', name: 'Fekadu Beyadgilgn', email: 'Fekadu.Beyadgilgn@nibbank.com.et', firstName: 'Fekadu', lastName: 'Beyadgilgn', phoneNumber: '251911930349', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000019-aaaa-4b0b-a81f-000000000019', userId: '11111123-bbbb-49f0-b7c2-000000000019', name: 'Elias Eshetu', email: 'Elias.Eshetu@nibbank.com.et', firstName: 'Elias', lastName: 'Eshetu', phoneNumber: '251910088978', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000020-aaaa-4b0b-a81f-000000000020', userId: '11111124-bbbb-49f0-b7c2-000000000020', name: 'Hailemichael Getachew', email: 'Hailemichael.Getachew@nibbank.com.et', firstName: 'Hailemichael', lastName: 'Getachew', phoneNumber: '251913752501', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000021-aaaa-4b0b-a81f-000000000021', userId: '11111125-bbbb-49f0-b7c2-000000000021', name: 'Abinet Wondimu', email: 'Abinet.Wondimu@nibbank.com.et', firstName: 'Abinet', lastName: 'Wondimu', phoneNumber: '251938027756', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000022-aaaa-4b0b-a81f-000000000022', userId: '11111126-bbbb-49f0-b7c2-000000000022', name: 'Anteneh Mekonnen', email: 'Anteneh.Mekonnen@nibbank.com.et', firstName: 'Anteneh', lastName: 'Mekonnen', phoneNumber: '251911116228', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000023-aaaa-4b0b-a81f-000000000023', userId: '11111127-bbbb-49f0-b7c2-000000000023', name: 'Abenezer Abraham', email: 'Abenezer.Abraham@nibbank.com.et', firstName: 'Abenezer', lastName: 'Abraham', phoneNumber: '251911698289', department: 'Construction, Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
+  { id: '00000024-aaaa-4b0b-a81f-000000000024', userId: '11111128-bbbb-49f0-b7c2-000000000024', name: 'Wondwossen Enko', email: 'Wondwossen.Enko@nibbank.com.et', firstName: 'Wondwossen', lastName: 'Enko', phoneNumber: '251922577300', department: 'Property Valuation Department', jobTitle: 'Director' },
+  { id: '00000025-aaaa-4b0b-a81f-000000000025', userId: '11111129-bbbb-49f0-b7c2-000000000025', name: 'Natnael Bereded', email: 'Natnael.Bereded@nibbank.com.et', firstName: 'Natnael', lastName: 'Bereded', phoneNumber: '251911658056', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation' },
+  { id: '00000026-aaaa-4b0b-a81f-000000000026', userId: '1111112a-bbbb-49f0-b7c2-000000000026', name: 'Daniel Andualem', email: 'Daniel.Andualem@nibbank.com.et', firstName: 'Daniel', lastName: 'Andualem', phoneNumber: '251911156151', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation' },
+  { id: '00000027-aaaa-4b0b-a81f-000000000027', userId: '1111112b-bbbb-49f0-b7c2-000000000027', name: 'Yidnekachew Awraris', email: 'Yidnekachew.Awraris@nibbank.com.et', firstName: 'Yidnekachew', lastName: 'Awraris', phoneNumber: '251913001100', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
+  { id: '00000028-aaaa-4b0b-a81f-000000000028', userId: '1111112c-bbbb-49f0-b7c2-000000000028', name: 'Michael Abate', email: 'Michael.Abate@nibbank.com.et', firstName: 'Michael', lastName: 'Abate', phoneNumber: '251913597100', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
+  { id: '00000029-aaaa-4b0b-a81f-000000000029', userId: '1111112d-bbbb-49f0-b7c2-000000000029', name: 'Frezer Endalkachew', email: 'Frezer.Endalkachew@nibbank.com.et', firstName: 'Frezer', lastName: 'Endalkachew', phoneNumber: '251911079216', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
+  { id: '00000030-aaaa-4b0b-a81f-000000000030', userId: '1111112e-bbbb-49f0-b7c2-000000000030', name: 'Hanna Hinsene', email: 'Hanna.Hinsene@nibbank.com.et', firstName: 'Hanna', lastName: 'Hinsene', phoneNumber: '251923434306', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
+  { id: '00000031-aaaa-4b0b-a81f-000000000031', userId: '1111112f-bbbb-49f0-b7c2-000000000031', name: 'Kalkidan Sesay', email: 'Kalkidan.Sesay@nibbank.com.et', firstName: 'Kalkidan', lastName: 'Sesay', phoneNumber: '251912419445', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
+  { id: '00000032-aaaa-4b0b-a81f-000000000032', userId: '11111130-bbbb-49f0-b7c2-000000000032', name: 'Selamawit Tamirat', email: 'Selamawit.Tamirat@nibbank.com.et', firstName: 'Selamawit', lastName: 'Tamirat', phoneNumber: '251912830335', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000033-aaaa-4b0b-a81f-000000000033', userId: '11111131-bbbb-49f0-b7c2-000000000033', name: 'Elim Tesfaye', email: 'Elim.Tesfaye@nibbank.com.et', firstName: 'Elim', lastName: 'Tesfaye', phoneNumber: '251929091153', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000034-aaaa-4b0b-a81f-000000000034', userId: '11111132-bbbb-49f0-b7c2-000000000034', name: 'Yonas Dereje', email: 'Yonas.Dereje@nibbank.com.et', firstName: 'Yonas', lastName: 'Dereje', phoneNumber: '251910321545', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000035-aaaa-4b0b-a81f-000000000035', userId: '11111133-bbbb-49f0-b7c2-000000000035', name: 'Yoseph Wondimu', email: 'Yoseph.Wondimu@nibbank.com.et', firstName: 'Yoseph', lastName: 'Wondimu', phoneNumber: '251922945657', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000036-aaaa-4b0b-a81f-000000000036', userId: '11111134-bbbb-49f0-b7c2-000000000036', name: 'Eleni Belay', email: 'Eleni.Belay@nibbank.com.et', firstName: 'Eleni', lastName: 'Belay', phoneNumber: '251948216838', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000037-aaaa-4b0b-a81f-000000000037', userId: '11111135-bbbb-49f0-b7c2-000000000037', name: 'Meron Argaw', email: 'Meron.Argaw@nibbank.com.et', firstName: 'Meron', lastName: 'Argaw', phoneNumber: '251921081371', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000038-aaaa-4b0b-a81f-000000000038', userId: '11111136-bbbb-49f0-b7c2-000000000038', name: 'Meron Fantu', email: 'Meron.Fantu@nibbank.com.et', firstName: 'Meron', lastName: 'Fantu', phoneNumber: '251975690773', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000039-aaaa-4b0b-a81f-000000000039', userId: '11111137-bbbb-49f0-b7c2-000000000039', name: 'Eyuel Moges', email: 'Eyuel.Moges@nibbank.com.et', firstName: 'Eyuel', lastName: 'Moges', phoneNumber: '251922586666', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000040-aaaa-4b0b-a81f-000000000040', userId: '11111138-bbbb-49f0-b7c2-000000000040', name: 'Tsigab Kube', email: 'Tsigab.Kube@nibbank.com.et', firstName: 'Tsigab', lastName: 'Kube', phoneNumber: '251904185695', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000041-aaaa-4b0b-a81f-000000000041', userId: '11111139-bbbb-49f0-b7c2-000000000041', name: 'Alazar Eliyas', email: 'Alazar.Eliyas@nibbank.com.et', firstName: 'Alazar', lastName: 'Eliyas', phoneNumber: '251920893000', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000042-aaaa-4b0b-a81f-000000000042', userId: '1111113a-bbbb-49f0-b7c2-000000000042', name: 'Bezawit Desalegn', email: 'Bezawit.Desalegn@nibbank.com.et', firstName: 'Bezawit', lastName: 'Desalegn', phoneNumber: '251977442751', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000043-aaaa-4b0b-a81f-000000000043', userId: '1111113b-bbbb-49f0-b7c2-000000000043', name: 'Hailemariam Sewale', email: 'Hailemariam.Sewale@nibbank.com.et', firstName: 'Hailemariam', lastName: 'Sewale', phoneNumber: '251927686103', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000044-aaaa-4b0b-a81f-000000000044', userId: '1111113c-bbbb-49f0-b7c2-000000000044', name: 'Natnael Tesfaye', email: 'Natnael.Tesfaye@nibbank.com.et', firstName: 'Natnael', lastName: 'Tesfaye', phoneNumber: '251910133800', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000045-aaaa-4b0b-a81f-000000000045', userId: '1111113d-bbbb-49f0-b7c2-000000000045', name: 'Abinet Getahun', email: 'Abinet.Getahun@nibbank.com.et', firstName: 'Abinet', lastName: 'Getahun', phoneNumber: '251910979074', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000046-aaaa-4b0b-a81f-000000000046', userId: '1111113e-bbbb-49f0-b7c2-000000000046', name: 'Abrham Tilaye', email: 'Abrham.Tilaye@nibbank.com.et', firstName: 'Abrham', lastName: 'Tilaye', phoneNumber: '251923560536', department: 'Property Valuation Department', jobTitle: 'Junior Property Valuation Officer' },
+  { id: '00000047-aaaa-4b0b-a81f-000000000047', userId: '1111113f-bbbb-49f0-b7c2-000000000047', name: 'Hagos G/medhin', email: 'Hagos.G/medhin@nibbank.com.et', firstName: 'Hagos', lastName: 'G/medhin', phoneNumber: '251910349069', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
+  { id: '00000048-aaaa-4b0b-a81f-000000000048', userId: '11111140-bbbb-49f0-b7c2-000000000048', name: 'Nardos Eshetu', email: 'Nardos.Eshetu@nibbank.com.et', firstName: 'Nardos', lastName: 'Eshetu', phoneNumber: '251921253113', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
+  { id: '00000049-aaaa-4b0b-a81f-000000000049', userId: '11111141-bbbb-49f0-b7c2-000000000049', name: 'Nuria Jibril', email: 'Nuria.Jibril@nibbank.com.et', firstName: 'Nuria', lastName: 'Jibril', phoneNumber: '251942776855', department: 'Property Valuation Department', jobTitle: 'Property Valuation Officer' },
+  { id: '00000050-aaaa-4b0b-a81f-000000000050', userId: '11111142-bbbb-49f0-b7c2-000000000050', name: 'Hana Mulugeta Fekadu', email: 'Hana.Mulugeta@nibbank.com.et', firstName: 'Hana', lastName: 'Mulugeta', phoneNumber: '251946661246', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Credit Analysis & Appraisal Officer' },
+  { id: '00000051-aaaa-4b0b-a81f-000000000051', userId: '11111143-bbbb-49f0-b7c2-000000000051', name: 'Fasil Baraki G/Meskel', email: 'Fasil.Baraki@nibbank.com.et', firstName: 'Fasil', lastName: 'Baraki', phoneNumber: '251911425395', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Manager' },
+  { id: '00000052-aaaa-4b0b-a81f-000000000052', userId: '11111144-bbbb-49f0-b7c2-000000000052', name: 'Birtukan Kuliche', email: 'Birtukan.Kuliche@nibbank.com.et', firstName: 'Birtukan', lastName: 'Kuliche', phoneNumber: '251911026688', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Officer' },
+  { id: '00000053-aaaa-4b0b-a81f-000000000053', userId: '11111145-bbbb-49f0-b7c2-000000000053', name: 'Andinet Yifru Mengistu', email: 'Andinet.Yifru@nibbank.com.et', firstName: 'Andinet', lastName: 'Yifru', phoneNumber: '251911897579', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Officer' },
+  { id: '00000054-aaaa-4b0b-a81f-000000000054', userId: '11111146-bbbb-49f0-b7c2-000000000054', name: 'Menbere Mengist Alehegn', email: 'Menbere.Mengist@nibbank.com.et', firstName: 'Menbere', lastName: 'Alehegn', phoneNumber: '251922868694', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000055-aaaa-4b0b-a81f-000000000055', userId: '11111147-bbbb-49f0-b7c2-000000000055', name: 'Helen Mamo Ayele', email: 'Helen.Mamo@nibbank.com.et', firstName: 'Helen', lastName: 'Mamo', phoneNumber: '251926792997', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Officer' },
+  { id: '00000056-aaaa-4b0b-a81f-000000000056', userId: '11111148-bbbb-49f0-b7c2-000000000056', name: 'Tamiru Demis Trbis', email: 'Tamiru.Demis@nibbank.com.et', firstName: 'Tamiru', lastName: 'Demis', phoneNumber: '251905060617', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Officer' },
+  { id: '00000057-aaaa-4b0b-a81f-000000000057', userId: '11111149-bbbb-49f0-b7c2-000000000057', name: 'Zinash Tadesse Defa', email: 'Zinash.Tadesse@nibbank.com.et', firstName: 'Zinash', lastName: 'Tadesse', phoneNumber: '251912040540', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000058-aaaa-4b0b-a81f-000000000058', userId: '1111114a-bbbb-49f0-b7c2-000000000058', name: 'Estalu Mengist Tesema', email: 'Estalu.Mengist@nibbank.com.et', firstName: 'Estalu', lastName: 'Mengist', phoneNumber: '251946792489', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000059-aaaa-4b0b-a81f-000000000059', userId: '1111114b-bbbb-49f0-b7c2-000000000059', name: 'Tariku Dagnew Zeleke', email: 'Tariku.Dagnew@nibbank.com.et', firstName: 'Tariku', lastName: 'Dagnew', phoneNumber: '251929403387', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Officer' },
+  { id: '00000060-aaaa-4b0b-a81f-000000000060', userId: '1111114c-bbbb-49f0-b7c2-000000000060', name: 'Yoseph Alemu Haile', email: 'Yoseph.Alemu@nibbank.com.et', firstName: 'Yoseph', lastName: 'Alemu', phoneNumber: '251911115733', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Officer' },
+  { id: '00000061-aaaa-4b0b-a81f-000000000061', userId: '1111114d-bbbb-49f0-b7c2-000000000061', name: 'Temesgen Teklay Berhe', email: 'Temesgen.Teklay@nibbank.com.et', firstName: 'Temesgen', lastName: 'Teklay', phoneNumber: '251911568475', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Principal Officer' },
+  { id: '00000062-aaaa-4b0b-a81f-000000000062', userId: '1111114e-bbbb-49f0-b7c2-000000000062', name: 'Daniel Dagne Tadesse', email: 'Daniel.Dagne@nibbank.com.et', firstName: 'Daniel', lastName: 'Dagne', phoneNumber: '251966930921', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Corporate Officer' },
+  { id: '00000063-aaaa-4b0b-a81f-000000000063', userId: '1111114f-bbbb-49f0-b7c2-000000000063', name: 'Mulualem Feleke Ayele', email: 'Mulualem.Feleke@nibbank.com.et', firstName: 'Mulualem', lastName: 'Feleke', phoneNumber: '251911752034', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Officer' },
+  { id: '00000064-aaaa-4b0b-a81f-000000000064', userId: '11111150-bbbb-49f0-b7c2-000000000064', name: 'Abenezer Abraham Tadesse', email: 'Abenezer.Abraham@nibbank.com.et', firstName: 'Abenezer', lastName: 'Abraham', phoneNumber: '251911698289', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Corporate Officer' },
+  { id: '00000065-aaaa-4b0b-a81f-000000000065', userId: '11111151-bbbb-49f0-b7c2-000000000065', name: 'Belaynew Berhanu Tesfaye', email: 'Belaynew.Berhanu@nibbank.com.et', firstName: 'Belaynew', lastName: 'Berhanu', phoneNumber: '251932293297', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Corporate Officer' },
+  { id: '00000066-aaaa-4b0b-a81f-000000000066', userId: '11111152-bbbb-49f0-b7c2-000000000066', name: 'Berhanu Alemayehu Gudeta', email: 'Berhanu.Alemayehu@nibbank.com.et', firstName: 'Berhanu', lastName: 'Alemayehu', phoneNumber: '251911460915', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Senior Corporate Officer' },
+  { id: '00000067-aaaa-4b0b-a81f-000000000067', userId: '11111153-bbbb-49f0-b7c2-000000000067', name: 'Sintayehu Zewude Assefa', email: 'Sintayehu.Zewude@nibbank.com.et', firstName: 'Sintayehu', lastName: 'Zewude', phoneNumber: '251922867676', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000068-aaaa-4b0b-a81f-000000000068', userId: '11111154-bbbb-49f0-b7c2-000000000068', name: 'Simachew Bizuayehu Assefa', email: 'Simachew.Bizuayehu@nibbank.com.et', firstName: 'Simachew', lastName: 'Bizuayehu', phoneNumber: '251912049144', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000069-aaaa-4b0b-a81f-000000000069', userId: '11111155-bbbb-49f0-b7c2-000000000069', name: 'Dawit Zenebe W/Semayat', email: 'Dawit.Zenebe@nibbank.com.et', firstName: 'Dawit', lastName: 'Zenebe', phoneNumber: '251924699536', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Corporate Officer' },
+  { id: '00000070-aaaa-4b0b-a81f-000000000070', userId: '11111156-bbbb-49f0-b7c2-000000000070', name: 'Marta Amare Alemu', email: 'Marta.Amare@nibbank.com.et', firstName: 'Marta', lastName: 'Amare', phoneNumber: '251923695018', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Secretary' },
+  { id: '00000071-aaaa-4b0b-a81f-000000000071', userId: '11111157-bbbb-49f0-b7c2-000000000071', name: 'Getahun Abebe', email: 'Getahun.Abebe@nibbank.com.et', firstName: 'Getahun', lastName: 'Abebe', phoneNumber: '251911458552', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Director' },
+  { id: '00000072-aaaa-4b0b-a81f-000000000072', userId: '11111158-bbbb-49f0-b7c2-000000000072', name: 'Kidist Tadesse', email: 'Kidist.Tadesse@nibbank.com.et', firstName: 'Kidist', lastName: 'Tadesse', phoneNumber: '251942586540', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Junior Secretary' },
+  { id: '00000073-aaaa-4b0b-a81f-000000000073', userId: '11111159-bbbb-49f0-b7c2-000000000073', name: 'Daniel Ergogo', email: 'Daniel.Ergogo@nibbank.com.et', firstName: 'Daniel', lastName: 'Ergogo', phoneNumber: '251911606015', department: 'Credit Analysis & Appraisal Department', jobTitle: 'Deputy Chief' },
+];
+
+const districtsToSeed = {
+  'NAAD': [
+    'Abakoran', 'Addisu Gebeya', 'Amist Kilo', 'Arada giorgis', 'Arat Killo Premium', 'Artist Mohamud Ahmed (Arada)',
+    'Atiklet Tera', 'Aware', 'Cathedral', 'Chilot', 'Churchil', 'Enqulal Fabrica', 'Ferensay Legasion', 'Gola',
+    'Gulele', 'H/Giorgis', 'Janmeda', 'Kazanchis', 'Kebena', 'Kotebe', 'Kotebe Gebeya', 'Nib Premium', 'Ras',
+    'Rufael', 'Sebara Babure', 'Senga tera', 'Sheger Menafesha', 'Shiro Meda', 'Shola Gebeya', 'Sholla',
+    'Sidest Killo', 'Stadium', 'T/Adebabay', 'Tigat', 'Wessen', 'Wuha Limat', 'Yeka (Engliz Embassy)',
+    'Yeka Abado', 'Fiche', 'Gebra Guracha', 'Sululta'
+  ],
+  'WAAD': [
+    'Abinet', 'Abinet Adebabay', 'Adarash', 'Addis Ketema', 'Addisu Michael', 'Alem Bank', 'Alem Bank Tropical',
+    'Alert', 'Asfa Wossen', 'Asko', 'Ayertena', 'B/Abanefso', 'Bethel', 'Bethel Rom Sefer', 'Billal', 'Cinma Ras',
+    'D\'Afrique', 'Daremar Branch', 'Dubai Tera', 'Ehil Berenda', 'Geja Sefer', 'Kara Kore', 'Kolfe',
+    'Kolfe Atana Tera', 'Kolfe Efoyita', 'Kolfe Fetno Derash', 'Kolfe Taywan', 'Lideta', 'Lomi Meda',
+    'Mehal Merkato', 'Military Tera', 'Mirab Merkato', 'Mismar tera', 'NIB Halal Amin', 'NIB Halal Autobus Tera',
+    'Nib Halal Aysha', 'Nib Halal Emana', 'Nib Halal Kolfe Efoyta', 'Nib Halal Nur Mesgid', 'Nib Halal Taqwa',
+    'Raguel', 'Sefere Selam', 'Shera Tera', 'Sidamo Tera', 'T/Haimanot', 'Tana', 'Tatari', 'Tiret', 'Tor-Hayiloch',
+    'Yekake Wordwet', 'Abdi Nono', 'Ambo', 'Anfo', 'Burayu', 'Holeta', 'Melka Geferesa'
+  ],
+  'EAAD': [
+    'Arabssa', 'Ayat 49 Mazoria', 'Ayat 72', 'Ayat Adebabay', 'Ayat Arabssa', 'Ayat Mall', 'Ayat-Tafo', 'Beshale',
+    'Bole 24', 'Bole Atlas', 'Bole Brass', 'Bole Chefe', 'Bole Eniredada', 'Bole M/Alem', 'Bole Stadium', 'CMC',
+    'Gerji Giorgis', 'Gerji Mebrat Haile', 'Goro', 'Gurd Shola', 'Hayahulet Mazoria', 'Hayahulet Megenanga',
+    'Imperial', 'Imperial Sport Acadamy', 'Jacros', 'Jacros Beshale', 'Kara Alo', 'Karamara', 'Lamberet', 'Main',
+    'Megenagna Athlete Derartu Tulu', 'Megenanga', 'Megenanga Gurd shola', 'Mehal Summit', 'Meri Loque', 'Moenco',
+    'Peacock', 'Sealite Mehret', 'Shala Area', 'Summit', 'Summit CMC Adebabay', 'Summit Figa', 'Urael', 'Yerer Ber',
+    'Atse Zerayakob', 'Debre Eba', 'Debrebirehan', 'Legetafo', 'Sheno'
+  ],
+  'SAAD': [
+    'Africa Avenue', 'Akaki Gebeya', 'B/Gebreal', 'Beklobet', 'Bole', 'Bole Bulbula', 'Bole Bulbula Mariam Mazoria',
+    'Bole Jaefer Mesjid', 'Bole Michael', 'Bole Rwanda', 'Bulbula 93 Mazoria', 'Buna Board', 'Denbel Corporate Banking Center',
+    'Flamingo', 'Furi', 'Furi Adebabay', 'Gara Duba', 'Gelan Condominium', 'Gofa Gebriel', 'Gofa Mazoria', 'Gotera',
+    'Gotera Ibex', 'Hana Mariam', 'Jemo', 'Kality', 'Kality Menaharia', 'Kera Sar Bet', 'Kirkos', 'Lafto', 'Lebu Irtu',
+    'Lebu Muzica Sefer', 'Lebu', 'Mamokacha', 'Mechare', 'Mehal Lafto', 'Mekanissa', 'Mekanissa Kore', 'Mekenisa Michael',
+    'Meskel Flower', 'Nib Halal Gofa', 'Nifas Silk', 'Olympia', 'Salogora', 'Sarbet', 'Saris', 'Saris Abo',
+    'Saris Addisu Sefer', 'Sefera Atikilt tera', 'Temenja Yaze', 'Tulu Dimtu', 'Vatican', 'Wello Sefer',
+    'Zenebe Worq Gebeya', 'Alem Gena', 'Sebeta', 'Wechecha'
+  ],
+  'Hawassa': [
+    'Adare', 'Adola Woyu', 'Aleta Chuko', 'Aleta Wondo', 'Arbaminch', 'Arbaminch Gebeya', 'Areb Sefer', 'Arsi Negele',
+    'Awasho', 'Birbir', 'Bore', 'Bule Hora', 'Daye', 'Dilla', 'Dilla Edget', 'Damota', 'Gedeb', 'Gelila', 'Gesuba',
+    'Harufa', 'Hawassa', 'Hawassa Alamura', 'Hawassa Atote', 'Hawassa Menaheria', 'Hawassa-Warka', 'Humbo', 'Jinka',
+    'Moyale sub branch', 'Negele Borena', 'Nib Halal Shashemene', 'Sawula', 'Selam Ber', 'Shakiso', 'Shashemene',
+    'Shashemene ODA', 'Shecha', 'Tabor', 'W/Sodo', 'W/sodo Menharia', 'Yabelo', 'Yirgachefe', 'Yirgalem'
+  ],
+  'Hossaena': [
+    'Adillo Sub Branch', 'Angacha', 'Ansho (Duna Ketema)', 'Areka', 'Bele', 'Boditi', 'Bombe', 'Bonosha', 'Domboya',
+    'Doyogena', 'Durame', 'Fonko', 'Gimbichu', 'Hadero', 'Halaba Kulito', 'Homecho', 'Hossaena Batena', 'Hossaena Gebeya',
+    'Hossaena Meneharia', 'Hossana', 'Hossana Arada', 'Hossana Gombora', 'Lera', 'Mudula', 'Nib Halal Aman',
+    'Nib Halal Dalocha', 'Nib Halal Hakika (Werabe Duna)', 'Nib Halal Hossana', 'Nib Halal Kibet', 'Nib Halal Silte Mitto',
+    'Nib Halal Tora', 'Sankura', 'Shinshicho', 'Shone', 'Wachamo University Sub-Br', 'Werabe'
+  ],
+  'Bahir Dar': [
+    'Abay Mado', 'Adet Tera', 'Bahir Dar Gebeya', 'Bahir Dar Ghion', 'Bahir Dar Tana', 'Bahir Dar', 'Bichena',
+    'Dangila', 'Debre Markos Gebeya (Sub )', 'Debre tabor', 'Debremarkos', 'Dejene', 'Durbete', 'Enjibara', 'Fasilo',
+    'Finote Selam', 'Gondar', 'Gonder Maraki', 'Humera', 'M/Yohanns (Sub Branch )', 'Merawi', 'Mota', 'Nib Halal Bahir Dar Ramadan',
+    'Nifas Mewcha', 'Woreta'
+  ],
+  'Dire Dawa': [
+    'Afetesa', 'Aw-Bare', 'Aweday', 'Bedessa', 'Chiro', 'Dire Dawa', 'Gelemso', 'Harar', 'Harar Ras', 'Hirna',
+    'Jigjiga Shebele', 'Jijiga', 'Kefira', 'Kezira Main', 'Melka Rafu', 'Mideregenet (Harer)', 'Nib Halal Kezira',
+    'Sabian Gulit', 'Sabian Meskelegna', 'Togo Chale Sub Branch'
+  ],
+  'Jimma': [
+    'Agaro', 'Aman (Sub Branch )', 'Assosa', 'Bambasi', 'Bedele', 'Beshishe (Sub branch)', 'Bonga', 'Chora', 'Dembidolo',
+    'Dima', 'Gambela', 'Gimbi', 'Jimma (050)', 'Jimma Abajifar', 'Jimma Menharia', 'Limu Genet', 'Meti', 'Mettu', 'Mizan',
+    'Nekemte', 'Nib Halal Areboch Tera', 'Tarecha', 'Tepi', 'Wacha'
+  ],
+  'Adama': [
+    'Adama Boset', 'Adama Menaharia', 'Adama.', 'Adda Bishoftu', 'Arerti', 'Asela', 'Awash 7 Killo', 'Bale Robe', 'Batu',
+    'Bekoji', 'Berecha', 'Bishoftu Michael', 'Bishoftu', 'Chillalo', 'Denbela', 'Digelou', 'Dodolla', 'Dukem',
+    'Dukem Eastern Industry', 'Eteya', 'Geda (Adama Moenco sub branch)', 'Ginb Gebeya(Adama )', 'Goba', 'Hasasa', 'Huruta',
+    'M/A/Adama', 'Meki', 'Modjo', 'Modjo Derk Wedb', 'Nib Halal Adama', 'Olen chiti', 'Sagure', 'Tiyo Assela',
+    'Ziquala Bishoftu'
+  ],
+  'Dessie': [
+    'Ayiteyef', 'Bati', 'Dessie', 'Haik', 'Kemise', 'Kobo', 'Kombolcha', 'Lakomelza', 'Lalibella', 'Logia', 'Mersa',
+    'Semera', 'Shewa Robit', 'Woldia'
+  ],
+  'Mekelle': [
+    'Adi Haqi', 'Adigrat', 'Axum', 'Kesate Birehan', 'Mekelle', 'Mesobo', 'Shire', 'Wekro'
+  ],
+  'Wolikite': [
+    'Agena', 'Areket', 'Bozheber', 'Buie', 'Butajira', 'Darge', 'Emdebir', 'Endegegn', 'Ensino', 'Gunchire', 'Hawaryat',
+    'Kare', 'Kella', 'Kosie', 'L/T/J/W/Silase Bereka (Gubre )', 'Mareko Koshe', 'Nib Halal Bidara Gebeya',
+    'Nib Halal Gubre Bilal', 'Nib Halal Rebi', 'Quante', 'Tiya Bitwoded Bahiru', 'Tulu Bollo', 'Walga', 'Woliso',
+    'Wolkite', 'Wolkite University Sub-Br.', 'Yejoka', 'Zebidar'
+  ]
+};
+
+main()
+  .then(async () => { await prisma.$disconnect(); })
+  .catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
