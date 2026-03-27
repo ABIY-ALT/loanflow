@@ -1,22 +1,23 @@
 
 'use client';
 
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
-import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
-import { LoanDocumentStatus, DocumentRequirementType } from '@/types/loan';
+import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
+import { LoanDocumentStatus, DocumentRequirementType, LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { Alert, AlertTitle as AlertTitleShadCN, AlertDescription as AlertDescriptionShadCN } from '@/components/ui/alert';
-import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, Info as InfoIcon, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquareWarning, Flame, ArrowLeft, History, Info as InfoIcon, FileText, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -218,6 +219,8 @@ export default function LoanDetailPage() {
             timestamp: formatISO(new Date()),
             userId: currentUser?.id || 'system-prisma',
             userName: currentUserName,
+            userRole: currentUser?.customRoleName || 'Administrator',
+            userDepartment: currentUser?.department || 'System',
             notes: `Case assignment changed. Now assigned to: ${assignedNames}.`
         });
     }
@@ -246,6 +249,8 @@ export default function LoanDetailPage() {
       id: `hist-note-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
       userName: currentUserName,
+      userRole: currentUser?.customRoleName,
+      userDepartment: currentUser?.department,
       notes: noteContent,
     };
     const {success} = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Note added.");
@@ -264,6 +269,8 @@ export default function LoanDetailPage() {
       id: `hist-inforeq-${Date.now()}`, stageName: stageNameToLog, timestamp: formatISO(new Date()),
       userId: currentUser?.id || 'system-prisma',
       userName: currentUserName,
+      userRole: currentUser?.customRoleName,
+      userDepartment: currentUser?.department,
       notes: `Logged information request: ${infoToRequest}`,
       requiredFulfilment: infoToRequest,
       isFulfilled: false,
@@ -335,6 +342,8 @@ export default function LoanDetailPage() {
       id: `hist-officercomplete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
       userId: currentUser.id,
       userName: officerName,
+      userRole: currentUser.customRoleName,
+      userDepartment: currentUser.department,
       notes: `Staff marked stage '${currentStageDef.name}' as their part complete.`,
     };
 
@@ -403,6 +412,8 @@ export default function LoanDetailPage() {
             timestamp: formatISO(new Date()),
             userId: currentUser.id,
             userName: currentUserName,
+            userRole: currentUser.customRoleName,
+            userDepartment: currentUser.department,
             notes: `Workflow '${currentWorkflowDef.name}' complete. Automatically promoted to new workflow: '${nextWorkflowDef.name}', Stage: '${firstStageOfNextWorkflow.name}'.`,
         };
 
@@ -423,6 +434,8 @@ export default function LoanDetailPage() {
           id: `hist-promote-${Date.now()}`, stageName: nextStageDef.name, timestamp: formatISO(new Date()),
           userId: currentUser.id,
           userName: currentUserName,
+          userRole: currentUser.customRoleName,
+          userDepartment: currentUser.department,
           notes: `Manager approved stage '${currentStageDef.name}' and promoted to '${nextStageDef.name}'. Case moved to ${nextStageDef.responsibleDepartment} department.`
         };
         
@@ -456,6 +469,8 @@ export default function LoanDetailPage() {
       timestamp: formatISO(new Date()),
       userId: currentUser.id,
       userName: currentUserName,
+      userRole: currentUser.customRoleName,
+      userDepartment: currentUser.department,
       notes: `Manager returned case for rework. Reason: ${reworkNote}`
     };
     const {success} = await handleLocalAndUpdateService({
@@ -481,6 +496,8 @@ export default function LoanDetailPage() {
       timestamp: formatISO(new Date()),
       userId: currentUser.id,
       userName: currentUserName,
+      userRole: currentUser.customRoleName,
+      userDepartment: currentUser.department,
       notes: `Loan process terminated by higher authority. Reason: ${terminationReason}`,
     };
 
@@ -511,6 +528,8 @@ export default function LoanDetailPage() {
         timestamp: formatISO(new Date()),
         userId: currentUser.id,
         userName: currentUserName,
+        userRole: currentUser.customRoleName,
+        userDepartment: currentUser.department,
         notes: `MANUAL TRANSITION: Moved from '${fromStageName}' to '${newStage.name}'. Reason: ${reason}`,
     };
 
@@ -604,6 +623,8 @@ export default function LoanDetailPage() {
         timestamp: formatISO(new Date()),
         userId: currentUser?.id || 'system-prisma',
         userName: currentUserName,
+        userRole: currentUser?.customRoleName,
+        userDepartment: currentUser?.department,
         notes: `Stage status changed from "${loan.currentStageStatus || 'None'}" to "${newStatus}".`,
     };
     
@@ -685,12 +706,12 @@ export default function LoanDetailPage() {
 
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
             <div>
               <CardTitle className="text-2xl font-bold text-primary">{loan.customerName}</CardTitle>
-              <CardDescription>Loan: {loan.loanNumber}</CardDescription>
+              <CardDescription>Loan ID: {loan.loanNumber}</CardDescription>
             </div>
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-2">
                 <Badge className={`px-3 py-1.5 text-sm font-medium`}>
                   Stage: {currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}
                 </Badge>
@@ -698,7 +719,7 @@ export default function LoanDetailPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Status:</span>
                     <Select value={loan.currentStageStatus || ''} onValueChange={handleStatusChange} disabled={isSaving}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Set Status" /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Set Status" /></SelectTrigger>
                       <SelectContent>
                         {availableStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
                       </SelectContent>
@@ -708,39 +729,44 @@ export default function LoanDetailPage() {
                   loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge>
                 )}
                  <Badge variant="outline" className="text-sm">Dept: {loanCurrentDept || 'N/A'}</Badge>
-                {loan.isUrgent && <Badge variant="destructive" className="bg-red-500 text-white"><Flame className="mr-1 h-3 w-3"/> Urgent</Badge>}
-                {loan.isReadyForManagerReview && isActionable && <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50">Awaiting Manager Review</Badge>}
+                {loan.isUrgent && <Badge variant="destructive" className="bg-red-500 text-white animate-pulse"><Flame className="mr-1 h-3 w-3"/> Urgent</Badge>}
+                {loan.isReadyForManagerReview && isActionable && <Badge variant="outline" className="text-orange-600 border-orange-500 bg-orange-50 font-bold">Awaiting Manager Review</Badge>}
                 {loan.isTerminalStage && <Badge variant="destructive" className="text-base py-1.5 px-3 h-auto"><span className="font-semibold">Terminated:</span>&nbsp;<span className="font-normal">{terminationReason}</span></Badge>}
             </div>
           </div>
            {userPermissions.has(PERMISSIONS.FLAG_URGENT_CASE) && isActionable && (
-              <div className="flex items-center space-x-2 pt-4">
+              <div className="flex items-center space-x-2 pt-4 border-t mt-4">
                 <Switch id="urgent-switch" checked={loan.isUrgent} onCheckedChange={handleUrgencyChange} disabled={isSaving} />
-                <Label htmlFor="urgent-switch" className="text-red-600 font-semibold">Mark as Urgent</Label>
+                <Label htmlFor="urgent-switch" className="text-red-600 font-semibold cursor-pointer">Flag as Urgent Case</Label>
               </div>
             )}
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-0">
           {latestReworkNote && (
-            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-400 text-amber-800">
+            <Alert variant="destructive" className="m-6 bg-amber-50 border-amber-400 text-amber-800">
               <MessageSquareWarning className="h-5 w-5" />
               <AlertTitleShadCN>Returned for Rework by {latestReworkNote.userName} on {format(parseISO(latestReworkNote.timestamp), 'MMM dd, yyyy')}</AlertTitleShadCN>
               <AlertDescriptionShadCN className="font-medium whitespace-pre-wrap">{latestReworkNote.notes?.replace("Manager returned case for rework. Reason: ", "")}</AlertDescriptionShadCN>
             </Alert>
           )}
 
-          <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
-          
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 mt-8">
-            <div className="xl:col-span-3 space-y-10">
-              <section>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><InfoIcon className="h-5 w-5 text-primary" /> Application Overview</h3>
-                <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
-              </section>
-              
-              <Separator />
-              
-              <section className="max-w-3xl">
+          <div className="px-6 pt-6">
+            <LoanProgressDisplay loan={loan} progressPercentage={progressPercentage} currentStageName={currentStageDef?.name || loan.currentStageName || 'Unknown Stage'}/>
+          </div>
+
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-6 h-12">
+              <TabsTrigger value="overview" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-12 gap-2"><InfoIcon className="h-4 w-4"/> Application Info</TabsTrigger>
+              <TabsTrigger value="documents" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-12 gap-2"><FileText className="h-4 w-4"/> Requirements & Docs</TabsTrigger>
+              <TabsTrigger value="history" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-12 gap-2"><ClipboardList className="h-4 w-4"/> Case History (Audit Trail)</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="overview" className="p-6 focus-visible:ring-0">
+               <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loanCurrentDept} />
+            </TabsContent>
+
+            <TabsContent value="documents" className="p-6 focus-visible:ring-0">
+               <div className="max-w-4xl">
                 <LoanDocumentsManager
                   loan={loan}
                   currentStageDef={currentStageDef}
@@ -749,20 +775,20 @@ export default function LoanDetailPage() {
                   onCheckboxChange={handleCheckboxRequirementChange}
                   isSavingGlobal={isSaving}
                 />
-              </section>
-            </div>
+               </div>
+            </TabsContent>
 
-            <div className="xl:col-span-1 border-l pl-6">
-              <LoanAuditTrail 
+            <TabsContent value="history" className="p-6 focus-visible:ring-0">
+               <LoanAuditTrail 
                 loan={loan} 
                 onRespondToRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) && isActionable ? (entry) => { setSelectedEntryForResponse(entry); setIsRespondToInfoDialogOpen(true); } : undefined}
                 isSavingGlobal={isSaving}
               />
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
-         <CardFooter className="p-6 border-t">
-            <p className="text-xs text-muted-foreground">Last Updated: {loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'PPpp') : 'N/A'}</p>
+         <CardFooter className="p-6 border-t bg-muted/5">
+            <p className="text-xs text-muted-foreground">Last Database Sync: {loan.lastUpdatedDate ? format(parseISO(loan.lastUpdatedDate), 'PPpp') : 'N/A'}</p>
         </CardFooter>
       </Card>
 

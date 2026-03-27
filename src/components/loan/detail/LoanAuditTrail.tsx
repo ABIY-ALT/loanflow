@@ -6,7 +6,6 @@ import type { LoanRequest, LoanHistoryEntry } from '@/types/loan';
 import { HistoryEntryItem } from '@/components/loan/common/HistoryEntryItem';
 import { 
   History, 
-  BadgeCheck,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -22,26 +21,40 @@ export function LoanAuditTrail({ loan, onRespondToRequest, isSavingGlobal }: Aud
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold flex items-center gap-2">
-          <History className="h-6 w-6 text-primary" />
-          Detailed Case Audit Trail
-        </h3>
-        <Badge variant="outline" className="text-muted-foreground">
-          {sortedHistory.length} Recorded Actions
+    <div className="space-y-8">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/10 rounded-full">
+            <History className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black tracking-tight">Loan Lifecycle Audit Trail</h3>
+            <p className="text-sm text-muted-foreground font-medium">A complete, high-fidelity chronological record of all system and user activities.</p>
+          </div>
+        </div>
+        <Badge variant="secondary" className="px-3 py-1 font-bold">
+          {sortedHistory.length} Total Events
         </Badge>
       </div>
 
-      <div className="relative border-l-2 border-primary/20 ml-4 space-y-2 pb-4">
-        {sortedHistory.map((entry) => (
-          <HistoryEntryItem 
-            key={entry.id} 
-            entry={entry} 
-            onRespondToRequest={onRespondToRequest}
-            isSaving={isSavingGlobal}
-          />
-        ))}
+      <div className="max-w-5xl">
+        {sortedHistory.length === 0 ? (
+          <div className="py-20 text-center border-2 border-dashed rounded-xl bg-muted/5">
+            <History className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
+            <p className="text-lg font-bold text-muted-foreground">No history entries found.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sortedHistory.map((entry) => (
+              <HistoryEntryItem 
+                key={entry.id} 
+                entry={entry} 
+                onRespondToRequest={onRespondToRequest}
+                isSaving={isSavingGlobal}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
