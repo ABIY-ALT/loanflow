@@ -32,6 +32,7 @@ import { ReturnLoanForReworkDialog } from '@/components/loan/dialogs/ReturnLoanF
 import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDocumentDialog';
 import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
+import { RespondToInfoRequestDialog } from '@/components/loan/dialogs/RespondToInfoRequestDialog';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
@@ -63,6 +64,8 @@ export default function LoanDetailPage() {
   const [isReturnForReworkDialogOpen, setIsReturnForReworkDialogOpen] = useState(false);
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
+  const [isRespondToInfoDialogOpen, setIsRespondToInfoDialogOpen] = useState(false);
+  const [selectedEntryForResponse, setSelectedEntryForResponse] = useState<LoanHistoryEntry | null>(null);
   
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   const canViewPage = useMemo(() => userPermissions.has(PERMISSIONS.VIEW_LOAN_DETAILS), [userPermissions]);
@@ -143,17 +146,29 @@ export default function LoanDetailPage() {
   }, [fetchLoanData, authLoading]);
   
   const handleLocalAndUpdateService = useCallback(async (
-    updatedFields: Partial<Omit<LoanRequest, 'id'>>,
+    updatedFields: Partial<Omit<LoanRequest, 'id'>> & { respondToInfoRequest?: { entryId: string, response: string, markFulfilled: boolean } },
     successMessage: string,
   ): Promise<{success: boolean; finalLoanState?: LoanRequest}> => {
     if (!loan) return {success: false};
     setIsSaving(true);
 
+    // Filter out helper fields for local state simulation
+    const { respondToInfoRequest, ...restUpdatedFields } = updatedFields;
+
     const optimisticLoanState: LoanRequest = {
         ...JSON.parse(JSON.stringify(loan)), // Deep clone to ensure re-render
-        ...updatedFields,
+        ...restUpdatedFields,
         lastUpdatedDate: formatISO(new Date()),
     };
+    
+    // Optimistically update history locally if it's a direct info request response
+    if (respondToInfoRequest) {
+        optimisticLoanState.history = optimisticLoanState.history.map(h => 
+            h.id === respondToInfoRequest.entryId 
+                ? { ...h, fulfillmentNotes: respondToInfoRequest.response, isFulfilled: respondToInfoRequest.markFulfilled } 
+                : h
+        );
+    }
     
     // Optimistically set state
     setLoan(optimisticLoanState); 
@@ -262,37 +277,24 @@ export default function LoanDetailPage() {
       userName: currentUserName,
       notes: `Logged information request: ${infoToRequest}`, // Base note
       requiredFulfilment: infoToRequest, // The actual requirement text
+      isFulfilled: false,
     };
     const {success} = await handleLocalAndUpdateService({ history: [...loan.history, newHistoryEntry] }, "Information request logged.");
     if (success) setIsLogInfoDialogOpen(false);
   };
 
-  const handleFulfillInfoRequest = async (entryId: string, requirementText: string, isFulfilling: boolean) => {
-    if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) || !currentUser) return;
+  const onRespondToInfoRequestSubmit = async (entryId: string, response: string, markFulfilled: boolean) => {
+    if (!loan || !userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST)) return;
     
-    const fulfillmentTag = `\n\n[FULFILLED] by ${currentUser.fullName} on ${new Date().toLocaleDateString()}. Requirement: "${requirementText}"`;
-    
-    const updatedHistory = loan.history.map(h => {
-        if (h.id === entryId) {
-            let notes = h.notes || '';
-            const isCurrentlyFulfilled = notes.includes('[FULFILLED]');
+    const { success } = await handleLocalAndUpdateService(
+        { respondToInfoRequest: { entryId, response, markFulfilled } },
+        markFulfilled ? "Information requirement fulfilled." : "Response saved."
+    );
 
-            if (isFulfilling && !isCurrentlyFulfilled) {
-                // Add fulfillment tag
-                return { ...h, notes: notes + fulfillmentTag };
-            } else if (!isFulfilling && isCurrentlyFulfilled) {
-                // Remove fulfillment tag (and any similar tags)
-                const newNotes = notes.replace(/\[FULFILLED\].*$/gm, '').trim();
-                return { ...h, notes: newNotes };
-            }
-        }
-        return h;
-    });
-
-    const payload = { history: updatedHistory };
-
-    const message = isFulfilling ? "Information requirement marked as fulfilled." : "Information requirement status reverted to pending.";
-    await handleLocalAndUpdateService(payload, message);
+    if (success) {
+        setIsRespondToInfoDialogOpen(false);
+        setSelectedEntryForResponse(null);
+    }
   };
   
   const validateCurrentStageRequirements = useCallback((loanForValidation?: LoanRequest | null): boolean => {
@@ -303,7 +305,7 @@ export default function LoanDetailPage() {
     }
 
     // Check for unfulfilled information requests
-    const activeInfoReq = loanToUse.history.find(entry => entry.requiredFulfilment && !entry.notes?.includes('[FULFILLED]'));
+    const activeInfoReq = loanToUse.history.find(entry => entry.requiredFulfilment && !entry.isFulfilled);
     if (activeInfoReq) {
         toast({ title: 'Action Pending', description: `Outstanding action: '${activeInfoReq.requiredFulfilment}' must be resolved.`, variant: 'destructive', duration: 7000 });
         return false;
@@ -869,7 +871,11 @@ export default function LoanDetailPage() {
             </TabsContent>
 
             <TabsContent value="history" className="animate-in fade-in-50 duration-300">
-              <LoanAuditTrail loan={loan} />
+              <LoanAuditTrail 
+                loan={loan} 
+                onRespondToRequest={userPermissions.has(PERMISSIONS.FULFILL_INFO_REQUEST) && isActionable ? (entry) => { setSelectedEntryForResponse(entry); setIsRespondToInfoDialogOpen(true); } : undefined}
+                isSavingGlobal={isSaving}
+              />
             </TabsContent>
           </Tabs>
 
@@ -895,6 +901,16 @@ export default function LoanDetailPage() {
           currentLoan={loan}
           workflowDefinitions={workflowDefinitions}
           onSubmit={onManualTransitionSubmit}
+          isSaving={isSaving}
+        />
+      )}
+
+      {selectedEntryForResponse && (
+        <RespondToInfoRequestDialog
+          isOpen={isRespondToInfoDialogOpen}
+          onOpenChange={(isOpen) => { setIsRespondToInfoDialogOpen(isOpen); if(!isOpen) setSelectedEntryForResponse(null); }}
+          entry={selectedEntryForResponse}
+          onSubmit={onRespondToInfoRequestSubmit}
           isSaving={isSaving}
         />
       )}

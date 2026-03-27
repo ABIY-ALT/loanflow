@@ -153,6 +153,8 @@ export interface LoanHistoryEntry {
   timestamp: string; // ISO date string
   notes?: string;
   requiredFulfilment?: string;
+  fulfillmentNotes?: string;
+  isFulfilled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

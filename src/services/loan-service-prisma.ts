@@ -123,6 +123,8 @@ const mapPrismaLoanToAppLoan = (
       timestamp: formatISO(new Date(h.timestamp)),
       notes: h.notes || undefined,
       requiredFulfilment: h.requiredFulfilment || undefined,
+      fulfillmentNotes: h.fulfillmentNotes || undefined,
+      isFulfilled: h.isFulfilled,
       createdAt: h.createdAt ? formatISO(new Date(h.createdAt)) : undefined,
       updatedAt: h.updatedAt ? formatISO(new Date(h.updatedAt)) : undefined,
     })) || [],
@@ -377,7 +379,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
 
 export async function updateLoanRequest(
   id: string,
-  dataToUpdate: Partial<Omit<LoanRequest, 'id'>>
+  dataToUpdate: Partial<Omit<LoanRequest, 'id'>> & { respondToInfoRequest?: { entryId: string, response: string, markFulfilled: boolean } }
 ): Promise<{ success?: boolean; updatedLoan?: LoanRequest; error?: string }> {
   try {
     const { user } = await getCurrentUser();
@@ -440,7 +442,20 @@ export async function updateLoanRequest(
         updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
       }
 
-      // Handle History
+      // Handle specific Info Request Response
+      if (dataToUpdate.respondToInfoRequest) {
+          const { entryId, response, markFulfilled } = dataToUpdate.respondToInfoRequest;
+          await tx.loanHistoryEntry.update({
+              where: { id: entryId },
+              data: {
+                  fulfillmentNotes: response,
+                  isFulfilled: markFulfilled,
+                  updatedAt: new Date()
+              }
+          });
+      }
+
+      // Handle History (General entries)
       if (dataToUpdate.hasOwnProperty('history')) {
         const existingHistoryIds = new Set((existingLoan.history || []).map(h => h.id));
         const newEntries = (dataToUpdate.history || []).filter(h => !existingHistoryIds.has(h.id));
@@ -453,6 +468,8 @@ export async function updateLoanRequest(
                     timestamp: parseISO(entry.timestamp),
                     notes: entry.notes,
                     requiredFulfilment: entry.requiredFulfilment,
+                    fulfillmentNotes: entry.fulfillmentNotes,
+                    isFulfilled: entry.isFulfilled || false,
                 }
             });
         }
