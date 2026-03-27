@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +26,6 @@ import {
   ArrowLeft, 
   ArrowRight, 
   MoreVertical, 
-  ChevronDown, 
   Map, 
   Briefcase, 
   Network,
@@ -93,7 +93,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
@@ -624,13 +623,6 @@ export default function SettingsPage() {
         return def;
     }));
     toast({ title: "Status Toggled", description: `Click "Save All Settings" to persist database changes.` });
-  };
-
-  const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion | null) => {
-    if (!canManageWorkflows) return;
-    setCurrentWorkflowDefForEdit(def);
-    setCurrentVersionToEdit(version);
-    setIsEditVersionDialogOpen(true);
   };
 
   const handleSaveAll = async () => {
