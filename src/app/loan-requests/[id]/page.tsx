@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO, formatISO, addDays } from 'date-fns';
-import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
+import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
 import { LoanDocumentStatus, DocumentRequirementType, LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -89,11 +89,19 @@ export default function LoanDetailPage() {
   }, [currentWorkflowVersion, workflowDefinitions]);
   
   const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef || !canActOnLoan) return false;
+    if (!currentUser || !currentStageDef || !canActOnLoan || !loan) return false;
+
+    // Administrators can always act
+    if (userPermissions.has(PERMISSIONS.MANAGE_USERS)) return true;
+
+    // Enforce Department boundary: 
+    // Users can only act on cases currently assigned to their department
+    if (currentUser.department !== loan.assignedDepartment) return false;
+
     const allowedRoles = currentStageDef.allowedRoles || [];
     if (allowedRoles.length === 0) return true; 
     return currentUser.customRoleName && allowedRoles.includes(currentUser.customRoleName);
-  }, [currentUser, currentStageDef, canActOnLoan]);
+  }, [currentUser, currentStageDef, canActOnLoan, loan, userPermissions]);
 
   const fetchLoanData = useCallback(async () => {
     if (!loanId) {
