@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +30,8 @@ import {
   Briefcase, 
   Network,
   ShieldCheck,
-  ShieldOff
+  ShieldOff,
+  Edit3
 } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
@@ -598,6 +598,41 @@ export default function SettingsPage() {
     toast({ title: "Workflow Added Locally", description: "Click Save to persist changes." });
   };
 
+  const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
+    if (!canManageWorkflows) return;
+    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+      if (def.id === definitionId) {
+        let versionsForThisDef = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
+        return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
+      }
+      return def;
+    }));
+    toast({title: "Version Changes Applied (Local)", description: `Version ${updatedVersion.versionNumber} changes staged. Save all settings to persist.`});
+  };
+
+  const handleActivateWorkflowVersion = (definitionId: string, versionId: string) => {
+    if (!canManageWorkflows) return;
+    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+        if (def.id === definitionId) {
+            return {
+                ...def,
+                versions: def.versions.map(v => 
+                    v.id === versionId ? { ...v, isActive: !v.isActive } : v
+                )
+            };
+        }
+        return def;
+    }));
+    toast({ title: "Status Toggled", description: `Click "Save All Settings" to persist database changes.` });
+  };
+
+  const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion | null) => {
+    if (!canManageWorkflows) return;
+    setCurrentWorkflowDefForEdit(def);
+    setCurrentVersionToEdit(version);
+    setIsEditVersionDialogOpen(true);
+  };
+
   const handleSaveAll = async () => {
     setIsSavingAll(true);
     const result = await saveWorkflowDefinitions(workflowDefinitions);
@@ -717,7 +752,7 @@ export default function SettingsPage() {
         <CardContent className="pt-6">
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-5">
-              <div><Label className="text-[10px] uppercase font-bold text-primary/70">Workflow Name</Label><Input value={newWorkflowForm.name} onChange={e => setNewWorkflowForm({...newWorkflowForm, name: e.target.value})} placeholder="e.g. WF-09 Initial Analysis" className="h-11" /></div>
+              <div><Label className="text-[10px] uppercase font-bold text-primary/70">Workflow Name</Label><Input value={newWorkflowForm.name} onChange={e => setNewWorkflowForm({...newWorkflowForm, name: e.target.value})} placeholder="e.g. SME Credit Line" className="h-11" /></div>
               <div>
                 <Label className="text-[10px] uppercase font-bold text-primary/70">Parent Sector Path</Label>
                 <Select value={newWorkflowForm.parentSectorId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, parentSectorId: v, referenceId: ''})}>
@@ -836,14 +871,14 @@ export default function SettingsPage() {
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-3 shrink-0">
-                                <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase hover:text-primary gap-1.5"><Edit className="h-3.5 w-3.5"/> Edit Definition</Button>
+                                <Button variant="ghost" size="sm" className="h-8 text-[10px] font-black uppercase hover:text-primary gap-1.5"><Edit3 className="h-3.5 w-3.5"/> Edit Definition</Button>
                                 <div className="flex items-center gap-3">
                                   {activeVer && (
                                     <Badge variant="outline" className="h-10 px-4 font-black uppercase text-xs border-primary/20 bg-primary/5 text-primary">
                                       Version {activeVer.versionNumber} ({activeVer.stages.length} Stages)
                                     </Badge>
                                   )}
-                                  <Button variant="ghost" size="sm" className="h-10 text-xs font-black uppercase text-orange-700 hover:bg-orange-50" onClick={() => handleDeactivateWorkflowVersion(wf.id, activeVer?.id || '')}>Deactivate</Button>
+                                  <Button variant="ghost" size="sm" className="h-10 text-xs font-black uppercase text-orange-700 hover:bg-orange-50" onClick={() => handleActivateWorkflowVersion(wf.id, activeVer?.id || '')}>{activeVer?.isActive ? 'Deactivate' : 'Activate'}</Button>
                                   <Button size="sm" onClick={() => handleOpenEditVersionDialog(wf, activeVer || null)} className="h-10 px-5 font-black uppercase text-xs bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"><PlusCircle className="mr-2 h-4 w-4"/> Edit Stages</Button>
                                 </div>
                                 <Button variant="link" size="sm" className="h-6 p-0 text-[10px] font-black uppercase text-muted-foreground underline decoration-primary/30">View Version History</Button>
