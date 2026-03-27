@@ -13,9 +13,10 @@ interface AuditTrailProps {
   loan: LoanRequest;
   onRespondToRequest?: (entry: LoanHistoryEntry) => void;
   isSavingGlobal?: boolean;
+  isRestricted?: boolean;
 }
 
-export function LoanAuditTrail({ loan, onRespondToRequest, isSavingGlobal }: AuditTrailProps) {
+export function LoanAuditTrail({ loan, onRespondToRequest, isSavingGlobal, isRestricted }: AuditTrailProps) {
   const sortedHistory = [...loan.history].sort((a, b) => 
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
@@ -29,7 +30,9 @@ export function LoanAuditTrail({ loan, onRespondToRequest, isSavingGlobal }: Aud
           </div>
           <div>
             <h3 className="text-xl font-black tracking-tight">Loan Lifecycle Audit Trail</h3>
-            <p className="text-sm text-muted-foreground font-medium">A complete, high-fidelity chronological record of all system and user activities.</p>
+            <p className="text-sm text-muted-foreground font-medium">
+              {isRestricted ? 'Chronological record of stage movements and process status.' : 'A complete, high-fidelity chronological record of all system and user activities.'}
+            </p>
           </div>
         </div>
         <Badge variant="secondary" className="px-3 py-1 font-bold">
@@ -51,6 +54,7 @@ export function LoanAuditTrail({ loan, onRespondToRequest, isSavingGlobal }: Aud
                 entry={entry} 
                 onRespondToRequest={onRespondToRequest}
                 isSaving={isSavingGlobal}
+                isRestricted={isRestricted}
               />
             ))}
           </div>
