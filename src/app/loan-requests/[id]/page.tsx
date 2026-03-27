@@ -72,12 +72,20 @@ export default function LoanDetailPage() {
   const isManagerInDept = useMemo(() => isInActiveDept && (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)), [isInActiveDept, userPermissions]);
   const isAdmin = useMemo(() => userPermissions.has(PERMISSIONS.MANAGE_USERS), [userPermissions]);
 
-  // VITAL: Determine if user can see sensitive financials and docs
+  /**
+   * VITAL: Determine if user can see sensitive financials and docs.
+   * Inputters (Creators) should ONLY see tracking info unless they are also Assigned or Managers.
+   */
   const canViewFullDetails = useMemo(() => {
     if (!currentUser || !loan) return false;
+    // 1. Admins see everything
     if (isAdmin) return true;
+    // 2. Assigned staff see everything
     if (isAssigned) return true;
+    // 3. Managers in the active department see everything
     if (isManagerInDept) return true;
+    
+    // Everyone else (including Creators/Inputters) gets the restricted view
     return false;
   }, [currentUser, loan, isAdmin, isAssigned, isManagerInDept]);
   
@@ -482,7 +490,7 @@ export default function LoanDetailPage() {
             <div className="px-6 py-8 border-b bg-background">
               <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-6 flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                Processing Progress
+                Workflow Tracking
               </h3>
               <LoanProgressDisplay loan={loan} progressPercentage={0} currentStageName={currentStageDef?.name || 'Current Stage'}/>
               
@@ -495,11 +503,11 @@ export default function LoanDetailPage() {
                   </p>
                 </div>
                 <div className="p-4 rounded-xl border bg-muted/10 space-y-3">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Assigned Personnel</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Assigned Staff</p>
                   <div className="flex flex-wrap gap-2">
                     {loan.assignedToUsers.length > 0 ? (
                       loan.assignedToUsers.map(u => (
-                        <Badge key={u.id} variant="secondary" className="flex items-center gap-1.5">
+                        <Badge key={u.id} variant="secondary" className="flex items-center gap-1.5 font-bold">
                           <User className="h-3 w-3" /> {u.fullName}
                         </Badge>
                       ))
@@ -515,7 +523,7 @@ export default function LoanDetailPage() {
               <Tabs defaultValue="history" className="w-full">
                 <TabsList className="bg-muted/50 p-1">
                   <TabsTrigger value="history" className="gap-2">
-                    <ClipboardList className="h-4 w-4"/> Movement History
+                    <ClipboardList className="h-4 w-4"/> Chronological History
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="history" className="pt-6">
@@ -524,8 +532,8 @@ export default function LoanDetailPage() {
               </Tabs>
             </div>
           </CardContent>
-          <CardFooter className="bg-muted/20 p-4 border-t flex justify-center italic text-xs text-muted-foreground">
-            Sensitive loan data and documents are hidden in this tracking view.
+          <CardFooter className="bg-muted/20 p-4 border-t flex justify-center italic text-xs text-muted-foreground font-medium">
+            Sensitive financials, purpose, and documents are restricted to assigned personnel and managers.
           </CardFooter>
         </Card>
       </div>
