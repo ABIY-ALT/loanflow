@@ -293,47 +293,340 @@ async function main() {
 
   // ==================== SEED WORKFLOWS ====================
   console.log('Seeding Workflows...');
-  const workflowSpecs = [
-    { code: 'WF-01', name: 'WF-01 – RM Request Registration (Acceptance)', dept: 'Service Sector Department' },
-    { code: 'WF-02', name: 'WF-02 – Valuation', dept: 'Property Valuation Department' },
-    { code: 'WF-03', name: 'WF-03 – RM Valuation Result', dept: 'Service Sector Department' },
-    { code: 'WF-05', name: 'WF-05 – Appraisal', dept: 'Credit Analysis & Appraisal Department' },
-    { code: 'WF-06', name: 'WF-06 – RM Disbursement', dept: 'Service Sector Department' },
+  const standardWorkflowsToSeed = [
+    { name: 'WF-01 – RM Request Registration (Acceptance)', order: 1, purpose: 'Initial registration and acceptance of loan requests by Relationship Managers.' },
+    { name: 'WF-02 – Valuation', order: 2, purpose: 'Perform asset or collateral valuation for the loan application.' },
+    { name: 'WF-03 – RM Valuation Result', order: 3, purpose: 'Record and review valuation results by the RM team.' },
+    { name: 'WF-04 – Valuation Appeal (Optional Workflow)', order: 4, purpose: 'Handle appeals related to the asset valuation.' },
+    { name: 'WF-05 – Appraisal', order: 5, purpose: 'Conduct comprehensive credit and risk appraisal based on valuation and financial analysis.' },
+    { name: 'WF-06 – RM Disbursement', order: 6, purpose: 'Handles the initial disbursement process after appraisal.' },
+    { name: 'WF-07 – Appraisal Appeal (Optional Workflow)', order: 7, purpose: 'Handle appeals related to the credit appraisal decision.' },
+    { name: 'WF-08 – RM Final Disbursement (Optional Workflow)', order: 8, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
   ];
 
-  const serviceSectorChild = await prisma.sector.findFirst({ where: { name: 'Domestic Trade and Service' } });
+  const seedWorkflowPath = async (
+    parentSectorName: string,
+    childSectorName: string,
+    departmentName: string
+  ) => {
+    console.log(`--- Seeding Workflows for ${parentSectorName}...`);
+    const parentSector = await prisma.sector.findUnique({ where: { name: parentSectorName } });
+    const childSector = await prisma.sector.findUnique({ where: { name: childSectorName } });
+    const department = await prisma.department.findUnique({ where: { nameLowercase: departmentName.toLowerCase() } });
 
-  if (serviceSectorChild) {
-    for (const [index, spec] of workflowSpecs.entries()) {
-      const dept = await prisma.department.findUnique({ where: { nameLowercase: spec.dept.toLowerCase() } });
-      if (!dept) continue;
-
-      const wf = await prisma.workflowDefinition.create({
-        data: {
-          name: spec.name,
-          order: index,
-          departmentId: dept.id,
-          sectorId: serviceSectorChild.id,
-        }
-      });
-
-      const version = await prisma.workflowVersion.create({
-        data: { workflowDefinitionId: wf.id, versionNumber: 1, isActive: true }
-      });
-
-      await prisma.workflowStageDefinition.create({
-        data: {
-          name: spec.name.split('–')[1].trim(),
-          order: 0,
-          defaultTimelineDays: 5,
-          percentageWeight: 100,
-          workflowVersionId: version.id,
-          responsibleDepartmentId: dept.id,
-          availableStatuses: JSON.stringify({ [dept.name]: ['Initiated', 'In Progress', 'Completed'] }),
-        }
-      });
+    if (!parentSector || !childSector || !department) {
+      console.error(`Could not find necessary entities for ${parentSectorName}. Aborting.`);
+      console.error(`Missing: ${!parentSector ? 'Parent Sector, ' : ''}${!childSector ? 'Child Sector, ' : ''}${!department ? 'Department' : ''}`);
+      return;
     }
-  }
+
+    const maxOrderResult = await prisma.workflowDefinition.aggregate({
+      _max: { order: true },
+      where: {
+        sector: {
+          parentId: parentSector.id,
+        },
+      },
+    });
+    let currentMaxOrder = maxOrderResult._max.order ?? -1;
+
+    for (const wf of standardWorkflowsToSeed) {
+      const workflowDefinition = await prisma.workflowDefinition.create({
+        data: {
+          name: wf.name,
+          description: wf.purpose,
+          order: ++currentMaxOrder,
+          department: { connect: { id: department.id } },
+          sector: { connect: { id: childSector.id } },
+        },
+      });
+      console.log(`Created Workflow Definition: ${workflowDefinition.name}`);
+
+      const workflowVersion = await prisma.workflowVersion.create({
+        data: {
+          workflowDefinition: { connect: { id: workflowDefinition.id } },
+          versionNumber: 1,
+          isActive: true,
+        },
+      });
+      console.log(`  - Created active Version 1 for ${workflowDefinition.name}`);
+
+      if (wf.name === 'WF-01 – RM Request Registration (Acceptance)') {
+        const wf01Stages = [
+          { name: 'RM Submit Checklist', order: 0, timeline: 1, weight: 5, docs: [] },
+          { name: 'Submit Acknowledgement Letter', order: 1, timeline: 1, weight: 20, docs: [] },
+          {
+            name: 'Submit to Property Valuation', order: 2, timeline: 1, weight: 10,
+            docs: [
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Property Valuation Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC Copy / Booklet Copy', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Application Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+        ];
+
+        for (const stageInfo of wf01Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+      } else if (wf.name === 'WF-02 – Valuation') {
+        const wf02Stages = [
+          {
+            name: 'Valuation Maker', order: 0, timeline: 2, weight: 1,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'Valuation 01-A', order: 1, timeline: 8, weight: 10,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'Valuation Checker', order: 2, timeline: 2, weight: 1,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'Valuation 02-A', order: 3, timeline: 2, weight: 10,
+            docs: [
+              { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Customer Form / Previous Estimation', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Estimation Fee', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          {
+            name: 'Valuation Finalization', order: 4, timeline: 1, weight: 10,
+            docs: [
+              { name: 'Property Estimation Result', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+        ];
+
+        for (const stageInfo of wf02Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+      } else if (wf.name === 'WF-03 – RM Valuation Result') {
+        const wf03Stages = [
+          {
+            name: 'Major Requirements Document', order: 0, timeline: 1, weight: 15,
+            docs: [
+              { name: 'Financial Statements Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Property Valuation Results Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Tax Clearance Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Business License Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'CRB Report Received', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Other Related Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          { name: 'Prepare DDR and LAF', order: 1, timeline: 3, weight: 10, docs: [] },
+        ];
+
+        for (const stageInfo of wf03Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+      } else if (wf.name === 'WF-05 – Appraisal') {
+        const wf05Stages = [
+          { name: 'Deputy Chief Credit Operation Officer', order: 0, timeline: 1, weight: 1, docs: [] },
+          { name: 'Director, Credit Appraisal and Analysis Department', order: 1, timeline: 1, weight: 5, docs: [] },
+          { name: 'Manager, Wholesale Credit Appraisal Division', order: 2, timeline: 1, weight: 5, docs: [] },
+          { name: 'Manager, Retail Credit Appraisal Division', order: 3, timeline: 1, weight: 5, docs: [] },
+          { name: 'Document Verification', order: 4, timeline: 2, weight: 10, docs: [] },
+          { name: 'Review Appraisal Analysis', order: 5, timeline: 3, weight: 10, docs: [{ name: 'Annex Report', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+          { name: 'Distribute Appraisal Analysis', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'Submit to Committee Secretary', order: 7, timeline: 3, weight: 10, docs: [] },
+          { name: 'Distribute to Committee Members', order: 8, timeline: 3, weight: 10, docs: [] },
+          { name: 'Credit Approval Committee Review', order: 9, timeline: 5, weight: 30, docs: [] },
+          { name: 'Submit to Appraisal Officer', order: 10, timeline: 3, weight: 4, docs: [{ name: 'LAF Signed by All Committee Members', isMandatory: true, type: DocumentRequirementType.CHECKBOX }] },
+        ];
+
+        for (const stageInfo of wf05Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+      } else if (wf.name === 'WF-06 – RM Disbursement') {
+        const wf06Stages = [
+          { name: 'Submit Loan Decision Letter to Customer', order: 0, timeline: 5, weight: 12, docs: [] },
+          { name: 'Preparation of Loan and Mortgage Contract', order: 1, timeline: 1, weight: 3, docs: [] },
+          { name: 'Contract Signing', order: 2, timeline: 3, weight: 3, docs: [] },
+          { name: 'Collateral Registration Process', order: 3, timeline: 3, weight: 10, docs: [] },
+          {
+            name: 'Collection of Security Documents', order: 4, timeline: 3, weight: 10,
+            docs: [
+              { name: 'Conditions stated on LAF fulfilled', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+              { name: 'Insurance Document', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
+            ],
+          },
+          { name: 'Disbursement Approval Form', order: 5, timeline: 3, weight: 10, docs: [] },
+          { name: 'Disbursement Approval Committee', order: 6, timeline: 3, weight: 10, docs: [] },
+          { name: 'Final Disbursement', order: 7, timeline: 3, weight: 42, docs: [] },
+        ];
+
+        for (const stageInfo of wf06Stages) {
+          const stage = await prisma.workflowStageDefinition.create({
+            data: {
+              name: stageInfo.name,
+              order: stageInfo.order,
+              defaultTimelineDays: stageInfo.timeline,
+              percentageWeight: stageInfo.weight,
+              workflowVersion: { connect: { id: workflowVersion.id } },
+              responsibleDepartment: { connect: { id: department.id } },
+              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            },
+          });
+          console.log(`    - Created stage "${stage.name}" for Version 1`);
+
+          for (const doc of stageInfo.docs) {
+            await prisma.documentRequirement.create({
+              data: {
+                name: doc.name,
+                isMandatory: doc.isMandatory,
+                type: doc.type,
+                workflowStage: { connect: { id: stage.id } },
+              },
+            });
+            console.log(`      - Added doc requirement: "${doc.name}"`);
+          }
+        }
+      } else {
+        const stageName = wf.name.split('–')[1].trim();
+        await prisma.workflowStageDefinition.create({
+          data: {
+            name: stageName,
+            order: 0,
+            defaultTimelineDays: 5,
+            percentageWeight: 100,
+            workflowVersion: { connect: { id: workflowVersion.id } },
+            responsibleDepartment: { connect: { id: department.id } },
+            availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+          },
+        });
+        console.log(`    - Created stage "${stageName}" for Version 1`);
+      }
+    }
+    console.log(`${parentSectorName} workflows seeded.`);
+  };
+
+  await seedWorkflowPath(
+    'Institutional Banking and Hospitality and Green Financing Sector',
+    'Financial Institution',
+    'Institutional Banking and Hospitality, Green Financing Department'
+  );
+
+  await seedWorkflowPath(
+    'Service sector Department',
+    'Domestic Trade and Service',
+    'Service Sector Department'
+  );
+
+  await seedWorkflowPath(
+    'Construction Manufacturing and Agriculture Sector Department',
+    'Manufacturing Industry',
+    'Construction Manufacturing and Agriculture Sector Department'
+  );
 
   console.log('🎉 Seeding finished successfully!');
 }
