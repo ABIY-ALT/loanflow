@@ -16,11 +16,12 @@ import {
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, UserCircle, LogOut, Loader2 } from 'lucide-react'; // Landmark removed
+import { Bell, UserCircle, LogOut, Loader2, PanelLeft } from 'lucide-react'; // Landmark removed
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { useSidebar } from '@/components/ui/sidebar';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -52,6 +53,22 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return null; 
   }
 
+  const SidebarCollapseControl = () => {
+    const { toggleSidebar } = useSidebar();
+
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={toggleSidebar}
+        className="w-full justify-start gap-2 group-data-[state=collapsed]:justify-center"
+      >
+        <PanelLeft className="h-4 w-4" />
+        <span className="group-data-[state=collapsed]:hidden">Collapse</span>
+      </Button>
+    );
+  };
+
   return (
     <SidebarProvider defaultOpen={true}>
       <Sidebar collapsible="icon">
@@ -72,7 +89,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <SidebarNav />
         </SidebarContent>
         <SidebarFooter className="p-4">
-          {/* Footer content */}
+          <SidebarCollapseControl />
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>

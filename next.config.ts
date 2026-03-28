@@ -59,8 +59,10 @@ const nextConfig: NextConfig = {
       }
     ],
   },
-  serverActions: {
-    bodySizeLimit: '10mb', // Increased to support large workflow payloads
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb', // Increased to support large workflow payloads
+    },
   },
 };
 

@@ -57,7 +57,7 @@ export default function ManagerReviewQueuePage() {
           setError(loansResult.error);
         } else if (loansResult.loans) {
           const filteredLoans = loansResult.loans.filter(loan => 
-            (loan.isReadyForManagerReview || (loan.stageCompletedBy && loan.stageCompletedBy.length > 0)) &&
+            (loan.isReadyForManagerReview || loan.isCompleted) &&
             loan.assignedToUsers.length > 0 &&
             loan.assignedDepartment === currentUser.department
           );

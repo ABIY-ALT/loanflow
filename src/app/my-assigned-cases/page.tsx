@@ -2,8 +2,43 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, History } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, History, Download } from 'lucide-react';
+  // Export assigned cases overview as CSV (with assignment/completion history)
+  const exportAssignedCasesToCSV = () => {
+    if (assignedLoans.length === 0) return;
+    const headers = [
+      'Loan Number', 'Customer', 'Current Stage', 'Current Assignees', 'Assigned Department', 'Stage Deadline', 'Assignment/Completion History'
+    ];
+    const csvData = assignedLoans.map(loan => {
+      // Find assignment/completion events in history
+      const assignmentEvents = (loan.history || []).filter(h => h.notes && (h.notes.toLowerCase().includes('assigned') || h.notes.toLowerCase().includes('completed') || h.notes.toLowerCase().includes('reassign')));
+      const historySummary = assignmentEvents.map(h => `${h.timestamp}: ${h.userName} (${h.userRole || ''}) - ${h.notes}`).join(' | ');
+      return [
+        loan.loanNumber,
+        loan.customerName,
+        loan.currentStageName || '',
+        loan.assignedToUsers.map(u => u.fullName).join('; '),
+        loan.assignedDepartment || '',
+        loan.stageDeadline ? format(parseISO(loan.stageDeadline), 'MMM dd, yyyy') : '',
+        historySummary
+      ];
+    });
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'my-assigned-cases.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 import { Button } from '@/components/ui/button';
+import { QuickFollowUpDialog } from '@/components/loan/dialogs/QuickFollowUpDialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +52,8 @@ import { cn } from '@/lib/utils';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export default function MyAssignedCasesPage() {
+  const [selectedLoanForStatus, setSelectedLoanForStatus] = useState<LoanRequest | null>(null);
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
   const [assignedLoans, setAssignedLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,10 +77,13 @@ export default function MyAssignedCasesPage() {
           setError(loansResult.error);
           setAssignedLoans([]);
         } else if (loansResult.loans) {
-          // The filtering logic is now handled on the server, but an extra client-side check is fine as a fallback.
-          const filteredLoans = loansResult.loans.filter(loan =>
-            loan.assignedToUsers.some(u => u.id === currentUser.id) && !loan.isReadyForManagerReview
-          );
+          // Show loans where user is/was assigned, assigned someone else, or touched in history
+          const filteredLoans = loansResult.loans.filter(loan => {
+            const everAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
+            const assignedByMe = loan.assignedById === currentUser.id;
+            const touchedInHistory = (loan.history || []).some(h => h.userId === currentUser.id);
+            return everAssigned || assignedByMe || touchedInHistory;
+          });
           setAssignedLoans(filteredLoans);
         } else {
            setError("No loan data received.");
@@ -127,103 +167,15 @@ export default function MyAssignedCasesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center">
-            <ClipboardList className="mr-3 h-8 w-8 text-primary" />
-            My Assigned Cases
-          </h1>
-          <p className="text-muted-foreground">
-            These are loan requests assigned to you ({currentUser?.fullName || currentUser?.name}) for processing.
-          </p>
-        </div>
-        <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+    <>
+      <div className="space-y-6">
+        {/* ...existing code... */}
+        <Card>
+          {/* ...existing code... */}
+        </Card>
       </div>
-      
-      <Alert variant="default" className="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-600 dark:text-blue-300">
-          <AlertCircle className="h-4 w-4 !text-blue-600 dark:!text-blue-400" />
-          <AlertTitleShadCN>Viewing as: {currentUser?.fullName || currentUser?.name || 'Current User'}</AlertTitleShadCN>
-          <AlertDescriptionShadCN>
-            This page displays cases assigned to you. Urgent cases are prioritized at the top.
-          </AlertDescriptionShadCN>
-      </Alert>
-
-      {error && assignedLoans.length > 0 && (
-         <Alert variant="destructive" className="max-w-2xl mx-auto whitespace-pre-wrap">
-            <AlertCircle className="h-5 w-5" />
-            <AlertTitleShadCN>Partial Data Error</AlertTitleShadCN>
-            <AlertDescriptionShadCN>There was an issue loading some data: {error}. Displayed data might be incomplete.</AlertDescriptionShadCN>
-        </Alert>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Active Cases ({assignedLoans.length})</CardTitle>
-          <CardDescription>
-            Review details, complete necessary tasks, and mark stages complete for manager review.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {sortedLoans.length === 0 && !isLoading && !authIsLoading ? (
-            <div className="py-10 text-center text-muted-foreground">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 lucide lucide-folder-check"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg>
-              <p className="text-lg font-semibold">No Cases Currently Assigned to You</p>
-              <p>Or, all your assigned cases are currently awaiting manager review.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Urgent</TableHead>
-                  <TableHead>Customer Name</TableHead>
-                  <TableHead>Loan Number</TableHead>
-                  <TableHead>Current Stage</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Stage Deadline</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedLoans.map((loan: LoanRequest) => (
-                  <TableRow key={loan.id} className={cn("hover:bg-muted/50", loan.isUrgent && "bg-red-50 dark:bg-red-900/20")}>
-                     <TableCell className="text-center">
-                      {loan.isUrgent && <Flame className="h-5 w-5 text-red-500" />}
-                    </TableCell>
-                    <TableCell className="font-medium">{loan.customerName}</TableCell>
-                    <TableCell>{loan.loanNumber}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{loan.currentStageName}</Badge>
-                    </TableCell>
-                    <TableCell><Building className="inline h-4 w-4 mr-1 text-muted-foreground"/>{loan.assignedDepartment}</TableCell>
-                    <TableCell>
-                        {loan.stageDeadline ? (
-                             <span className={loan.isOverdue ? "text-destructive font-semibold flex items-center" : "flex items-center"}>
-                                <Clock className="mr-1 h-4 w-4" />
-                                {format(parseISO(loan.stageDeadline), 'MMM dd, yyyy')}
-                                {loan.isOverdue && <Badge variant="destructive" className="ml-2">Overdue</Badge>}
-                            </span>
-                        ) : <span className="text-muted-foreground">N/A</span>}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Audit Trail">
-                          <Button variant="ghost" size="icon">
-                            <History className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Link href={`/loan-requests/${loan.id}`} passHref>
-                          <Button variant="ghost" size="sm">View & Process <ExternalLink className="ml-2 h-3 w-3" /></Button>
-                        </Link>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      {/* Status Tracker Dialog */}
+      <QuickFollowUpDialog isOpen={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen} loan={selectedLoanForStatus} />
+    </>
   );
 }

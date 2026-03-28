@@ -1,34 +1,15 @@
+
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Check, 
-  PlusCircle, 
-  Trash2, 
-  AlertTriangle, 
-  Save, 
-  Clock, 
-  GripVertical, 
-  FileText, 
-  Users, 
-  Percent, 
-  Edit, 
-  Loader2, 
-  ShieldAlert, 
-  ArrowLeft, 
-  ArrowRight, 
-  MoreVertical, 
-  Map, 
-  Briefcase, 
-  Network,
-  ShieldCheck,
-  ShieldOff
-} from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreVertical, ChevronDown, ChevronUp, Map, Briefcase, Network } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -67,8 +48,9 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, DocumentRequirement, Sector, RequestType } from '@/types/loan';
 import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
-import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments } from '@/services/loan-service-prisma';
+import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType } from '@/services/sector-and-request-type-service';
+import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -92,7 +74,6 @@ import Link from 'next/link';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 
-// --- Helper Functions ---
 
 const createNewStage = (name: string, departmentName: string, timeline: number, weight: number, order: number): WorkflowStageDefinition => ({
   id: `stage-custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -102,9 +83,7 @@ const createNewStage = (name: string, departmentName: string, timeline: number, 
   documentRequirements: [],
   percentageWeight: weight,
   order: order,
-  availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] },
-  allowedRoles: [],
-  requiresApproval: true
+  availableStatuses: { [departmentName]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned'] }, // Default statuses
 });
 
 const createNewDocumentRequirement = (name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({
@@ -114,16 +93,17 @@ const createNewDocumentRequirement = (name: string, isMandatory: boolean, type: 
   type,
 });
 
+
 interface DepartmentObject {
   id: string;
   name: Department;
 }
 
-// --- Component: WorkflowStageConfigItem ---
 
 interface WorkflowStageConfigItemProps {
   stage: WorkflowStageDefinition;
   workflowVersionId: string;
+  departments: DepartmentObject[];
   onStageChange: (versionId: string, stageId: string, field: keyof WorkflowStageDefinition, value: any) => void;
   onRemoveStage: (versionId: string, stageId: string) => void;
   onAddRequiredDocument: (versionId: string, stageId: string, docName: string) => void;
@@ -171,85 +151,82 @@ function WorkflowStageConfigItem({
         <div className="flex items-center justify-between w-full pr-4 py-2">
           <div className="flex items-center" {...attributes} {...listeners} >
             <GripVertical className="h-5 w-5 text-muted-foreground mr-3 cursor-grab" />
-            <span className="font-semibold">{stage.order + 1}. {stage.name}</span>
+            <span>{stage.order + 1}. {stage.name}</span>
           </div>
           <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <Users className="h-4 w-4"/>{stage.responsibleDepartment} | <Clock className="h-4 w-4"/>{stage.defaultTimelineDays}d | <Percent className="h-4 w-4" />{stage.percentageWeight}%
+            <Users className="h-4 w-4"/>{stage.responsibleDepartment || 'N/A'} | <Clock className="h-4 w-4"/>{stage.defaultTimelineDays}d | <Percent className="h-4 w-4" />{stage.percentageWeight || 0}% | <FileText className="h-4 w-4"/>{stage.documentRequirements.length} doc(s)
           </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="space-y-6 p-4 bg-background rounded-b-md">
         <div className="grid md:grid-cols-3 gap-4">
-          <div><Label className="text-xs font-semibold">Stage Name</Label><Input value={stage.name} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'name', e.target.value)} className="mt-1"/></div>
-          <div><Label className="text-xs font-semibold">Responsible Department</Label><Input value={stage.responsibleDepartment} className="mt-1 bg-muted/50" disabled /></div>
-          <div><Label className="text-xs font-semibold">Timeline (days)</Label><Input type="number" value={stage.defaultTimelineDays} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
-          <div><Label className="text-xs font-semibold">Weight (%)</Label><Input type="number" value={stage.percentageWeight} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/></div>
+          <div><Label htmlFor={`s-name-${stage.id}`}>Stage Name</Label><Input id={`s-name-${stage.id}`} value={stage.name} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'name', e.target.value)} className="mt-1"/></div>
+          <div><Label>Responsible Department</Label><Input value={stage.responsibleDepartment} className="mt-1" disabled /></div>
+          <div><Label htmlFor={`s-time-${stage.id}`}>Timeline (days)</Label><Input id={`s-time-${stage.id}`} type="number" value={stage.defaultTimelineDays} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'defaultTimelineDays', parseInt(e.target.value,10) || 0)} className="mt-1" min="0"/></div>
+          <div><Label htmlFor={`s-weight-${stage.id}`}>Weight (%)</Label><Input id={`s-weight-${stage.id}`} type="number" value={stage.percentageWeight} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onStageChange(workflowVersionId, stage.id, 'percentageWeight', parseInt(e.target.value,10) || 0)} className="mt-1" min="0" max="100"/></div>
         </div>
-        
         <Separator />
-        
         <div>
-            <h5 className="text-sm font-bold mb-3">Required Documents</h5>
-            <div className="space-y-2">
+            <h5 className="text-md font-medium mb-2">Required Documents for this Stage</h5>
+            {stage.documentRequirements.length === 0 && (<p className="text-sm text-muted-foreground">No documents required.</p>)}
+            <div className="space-y-3">
               {stage.documentRequirements.map((req) => (
-                <div key={req.id} className="p-3 border rounded-md flex items-center gap-3 bg-muted/10">
-                  <Input value={req.name} onChange={(e) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, name: e.target.value })} className="h-8 text-sm flex-grow"/>
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <Checkbox id={`req-mandatory-${req.id}`} checked={req.isMandatory} onCheckedChange={(checked) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, isMandatory: !!checked })} />
-                    <Label htmlFor={`req-mandatory-${req.id}`} className="text-xs">Mandatory</Label>
+                <div key={req.id} className="p-3 border rounded-md grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                  <Input value={req.name} onChange={(e) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, name: e.target.value })} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} placeholder="Requirement Name"/>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2"><Checkbox id={`req-mandatory-${req.id}`} checked={req.isMandatory} onCheckedChange={(checked) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, isMandatory: !!checked })} /><Label htmlFor={`req-mandatory-${req.id}`}>Mandatory</Label></div>
+                     <Select value={req.type} onValueChange={(value) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, type: value as DocumentRequirementType })}>
+                        <SelectTrigger><SelectValue/></SelectTrigger>
+                        <SelectContent><SelectItem value={DocumentRequirementType.UPLOAD}>Upload</SelectItem><SelectItem value={DocumentRequirementType.CHECKBOX}>Checkbox</SelectItem></SelectContent>
+                    </Select>
                   </div>
-                  <Select value={req.type} onValueChange={(value) => onUpdateRequiredDocument(workflowVersionId, stage.id, { ...req, type: value as DocumentRequirementType })}>
-                    <SelectTrigger className="h-8 w-28 text-xs"><SelectValue/></SelectTrigger>
-                    <SelectContent><SelectItem value={DocumentRequirementType.UPLOAD}>Upload</SelectItem><SelectItem value={DocumentRequirementType.CHECKBOX}>Checkbox</SelectItem></SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onRemoveRequiredDocument(workflowVersionId, stage.id, req.id)}><Trash2 className="h-4 w-4" /></Button>
+                  <div className="flex justify-end"><Button variant="ghost" size="icon" onClick={() => onRemoveRequiredDocument(workflowVersionId, stage.id, req.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
                 </div>
               ))}
             </div>
             <div className="flex items-end gap-2 mt-4">
                 <div className="flex-grow">
-                  <Label className="text-xs font-semibold">New Document Name</Label>
-                  <Input value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., ID Card" className="mt-1"/>
+                <Label htmlFor={`new-req-doc-${stage.id}`}>New Document Name</Label>
+                <Input id={`new-req-doc-${stage.id}`} value={newReqDocName} onChange={(e) => setNewReqDocName(e.target.value)} placeholder="e.g., Passport" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
                 </div>
-                <Button onClick={handleAddDoc} size="sm">Add Requirement</Button>
+                <Button onClick={handleAddDoc} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Document Requirement</Button>
             </div>
         </div>
 
         <Separator />
-        
         <div>
-          <h5 className="text-sm font-bold mb-3">Workflow Statuses</h5>
-          <div className="flex flex-wrap gap-2 mb-4">
+          <h5 className="text-md font-medium mb-2">Available Statuses for <span className="font-bold text-primary">{departmentForStatus}</span> Department</h5>
+          {(!stage.availableStatuses || !stage.availableStatuses[departmentForStatus] || stage.availableStatuses[departmentForStatus].length === 0) && (
+            <p className="text-sm text-muted-foreground">No statuses defined for this department. Add one below.</p>
+          )}
+          <ul className="space-y-2">
             {(stage.availableStatuses?.[departmentForStatus] || []).map((statusName, index) => (
-              <Badge key={index} variant="secondary" className="h-8 px-3 gap-2">
-                {statusName}
-                <button onClick={() => onRemoveStatus(workflowVersionId, stage.id, departmentForStatus, statusName)} className="hover:text-destructive"><Trash2 className="h-3 w-3"/></button>
-              </Badge>
+              <li key={`${stage.id}-status-${departmentForStatus}-${index}`} className="flex items-center gap-2 p-2 border rounded-md">
+                <span className="flex-grow text-sm">{statusName}</span>
+                <Button variant="ghost" size="icon" onClick={() => onRemoveStatus(workflowVersionId, stage.id, departmentForStatus, statusName)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </li>
             ))}
-          </div>
-          <div className="flex items-end gap-2">
+          </ul>
+          <div className="flex items-end gap-2 mt-4">
             <div className="flex-grow">
-              <Label className="text-xs font-semibold">Add Custom Status</Label>
-              <Input value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} placeholder="e.g., On Hold" className="mt-1"/>
+              <Label htmlFor={`new-status-name-${stage.id}`}>New Status Name</Label>
+              <Input id={`new-status-name-${stage.id}`} value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} placeholder="e.g., On Hold" className="mt-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}/>
             </div>
-            <Button onClick={handleAddStatus} size="sm" variant="outline">Add Status</Button>
+            <Button onClick={handleAddStatus} size="sm"><PlusCircle className="mr-2 h-4 w-4" /> Add Status</Button>
           </div>
         </div>
-        
-        <Separator />
-        <Button variant="outline" size="sm" onClick={() => onRemoveStage(workflowVersionId, stage.id)} className="text-destructive border-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" /> Remove Stage</Button>
+        <Button variant="outline" size="sm" onClick={() => onRemoveStage(workflowVersionId, stage.id)} className="mt-4 text-destructive border-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" /> Remove Stage From Version</Button>
       </AccordionContent>
     </AccordionItem>
   );
 }
-
-// --- Component: EditWorkflowVersionDialog ---
 
 interface EditWorkflowVersionDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   workflowDefinition: WorkflowDefinition | null;
   versionToEdit: WorkflowVersion | null;
+  departments: DepartmentObject[];
   onSaveVersion: (definitionId: string, version: WorkflowVersion) => void;
   departmentName: string;
 }
@@ -264,14 +241,32 @@ function EditWorkflowVersionDialog({
   const [newStageName, setNewStageName] = useState('');
   const [newStageTimeline, setNewStageTimeline] = useState(3);
   const [newStageWeight, setNewStageWeight] = useState(10);
+  
+  const [newStageDocReqs, setNewStageDocReqs] = useState<DocumentRequirement[]>([]);
+  const [newStageStatuses, setNewStageStatuses] = useState<string[]>(['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned']);
+  
+  const [newDocReqName, setNewDocReqName] = useState('');
+  const [newDocReqIsMandatory, setNewDocReqIsMandatory] = useState(true);
+  const [newDocReqType, setNewDocReqType] = useState<DocumentRequirementType>(DocumentRequirementType.UPLOAD);
+  const [newStatusName, setNewStatusName] = useState('');
+
 
   useEffect(() => {
     if (versionToEdit) {
-      setEditedVersion(JSON.parse(JSON.stringify(versionToEdit)));
+      const versionWithStatusesAndReqs = {
+        ...versionToEdit,
+        stages: versionToEdit.stages.map(s => ({
+          ...s,
+          availableStatuses: s.availableStatuses || {},
+          documentRequirements: s.documentRequirements || [],
+        })),
+      };
+      setEditedVersion(JSON.parse(JSON.stringify(versionWithStatusesAndReqs)));
     } else {
       setEditedVersion(null);
     }
   }, [versionToEdit]);
+
 
   const updateStageOrder = (stages: WorkflowStageDefinition[]): WorkflowStageDefinition[] => {
     return stages.map((stage, index) => ({ ...stage, order: index }));
@@ -286,7 +281,6 @@ function EditWorkflowVersionDialog({
       };
     });
   };
-
   const handleInternalRemoveStage = (versionId: string, stageId: string) => {
      setEditedVersion(prev => {
       if (!prev) return null;
@@ -295,24 +289,31 @@ function EditWorkflowVersionDialog({
     });
   };
   
-  const handleInternalAddStageToVersion = () => {
-    if (!editedVersion) return;
+  const handleInternalAddStageToVersion = (deptName: string) => {
+    if (!editedVersion || !workflowDefinition) return;
     if(!newStageName.trim()){
-        toast({ title: "Error", description: "Stage name is required.", variant: "destructive"});
+        toast({ title: "Error", description: "New stage name is required.", variant: "destructive"});
         return;
     }
     
     const newOrder = editedVersion.stages.length;
-    const newStage = createNewStage(newStageName, departmentName, newStageTimeline, newStageWeight, newOrder);
+    const newStage = createNewStage(newStageName, deptName, newStageTimeline, newStageWeight, newOrder);
+    
+    // Add the doc reqs and statuses from the "add stage" form state
+    newStage.documentRequirements = newStageDocReqs;
+    newStage.availableStatuses = { [deptName]: newStageStatuses };
     
     setEditedVersion(prev => {
       if (!prev) return null;
       return { ...prev, stages: updateStageOrder([...prev.stages, newStage]) };
     });
 
+    // Reset form
     setNewStageName('');
     setNewStageTimeline(3);
     setNewStageWeight(10);
+    setNewStageDocReqs([]);
+    setNewStageStatuses(['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited','Returned']);
   };
 
   const handleInternalReorderStages = (event: DragEndEvent) => {
@@ -336,14 +337,12 @@ function EditWorkflowVersionDialog({
         return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: [...s.documentRequirements, newDocReq]} : s)};
     });
   };
-
-  const handleInternalUpdateReqDoc = (versionId: string, stageId: string, updatedReq: DocumentRequirement) => {
+   const handleInternalUpdateReqDoc = (versionId: string, stageId: string, updatedReq: DocumentRequirement) => {
     setEditedVersion(prev => {
         if(!prev) return null;
         return { ...prev, stages: prev.stages.map(s => s.id === stageId ? {...s, documentRequirements: s.documentRequirements.map(req => req.id === updatedReq.id ? updatedReq : req)} : s)};
     });
   };
-
   const handleInternalRemoveReqDoc = (versionId: string, stageId: string, docReqId: string) => {
      setEditedVersion(prev => {
         if(!prev) return null;
@@ -359,10 +358,13 @@ function EditWorkflowVersionDialog({
         stages: prev.stages.map(s => {
           if (s.id !== stageId) return s;
           const currentStatuses = s.availableStatuses?.[department] || [];
-          if (currentStatuses.includes(statusName)) return s;
+          if (currentStatuses.includes(statusName)) return s; // Don't add duplicates
           return {
             ...s,
-            availableStatuses: { ...s.availableStatuses, [department]: [...currentStatuses, statusName] }
+            availableStatuses: {
+              ...s.availableStatuses,
+              [department]: [...currentStatuses, statusName]
+            }
           };
         })
       };
@@ -379,18 +381,22 @@ function EditWorkflowVersionDialog({
           const currentStatuses = s.availableStatuses?.[department] || [];
           return {
             ...s,
-            availableStatuses: { ...s.availableStatuses, [department]: currentStatuses.filter(name => name !== statusName) }
+            availableStatuses: {
+              ...s.availableStatuses,
+              [department]: currentStatuses.filter(name => name !== statusName)
+            }
           };
         })
       };
     });
   };
 
+
   const handleSave = () => {
     if (workflowDefinition && editedVersion) {
       const totalWeight = editedVersion.stages.reduce((sum, stage) => sum + (Number(stage.percentageWeight) || 0), 0);
       if (totalWeight > 100) {
-        toast({ title: "Validation Error", description: `Total weight (${totalWeight}%) exceeds 100%.`, variant: "destructive"});
+        toast({ title: "Validation Error", description: `Total stage weight (${totalWeight}%) exceeds 100%. Please adjust.`, variant: "destructive"});
         return;
       }
       onSaveVersion(workflowDefinition.id, editedVersion);
@@ -404,27 +410,17 @@ function EditWorkflowVersionDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+      <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Edit Version {editedVersion.versionNumber} Stages</DialogTitle>
+          <DialogTitle>Edit Workflow Version {editedVersion.versionNumber} for: {workflowDefinition.name}</DialogTitle>
           <DialogDescription>
-            Workflow: {workflowDefinition.name} | Progress Weight: <span className={currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}>{currentTotalWeight}%</span>
+            Modify stages for this version. Drag to reorder. Total Stage Weight: <span className={`font-semibold ${currentTotalWeight > 100 ? 'text-destructive' : 'text-green-600'}`}>{currentTotalWeight}% / 100%</span>
+            {currentTotalWeight > 100 && <span className="text-destructive ml-2">(Exceeds 100%)</span>}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-grow overflow-y-auto pr-2 space-y-6 py-4">
-            <div className="p-4 border-2 border-dashed rounded-lg bg-muted/5">
-                <h5 className="font-semibold text-xs text-muted-foreground mb-4 uppercase">Add New Stage</h5>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-                    <div className="sm:col-span-2"><Label className="text-xs font-semibold">Stage Name</Label><Input value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="e.g. Risk Assessment" /></div>
-                    <div><Label className="text-xs font-semibold">Timeline (d)</Label><Input type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
-                    <div><Label className="text-xs font-semibold">Weight (%)</Label><Input type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
-                </div>
-                <Button onClick={handleInternalAddStageToVersion} className="w-full mt-4"><PlusCircle className="mr-2 h-4 w-4"/> Add Stage to Version</Button>
-            </div>
-
+        <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-4">
             <Separator/>
-            
-            <h4 className="font-bold text-xs uppercase text-primary">Sequence (Drag to Reorder)</h4>
+            <h4 className="font-medium">Stages in this Version (Sorted by Order)</h4>
              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleInternalReorderStages}>
                 <SortableContext items={editedVersion.stages.map(s => s.id)} strategy={verticalListSortingStrategy}>
                 <Accordion type="single" collapsible className="w-full">
@@ -433,6 +429,7 @@ function EditWorkflowVersionDialog({
                         key={stage.id}
                         stage={stage}
                         workflowVersionId={editedVersion.id}
+                        departments={[]}
                         onStageChange={handleInternalStageChange}
                         onRemoveStage={handleInternalRemoveStage}
                         onAddRequiredDocument={handleInternalAddReqDoc}
@@ -445,160 +442,304 @@ function EditWorkflowVersionDialog({
                 </Accordion>
                 </SortableContext>
             </DndContext>
+            <Separator />
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                <h5 className="font-medium text-lg">Add New Stage to this Version</h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <div className="sm:col-span-2"><Label htmlFor="new-s-name">Stage Name</Label><Input id="new-s-name" value={newStageName} onChange={e=>setNewStageName(e.target.value)} placeholder="New Stage Name" /></div>
+                    <div><Label htmlFor="new-s-time">Timeline (days)</Label><Input id="new-s-time" type="number" value={newStageTimeline} onChange={e=>setNewStageTimeline(parseInt(e.target.value,10)||0)} min="0"/></div>
+                    <div><Label htmlFor="new-s-weight">Weight (%)</Label><Input id="new-s-weight" type="number" value={newStageWeight} onChange={e=>setNewStageWeight(parseInt(e.target.value,10)||0)} min="0" max="100"/></div>
+                </div>
+                
+                <Separator/>
+                
+                <div className="space-y-2">
+                    <h6 className="font-medium">Document Requirements for New Stage</h6>
+                    {newStageDocReqs.map((req, index) => (
+                        <div key={index} className="flex items-center justify-between gap-2 p-2 border rounded-md bg-background">
+                            <div className="flex flex-col">
+                                <span className="font-medium text-sm">{req.name}</span>
+                                <span className="text-xs text-muted-foreground">{req.type} - {req.isMandatory ? 'Mandatory' : 'Optional'}</span>
+                            </div>
+                           <Button variant="ghost" size="icon" onClick={() => setNewStageDocReqs(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                    ))}
+                     <div className="flex flex-col sm:flex-row items-end gap-2 pt-2">
+                       <div className="flex-grow w-full"><Label htmlFor="add-new-req-name" className="sr-only">New Doc Name</Label><Input id="add-new-req-name" value={newDocReqName} onChange={e => setNewDocReqName(e.target.value)} placeholder="e.g., Passport Copy" /></div>
+                       <div className="flex items-center gap-4">
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="add-new-req-mandatory" checked={newDocReqIsMandatory} onCheckedChange={(checked) => setNewDocReqIsMandatory(!!checked)} />
+                            <Label htmlFor="add-new-req-mandatory">Mandatory</Label>
+                         </div>
+                         <Select value={newDocReqType} onValueChange={(value) => setNewDocReqType(value as DocumentRequirementType)}>
+                           <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                           <SelectContent><SelectItem value={DocumentRequirementType.UPLOAD}>Upload</SelectItem><SelectItem value={DocumentRequirementType.CHECKBOX}>Checkbox</SelectItem></SelectContent>
+                         </Select>
+                         <Button type="button" size="sm" onClick={() => { if(newDocReqName.trim()) { setNewStageDocReqs(prev => [...prev, createNewDocumentRequirement(newDocReqName.trim(), newDocReqIsMandatory, newDocReqType)]); setNewDocReqName(''); }}}>
+                           <PlusCircle className="mr-2 h-4 w-4"/> Add
+                         </Button>
+                       </div>
+                    </div>
+                </div>
+                
+                <Separator/>
+                
+                {/* Add Available Statuses section */}
+                <div className="space-y-2">
+                     <h6 className="font-medium">Available Statuses for {departmentName}</h6>
+                     {newStageStatuses.map((status, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
+                           <span className="flex-grow text-sm">{status}</span>
+                           {index > 2 ? <Button variant="ghost" size="icon" onClick={() => setNewStageStatuses(prev => prev.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button> : <span className="text-xs text-muted-foreground">(default)</span>}
+                        </div>
+                    ))}
+                    <div className="flex items-end gap-2">
+                       <div className="flex-grow"><Label htmlFor="add-new-status-name" className="sr-only">New Status Name</Label><Input id="add-new-status-name" value={newStatusName} onChange={e => setNewStatusName(e.target.value)} placeholder="e.g., On Hold" /></div>
+                       <Button type="button" size="sm" onClick={() => { if(newStatusName.trim() && !newStageStatuses.includes(newStatusName.trim())) { setNewStageStatuses(prev => [...prev, newStatusName.trim()]); setNewStatusName(''); }}}><PlusCircle className="mr-2 h-4 w-4"/> Add</Button>
+                    </div>
+                </div>
+                
+                <Button onClick={() => handleInternalAddStageToVersion(departmentName)} className="w-full mt-4"><PlusCircle className="mr-2 h-4 w-4"/>Add Stage to Version</Button>
+            </div>
         </div>
-        <DialogFooter className="mt-auto pt-4 border-t gap-3">
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={handleSave}><Save className="mr-2 h-4 w-4"/> Save Staged Changes</Button>
+        <DialogFooter className="mt-auto pt-4 border-t">
+          <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+          <Button type="button" onClick={handleSave}><Save className="mr-2 h-4 w-4"/>Save Version Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// --- Component: Main Settings Page ---
+
+interface EditWorkflowDefinitionDialogProps {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  definitionToEdit: WorkflowDefinition | null;
+  onSave: (updatedDefinition: WorkflowDefinition) => void;
+  sectors: Sector[];
+  departments: DepartmentObject[];
+  isSaving: boolean;
+}
+
+function EditWorkflowDefinitionDialog({ isOpen, onOpenChange, definitionToEdit, onSave, sectors, departments, isSaving }: EditWorkflowDefinitionDialogProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [parentSectorId, setParentSectorId] = useState('');
+  const [childSectorId, setChildSectorId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+
+  const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
+  const childSectors = useMemo(() => {
+    if (!parentSectorId) return [];
+    return sectors.filter(s => s.parentId === parentSectorId);
+  }, [sectors, parentSectorId]);
+
+  useEffect(() => {
+    if (definitionToEdit) {
+      setName(definitionToEdit.name);
+      setDescription(definitionToEdit.description || '');
+      setParentSectorId(definitionToEdit.parentSectorId || '');
+      setChildSectorId(definitionToEdit.sectorId || '');
+      setDepartmentId(definitionToEdit.departmentId || '');
+    }
+  }, [definitionToEdit]);
+
+  useEffect(() => {
+    // When parent sector changes, check if the current child is still valid. If not, reset it.
+    if (!childSectors.some(cs => cs.id === childSectorId)) {
+        setChildSectorId('');
+    }
+  }, [parentSectorId, childSectors, childSectorId]);
+
+  const handleSave = () => {
+    if (!definitionToEdit || !name.trim() || !parentSectorId || !childSectorId || !departmentId) {
+      // Basic validation
+      return;
+    }
+    const updatedDefinition: WorkflowDefinition = {
+      ...definitionToEdit,
+      name,
+      description,
+      parentSectorId,
+      parentSectorName: parentSectors.find(ps => ps.id === parentSectorId)?.name,
+      sectorId: childSectorId,
+      sectorName: sectors.find(s => s.id === childSectorId)?.name || '',
+      departmentId,
+      departmentName: departments.find(d => d.id === departmentId)?.name || '',
+    };
+    onSave(updatedDefinition);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Workflow Definition</DialogTitle>
+          <DialogDescription>Modify the core details of &quot;{definitionToEdit?.name}&quot;.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div><Label htmlFor="edit-wf-name">Workflow Name</Label><Input id="edit-wf-name" value={name} onChange={e => setName(e.target.value)} disabled={isSaving} /></div>
+          <div><Label htmlFor="edit-wf-desc">Description</Label><Textarea id="edit-wf-desc" value={description} onChange={e => setDescription(e.target.value)} disabled={isSaving} /></div>
+          <div>
+            <Label htmlFor="edit-wf-parent-sector">Parent Sector</Label>
+            <Select value={parentSectorId} onValueChange={setParentSectorId} disabled={isSaving}><SelectTrigger id="edit-wf-parent-sector"><SelectValue placeholder="Select Parent Sector..." /></SelectTrigger><SelectContent>{parentSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-wf-child-sector">Child Sector</Label>
+            <Select value={childSectorId} onValueChange={setChildSectorId} disabled={isSaving || !parentSectorId}><SelectTrigger id="edit-wf-child-sector"><SelectValue placeholder="Select Child Sector..." /></SelectTrigger><SelectContent>{childSectors.length > 0 ? childSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>) : <SelectItem value="none" disabled>No child sectors for this parent</SelectItem>}</SelectContent></Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-wf-dept">Owning Department</Label>
+            <Select value={departmentId} onValueChange={setDepartmentId} disabled={isSaving}><SelectTrigger id="edit-wf-dept"><SelectValue placeholder="Select Department..." /></SelectTrigger><SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent></Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
+          <Button onClick={handleSave} disabled={isSaving || !name.trim() || !parentSectorId || !childSectorId || !departmentId}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 export default function SettingsPage() {
   const { toast } = useToast();
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [isSavingData, setIsSavingData] = useState(false);
   
   const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [departments, setDepartments] = useState<DepartmentObject[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   
-  const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
   const [isEditVersionDialogOpen, setIsEditVersionDialogOpen] = useState(false);
   const [currentWorkflowDefForEdit, setCurrentWorkflowDefForEdit] = useState<WorkflowDefinition | null>(null);
   const [currentVersionToEdit, setCurrentVersionToEdit] = useState<WorkflowVersion | null>(null);
+  
+  const [isEditDefinitionDialogOpen, setIsEditDefinitionDialogOpen] = useState(false);
+  const [definitionToEdit, setDefinitionToEdit] = useState<WorkflowDefinition | null>(null);
+
+
+  const [newWorkflowName, setNewWorkflowName] = useState('');
+  const [newWorkflowDepartmentId, setNewWorkflowDepartmentId] = useState('');
+  const [newWorkflowParentSectorId, setNewWorkflowParentSectorId] = useState('');
+  const [newWorkflowChildSectorId, setNewWorkflowChildSectorId] = useState('');
+  const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
+  
+  const [newWorkflowInsertMode, setNewWorkflowInsertMode] = useState<'before' | 'after'>('after');
+  const [newWorkflowReferenceId, setNewWorkflowReferenceId] = useState<string>('');
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
   const [newParentSectorName, setNewParentSectorName] = useState('');
-  const [newRequestTypeName, setNewRequestTypeName] = useState('');
+  const [newChildSectorName, setNewChildSectorName] = useState('');
+  const [newChildSectorParentId, setNewChildSectorParentId] = useState<string>('');
   
-  const [newWorkflowForm, setNewWorkflowForm] = useState({
-    name: '',
-    departmentId: '',
-    parentSectorId: '',
-    childSectorId: '',
-    description: '',
-    insertMode: 'after' as 'before' | 'after',
-    referenceId: 'top'
-  });
+  const [editingSector, setEditingSector] = useState<Sector | null>(null);
+  const [editingSectorName, setEditingSectorName] = useState('');
+  const [isEditSectorDialogOpen, setIsEditSectorDialogOpen] = useState(false);
+  
+  const [newRequestTypeName, setNewRequestTypeName] = useState('');
+  const [editingRequestType, setEditingRequestType] = useState<RequestType | null>(null);
+  const [editingRequestTypeName, setEditingRequestTypeName] = useState('');
+  const [isEditRequestTypeDialogOpen, setIsEditRequestTypeDialogOpen] = useState(false);
+
+  const [enableNotifications, setEnableNotifications] = useState(true);
+  const [overdueThreshold, setOverdueThreshold] = useState(2);
+  const [isSavingAll, setIsSavingAll] = useState(false);
 
   const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 
-  const fetchData = useCallback(async () => {
-    if (!canManageWorkflows) { setIsLoadingData(false); return; }
-    setIsLoadingData(true);
-    try {
-      const [wf, depts, sect, rTypes] = await Promise.all([
-        getWorkflowDefinitions(), getDepartments(), getSectors(), getRequestTypes()
-      ]);
-      setWorkflowDefinitions((wf.workflows || []).sort((a,b) => (a.order || 0) - (b.order || 0)));
-      setDepartments(depts.departments || []);
-      setSectors(sect.sectors || []);
-      setRequestTypes(rTypes.requestTypes as RequestType[] || []);
-      
-      const parents = sect.sectors?.filter(s => !s.parentId) || [];
-      setExpandedPaths(parents.map(s => `path-${s.id}`));
-    } catch (e) { console.error(e); }
-    finally { setIsLoadingData(false); }
-  }, [canManageWorkflows]);
-
-  useEffect(() => { if (!authLoading) fetchData(); }, [authLoading, fetchData]);
-
-  const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
-  const childSectors = useMemo(() => sectors.filter(s => s.parentId), [sectors]);
-
-  const workflowsByParent = useMemo(() => {
-    const grouped: Record<string, WorkflowDefinition[]> = {};
-    workflowDefinitions.forEach(wf => {
-      const pId = wf.parentSectorId || 'none';
-      if (!grouped[pId]) grouped[pId] = [];
-      grouped[pId].push(wf);
-    });
-    return grouped;
-  }, [workflowDefinitions]);
-
-  const referenceWfOptions = useMemo(() => {
-    if (!newWorkflowForm.parentSectorId) return [];
-    return workflowDefinitions.filter(wf => wf.parentSectorId === newWorkflowForm.parentSectorId);
-  }, [workflowDefinitions, newWorkflowForm.parentSectorId]);
-
-  const handleAddParentSector = async () => {
-    if (!newParentSectorName.trim()) return;
-    const result = await addSector(newParentSectorName.trim(), null);
-    if (!result.error) {
-      setNewParentSectorName('');
-      fetchData();
-      toast({ title: "Success", description: "Parent sector added." });
-    }
-  };
-
-  const handleAddRequestType = async () => {
-    if (!newRequestTypeName.trim()) return;
-    const result = await addRequestType(newRequestTypeName.trim());
-    if (!result.error) {
-      setNewRequestTypeName('');
-      fetchData();
-      toast({ title: "Success", description: "Request type added." });
-    }
-  };
-
-  const handleAddWorkflowDefinition = () => {
-    const { name, departmentId, parentSectorId, childSectorId, description, insertMode, referenceId } = newWorkflowForm;
-    if (!name || !departmentId || !parentSectorId || !childSectorId) {
-      toast({ title: "Validation Error", description: "Please fill all required fields.", variant: "destructive" });
+  const fetchInitialData = useCallback(() => {
+    if (!canManageWorkflows) {
+      setIsLoadingData(false);
       return;
     }
+      setIsLoadingData(true);
+      setError(null);
+      Promise.all([
+          getWorkflowDefinitions(),
+          getDepartments(),
+          getSectors(),
+          getRequestTypes(),
+      ]).then(([wfResult, deptResult, sectorResult, requestTypeResult]) => {
+          if (wfResult.error) throw new Error(`Workflows: ${wfResult.error}`);
+          setWorkflowDefinitions((wfResult.workflows || []).sort((a,b) => (a.order || 0) - (b.order || 0)));
 
-    const parent = parentSectors.find(s => s.id === parentSectorId);
-    const child = childSectors.find(s => s.id === childSectorId);
-    const dept = departments.find(d => d.id === departmentId);
+          if (deptResult.error) throw new Error(`Departments: ${deptResult.error}`);
+          const fetchedDepts = deptResult.departments || [];
+          setDepartments(fetchedDepts);
 
-    const newWf: WorkflowDefinition = {
-      id: `wf-def-new-${Date.now()}`,
-      name,
-      description,
-      departmentId,
-      departmentName: dept?.name || '',
-      sectorId: childSectorId,
-      sectorName: child?.name || '',
-      parentSectorId,
-      parentSectorName: parent?.name || '',
-      versions: [],
-      order: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+          if (sectorResult.error) throw new Error(`Sectors: ${sectorResult.error}`);
+          const fetchedSectors = sectorResult.sectors || [];
+          setSectors(fetchedSectors);
+          
+          if (requestTypeResult.error) throw new Error(`Request Types: ${requestTypeResult.error}`);
+          const fetchedRequestTypes = requestTypeResult.requestTypes || [];
+          setRequestTypes(fetchedRequestTypes as RequestType[]);
 
-    let updatedList = [...workflowDefinitions];
-    if (referenceId && referenceId !== 'top') {
-      const idx = updatedList.findIndex(wf => wf.id === referenceId);
-      const targetIdx = insertMode === 'after' ? idx + 1 : idx;
-      updatedList.splice(targetIdx, 0, newWf);
-    } else {
-      updatedList.push(newWf);
+          if(fetchedDepts.length > 0 && newWorkflowDepartmentId === '') setNewWorkflowDepartmentId(fetchedDepts[0].id);
+          const parentSectors = fetchedSectors.filter(s => !s.parentId);
+          if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
+          if(parentSectors.length > 0 && newChildSectorParentId === '') setNewChildSectorParentId(parentSectors[0].id);
+      }).catch(err => {
+        const errorMessage = err.message || "Failed to load settings data.";
+        setError(errorMessage);
+        setWorkflowDefinitions([]);
+        setDepartments([]);
+        setSectors([]);
+        setRequestTypes([]);
+        toast({title: "Error Loading Settings", description: errorMessage, variant: "destructive", duration: 9000});
+      }).finally(() => {
+        setIsLoadingData(false);
+      });
+    }, [canManageWorkflows, toast, newWorkflowDepartmentId, newWorkflowParentSectorId, newChildSectorParentId]);
+
+
+  useEffect(() => {
+    if (!authLoading) {
+      fetchInitialData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading]);
+  
+  const parentSectors = useMemo(() => sectors.filter(s => !s.parentId), [sectors]);
+  const childSectorsForSelectedParent = useMemo(() => {
+    if (!newWorkflowParentSectorId) return [];
+    return sectors.filter(s => s.parentId === newWorkflowParentSectorId);
+  }, [sectors, newWorkflowParentSectorId]);
 
-    setWorkflowDefinitions(updatedList.map((wf, i) => ({ ...wf, order: i })));
-    setNewWorkflowForm({ ...newWorkflowForm, name: '', description: '', referenceId: 'top' });
-    toast({ title: "Staged Locally", description: "Workflow added to list. Click Save to persist." });
-  };
+  useEffect(() => {
+    // Reset child sector if parent changes
+    setNewWorkflowChildSectorId('');
+  }, [newWorkflowParentSectorId]);
 
-  const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
-    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
-      if (def.id === definitionId) {
-        let versionsForThisDef = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
-        return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
+
+  const referenceWorkflowOptions = useMemo(() => {
+    return workflowDefinitions
+      .filter(wf => wf.parentSectorId === newWorkflowParentSectorId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [workflowDefinitions, newWorkflowParentSectorId]);
+  
+  useEffect(() => {
+    if (referenceWorkflowOptions.length > 0) {
+      if (!newWorkflowReferenceId || !referenceWorkflowOptions.some(wf => wf.id === newWorkflowReferenceId)) {
+        setNewWorkflowReferenceId(referenceWorkflowOptions[referenceWorkflowOptions.length - 1].id);
       }
-      return def;
-    }));
-    toast({title: "Staged", description: `Version ${updatedVersion.versionNumber} changes updated locally.`});
-  };
+    } else {
+      setNewWorkflowReferenceId('');
+    }
+  }, [referenceWorkflowOptions, newWorkflowReferenceId]);
+
 
   const handleActivateWorkflowVersion = (definitionId: string, versionId: string) => {
+    if (!canManageWorkflows) return;
+    
     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
         if (def.id === definitionId) {
             return {
@@ -610,221 +751,707 @@ export default function SettingsPage() {
         }
         return def;
     }));
+    
+    toast({ title: "Success (Local)", description: `Workflow version status toggled. Click "Save All Settings" to persist.` });
+  };
+  
+  const handleDeactivateWorkflowVersion = (definitionId: string, versionId: string) => {
+    // This function is now the same as handleActivateWorkflowVersion (it toggles), so it can be deprecated or kept for clarity.
+    handleActivateWorkflowVersion(definitionId, versionId);
+};
+
+
+  const handleOpenEditVersionDialog = (def: WorkflowDefinition, version: WorkflowVersion) => {
+    if (!canManageWorkflows) return;
+    setCurrentWorkflowDefForEdit(def);
+    setCurrentVersionToEdit(version);
+    setIsEditVersionDialogOpen(true);
   };
 
-  const handleSaveAll = async () => {
-    setIsSavingAll(true);
-    const result = await saveWorkflowDefinitions(workflowDefinitions);
-    if (!result.error) {
-      toast({ title: "Success", description: "Settings saved to database." });
-      await fetchData();
-    } else {
-      toast({ title: "Error", description: result.error, variant: "destructive" });
+  const handleAddNewVersion = (definitionId: string) => {
+    if (!canManageWorkflows) return;
+    setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+      if (def.id === definitionId) {
+        const latestVersionNum = def.versions.length > 0 ? Math.max(...def.versions.map(v => v.versionNumber)) : 0;
+        const newVersion: WorkflowVersion = {
+          id: `wfver-custom-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
+          workflowDefinitionId: def.id,
+          versionNumber: latestVersionNum + 1,
+          createdAt: new Date().toISOString(),
+          stages: [],
+          isActive: false, 
+        };
+        return { ...def, versions: [...def.versions, newVersion].sort((a,b) => b.versionNumber - a.versionNumber) };
+      }
+      return def;
+    }));
+    toast({title: "New Version Added (Local)", description: "Empty new version added. Edit to add stages. Remember to Save All Settings."});
+  };
+
+  const handleSaveVersion = (definitionId: string, updatedVersion: WorkflowVersion) => {
+     if (!canManageWorkflows) return;
+     setWorkflowDefinitions(prevDefs => prevDefs.map(def => {
+       if (def.id === definitionId) {
+         let versionsForThisDef = def.versions.map(v => v.id === updatedVersion.id ? updatedVersion : v);
+         return { ...def, versions: versionsForThisDef.sort((a,b) => b.versionNumber - a.versionNumber) };
+       }
+       return def;
+     }));
+     toast({title: "Version Changes Applied (Local)", description: `Version ${updatedVersion.versionNumber} changes staged. Save all settings to persist.`});
+  };
+
+  const handleAddNewWorkflowDefinition = async () => {
+    if (!canManageWorkflows) return;
+    if (!newWorkflowName.trim() || !newWorkflowDepartmentId || !newWorkflowParentSectorId || !newWorkflowChildSectorId) {
+        toast({ title: "Validation Error", description: "Workflow name, department, parent sector, and child sector are all required.", variant: "destructive", duration: 9000 });
+        return;
     }
-    setIsSavingAll(false);
+    
+    const parentSector = sectors.find(s => s.id === newWorkflowParentSectorId);
+    
+    const newWf: Omit<WorkflowDefinition, 'id' | 'versions'> = {
+        name: newWorkflowName,
+        description: newWorkflowDescription,
+        departmentId: newWorkflowDepartmentId,
+        departmentName: departments.find(d => d.id === newWorkflowDepartmentId)?.name || 'Unknown',
+        sectorId: newWorkflowChildSectorId,
+        sectorName: sectors.find(s => s.id === newWorkflowChildSectorId)?.name || 'Unknown',
+        parentSectorId: parentSector?.id,
+        parentSectorName: parentSector?.name,
+        order: 0,
+    };
+    
+    let updatedWfList = [...workflowDefinitions];
+    
+    const newWorkflowWithId = {
+        ...newWf,
+        id: `wf-def-custom-${Date.now()}`,
+        versions: [],
+    };
+    
+    if (referenceWorkflowOptions.length === 0) {
+        updatedWfList.push(newWorkflowWithId);
+    } else {
+        const referenceIndex = updatedWfList.findIndex(wf => wf.id === newWorkflowReferenceId);
+        if(referenceIndex === -1) {
+            toast({ title: "Error", description: "Reference workflow not found.", variant: "destructive" });
+            return;
+        }
+        const insertIndex = newWorkflowInsertMode === 'after' ? referenceIndex + 1 : referenceIndex;
+        updatedWfList.splice(insertIndex, 0, newWorkflowWithId);
+    }
+
+    const finalList = updatedWfList.map((wf, index) => ({ ...wf, order: index }));
+    
+    setWorkflowDefinitions(finalList);
+
+    setNewWorkflowName('');
+    setNewWorkflowDescription('');
+    
+    toast({ title: "Workflow Added Locally", description: `"${newWorkflowName}" was added. Save all settings to persist.` });
+  };
+  
+  const handleOpenEditDefinitionDialog = (definition: WorkflowDefinition) => {
+    setDefinitionToEdit(definition);
+    setIsEditDefinitionDialogOpen(true);
+  };
+  
+  const handleSaveDefinition = (updatedDefinition: WorkflowDefinition) => {
+    setWorkflowDefinitions(prev => prev.map(def => def.id === updatedDefinition.id ? updatedDefinition : def));
+    toast({title: "Workflow Updated (Local)", description: `Changes for "${updatedDefinition.name}" are staged. Save all settings to persist.`});
   };
 
-  if (authLoading || isLoadingData) return <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+
+  const handleAddSector = async (name: string, parentId: string | null) => {
+    if (!canManageWorkflows || !name.trim()) {
+        toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
+        return;
+    }
+    setIsSavingData(true);
+    try {
+        const result = await addSector(name.trim(), parentId);
+        if (result.error || !result.id) {
+            toast({ title: "Error Adding Sector", description: result.error || "Failed to add sector.", variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: `Sector "${name.trim()}" added.` });
+            if (parentId) setNewChildSectorName(''); else setNewParentSectorName('');
+            await fetchInitialData();
+        }
+    } catch (error: any) {
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+        setIsSavingData(false);
+    }
+  };
+
+  const handleUpdateSector = async () => {
+    if (!canManageWorkflows || !editingSector) return;
+    if (!editingSectorName.trim()) {
+        toast({ title: "Validation Error", description: "Sector name cannot be empty.", variant: "destructive" });
+        return;
+    }
+    setIsSavingData(true);
+    try {
+        const result = await updateSector(editingSector.id, editingSectorName);
+        if (result.error) {
+            toast({ title: "Error Updating Sector", description: result.error, variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: "Sector updated." });
+            setIsEditSectorDialogOpen(false);
+            setEditingSector(null);
+            await fetchInitialData();
+        }
+    } catch (error: any) {
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+        setIsSavingData(false);
+    }
+  };
+
+  const handleDeleteSector = async (sectorId: string, sectorName: string) => {
+    if (!canManageWorkflows) return;
+    setIsSavingData(true);
+    try {
+      const result = await deleteSector(sectorId);
+      if (result.error) {
+        toast({ title: "Error Deleting Sector", description: result.error, variant: "destructive", duration: 7000 });
+      } else {
+        toast({ title: "Success", description: `Sector "${sectorName}" deleted.` });
+        await fetchInitialData();
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+  
+    const handleAddRequestType = async () => {
+    if (!canManageWorkflows) return;
+    if (!newRequestTypeName.trim()) {
+      toast({ title: "Validation Error", description: "Request Type name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSavingData(true);
+    try {
+      const result = await addRequestType(newRequestTypeName.trim());
+      if (result.error || !result.id) {
+        toast({ title: "Error Adding Request Type", description: result.error || "Failed to add request type.", variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: `Request Type "${newRequestTypeName.trim()}" added.` });
+        setNewRequestTypeName('');
+        await fetchInitialData(); 
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
+  const handleUpdateRequestType = async () => {
+    if (!canManageWorkflows || !editingRequestType) return;
+    if (!editingRequestTypeName.trim()) {
+        toast({ title: "Validation Error", description: "Request Type name cannot be empty.", variant: "destructive" });
+        return;
+    }
+    setIsSavingData(true);
+    try {
+        const result = await updateRequestType(editingRequestType.id, editingRequestTypeName);
+        if (result.error) {
+            toast({ title: "Error Updating Request Type", description: result.error, variant: "destructive" });
+        } else {
+            toast({ title: "Success", description: "Request Type updated." });
+            setIsEditRequestTypeDialogOpen(false);
+            setEditingRequestType(null);
+            await fetchInitialData();
+        }
+    } catch (error: any) {
+        toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+        setIsSavingData(false);
+    }
+  };
+
+  const handleDeleteRequestType = async (requestTypeId: string, requestTypeName: string) => {
+    if (!canManageWorkflows) return;
+    setIsSavingData(true);
+    try {
+      const result = await deleteRequestType(requestTypeId);
+      if (result.error) {
+        toast({ title: "Error Deleting Request Type", description: result.error, variant: "destructive", duration: 7000 });
+      } else {
+        toast({ title: "Success", description: `Request Type "${requestTypeName}" deleted.` });
+        await fetchInitialData();
+      }
+    } catch (error: any) {
+      toast({ title: "Action Failed", description: `Error: ${error.message || "Unexpected error"}`, variant: "destructive" });
+    } finally {
+      setIsSavingData(false);
+    }
+  };
+
+
+  const handleSaveChanges = async () => {
+    if (!canManageWorkflows && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && !currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES)) {
+         toast({ title: "Permission Denied", description: "You do not have permission to save settings.", variant: "destructive" });
+        return;
+    }
+    setIsSavingAll(true);
+    setError(null);
+    try {
+        if (canManageWorkflows) {
+            const result = await saveWorkflowDefinitions(workflowDefinitions);
+            if (result.error) {
+                throw new Error(result.error);
+            }
+        }
+        toast({ title: "Settings Saved to Database", description: "Configurations have been persisted.", action: <Check className="h-5 w-5 text-green-500" /> });
+        await fetchInitialData();
+    } catch (err: any) {
+        toast({ title: "Saving Failed", description: `Error: ${err.message || "Unknown error"}`, variant: "destructive", duration: 9000 });
+    } finally {
+        setIsSavingAll(false);
+    }
+  };
+
+  const toggleDescription = (id: string) => {
+    setExpandedDescriptions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  if (authLoading || isLoadingData) {
+    return (
+        <div className="flex items-center justify-center h-full min-h-[calc(100vh-10rem)]">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="ml-3 text-lg">Loading settings...</p>
+        </div>
+    );
+  }
+
+  const canAccessAnySettings = currentUser?.permissions.some(p => 
+    p === PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS ||
+    p === PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS ||
+    p === PERMISSIONS.MANAGE_SETTINGS_BRANCHES ||
+    p === PERMISSIONS.MANAGE_SETTINGS_ROLES ||
+    p === PERMISSIONS.MANAGE_USERS
+  );
+
+  if (!currentUser || !canAccessAnySettings) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+            <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">You do not have permission to view the settings page.</p>
+            <Link href="/" passHref>
+                <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/>Go to Dashboard</Button>
+            </Link>
+        </div>
+    );
+  }
+  
+  if (error) {
+     return (
+        <div className="space-y-6 p-4 text-center">
+            <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
+            <h2 className="text-2xl font-semibold text-destructive">Failed to Load Settings Data</h2>
+            <p className="text-muted-foreground">{error}</p>
+            <p className="text-sm text-muted-foreground mt-2">Please ensure your database is configured and reachable. Check console for details.</p>
+            <Button onClick={() => window.location.reload()}>Try Reloading</Button>
+        </div>
+    );
+  }
+  
+  // Map all parent sectors, even those with no workflows
+  const workflowsByParentSector: Record<string, { parentSectorName: string; workflows: WorkflowDefinition[] }> = {};
+  parentSectors.forEach(parent => {
+    workflowsByParentSector[parent.id] = {
+      parentSectorName: parent.name,
+      workflows: workflowDefinitions.filter(wf => wf.parentSectorId === parent.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    };
+  });
+  // Optionally, handle workflows with no parent sector
+  const orphanWorkflows = workflowDefinitions.filter(wf => !wf.parentSectorId);
+  if (orphanWorkflows.length > 0) {
+    workflowsByParentSector['unclassified'] = {
+      parentSectorName: 'Unclassified',
+      workflows: orphanWorkflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    };
+  }
+
 
   return (
-    <div className="space-y-8 max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Manage sectors, request types, and workflow paths.</p>
-        </div>
-        <Button onClick={handleSaveAll} disabled={isSavingAll} size="lg" className="shadow-md">
-          {isSavingAll ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
-          Save All Settings
-        </Button>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+        <p className="text-muted-foreground">
+          Configure various aspects of the LoanFlow application. Access to specific sections depends on your permissions.
+        </p>
       </div>
 
-      <Card>
+       <Card>
         <CardHeader>
           <CardTitle>Administrative Areas</CardTitle>
-          <CardDescription>Quick links to management pages.</CardDescription>
+          <CardDescription>Quick links to other settings and management pages.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-            <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
-            <Link href="/settings/branches" passHref><Button variant="outline">Manage Branches</Button></Link>
-            <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
-            <Link href="/settings/user-assignments" passHref><Button variant="outline">User Assignments</Button></Link>
-            <Link href="/settings/register-user" passHref><Button variant="outline">Register New User</Button></Link>
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS) && (
+              <Link href="/settings/departments" passHref><Button variant="outline">Manage Departments</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_BRANCHES) && (
+              <Link href="/settings/branches" passHref><Button variant="outline">Manage Branches & Districts</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_ROLES) && (
+              <Link href="/settings/roles-management" passHref><Button variant="outline">Manage Roles</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+              <Link href="/settings/user-assignments" passHref><Button variant="outline">Manage User Assignments</Button></Link>
+            )}
+            {currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS) && (
+              <Link href="/settings/register-user" passHref><Button variant="outline">Register New User</Button></Link>
+            )}
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-8">
+    {canManageWorkflows && (
+      <>
+        <div className="grid lg:grid-cols-2 gap-8 items-start">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Manage Sectors</CardTitle>
+                    <CardDescription>Define parent and child business sectors.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Accordion type="single" collapsible className="w-full">
+                        <AccordionItem value="add-parent">
+                            <AccordionTrigger>Add Parent Sector</AccordionTrigger>
+                            <AccordionContent className="pt-4">
+                                <div className="flex gap-2">
+                                    <Input placeholder="e.g., Service Industry" value={newParentSectorName} onChange={(e) => setNewParentSectorName(e.target.value)} disabled={isSavingData || isSavingAll} />
+                                    <Button onClick={() => handleAddSector(newParentSectorName, null)} disabled={!newParentSectorName.trim() || isSavingData || isSavingAll}>Add</Button>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                        <AccordionItem value="add-child">
+                            <AccordionTrigger>Add Child Sector</AccordionTrigger>
+                            <AccordionContent className="space-y-2 pt-4">
+                               <Label>Select Parent Sector</Label>
+                                <Select value={newChildSectorParentId} onValueChange={setNewChildSectorParentId} disabled={parentSectors.length === 0}>
+                                    <SelectTrigger><SelectValue placeholder="Select a Parent Sector..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {parentSectors.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Label>New Child Sector Name</Label>
+                                <div className="flex gap-2">
+                                    <Input placeholder="e.g., Crop Production" value={newChildSectorName} onChange={(e) => setNewChildSectorName(e.target.value)} disabled={isSavingData || isSavingAll || !newChildSectorParentId} />
+                                    <Button onClick={() => handleAddSector(newChildSectorName, newChildSectorParentId)} disabled={!newChildSectorName.trim() || !newChildSectorParentId || isSavingData || isSavingAll}>Add</Button>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                    <Separator className="my-4"/>
+                    <h4 className="font-medium text-sm mb-2">Existing Sectors</h4>
+                     <Accordion type="multiple" className="w-full space-y-2">
+                      {parentSectors.map(parent => {
+                        const childCount = sectors.filter(s => s.parentId === parent.id).length;
+                        return (
+                        <AccordionItem value={parent.id} key={parent.id} className="border rounded-md px-2">
+                          <div className="flex items-center justify-between">
+                            <AccordionTrigger className="py-2 hover:no-underline">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">{parent.name}</span>
+                                <Badge variant="secondary">{childCount} {childCount === 1 ? 'child' : 'children'}</Badge>
+                              </div>
+                            </AccordionTrigger>
+                            <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => { setEditingSector(parent); setEditingSectorName(parent.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive px-2 py-1.5 text-sm h-auto font-normal relative" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4 mr-2" /> Delete</Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader><AlertDialogTitle>Delete Sector "{parent.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions or child sectors that use it.</AlertDialogDescription></AlertDialogHeader>
+                                      <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(parent.id, parent.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                            <AccordionContent className="pt-2 pb-2 pl-4">
+                                <h5 className="text-xs font-semibold uppercase text-muted-foreground mt-2 mb-1">Child Sectors</h5>
+                                <div className="space-y-1">
+                                    {sectors.filter(s => s.parentId === parent.id).map(child => (
+                                        <div key={child.id} className="flex items-center justify-between text-sm pl-2 py-1 rounded-md hover:bg-muted/50">
+                                            <span>{child.name}</span>
+                                            <div className="flex items-center">
+                                                <Button variant="ghost" size="sm" onClick={() => { setEditingSector(child); setEditingSectorName(child.name); setIsEditSectorDialogOpen(true); }} disabled={isSavingData || isSavingAll}><Edit className="h-4 w-4 mr-1" /> Edit</Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button></AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Delete Sector "{child.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect workflow definitions that use it.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteSector(child.id, child.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {childCount === 0 && <p className="text-xs text-muted-foreground pl-2">No child sectors defined.</p>}
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                      )})}
+                    </Accordion>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Manage Request Types</CardTitle>
+                    <CardDescription>Define loan request types.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-2">
+                        <Input placeholder="e.g., Additional Facility" value={newRequestTypeName} onChange={(e) => setNewRequestTypeName(e.target.value)} disabled={isSavingData || isSavingAll}/>
+                        <Button onClick={handleAddRequestType} disabled={!newRequestTypeName.trim() || isSavingData || isSavingAll}>
+                            {isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add
+                        </Button>
+                    </div>
+                    <Separator className="my-4"/>
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {requestTypes.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No request types defined.</TableCell></TableRow>}
+                            {requestTypes.map(item => (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-medium">{item.name}</TableCell>
+                                <TableCell className="text-right py-1">
+                                    <Button variant="ghost" size="sm" onClick={() => { setEditingRequestType(item); setEditingRequestTypeName(item.name); setIsEditRequestTypeDialogOpen(true); }} disabled={isSavingData || isSavingAll}>
+                                      <Edit className="h-4 w-4 mr-1" /> Edit
+                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={isSavingData || isSavingAll}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button></AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader><AlertDialogTitle>Delete Request Type "{item.name}"?</AlertDialogTitle><AlertDialogDescription>This may affect existing loan requests that use it.</AlertDialogDescription></AlertDialogHeader>
+                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteRequestType(item.id, item.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle>Manage Sectors</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex gap-2 items-end">
-              <div className="flex-grow">
-                <Label className="text-xs font-semibold mb-1">New Parent Sector</Label>
-                <Input placeholder="e.g. Service Sector" value={newParentSectorName} onChange={e => setNewParentSectorName(e.target.value)} />
-              </div>
-              <Button onClick={handleAddParentSector} disabled={!newParentSectorName.trim()}>Add</Button>
-            </div>
-            
-            <Accordion type="multiple" className="w-full space-y-2">
-              {parentSectors.map(p => (
-                <AccordionItem key={p.id} value={p.id} className="border rounded-lg bg-card">
-                  <AccordionTrigger className="hover:no-underline px-4 py-2">
-                    <span className="font-semibold text-sm">{p.name}</span>
-                  </AccordionTrigger>
-                  <AccordionContent className="p-4 space-y-2">
-                    {childSectors.filter(c => c.parentId === p.id).map(c => (
-                      <div key={c.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/30">
-                        <span className="text-sm">• {c.name}</span>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSector(c.id, c.name)}><Trash2 className="h-3.5 w-3.5"/></Button>
+            <CardHeader>
+                <CardTitle>Workflow Definitions</CardTitle>
+                <CardDescription>Manage workflows. New loans use the active version for their specific Parent Sector.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Accordion type="single" collapsible defaultValue="add-new-workflow">
+                  <AccordionItem value="add-new-workflow">
+                    <AccordionTrigger>
+                       <span className="flex items-center text-primary font-semibold"><PlusCircle className="mr-2 h-5 w-5"/> Add New Workflow Definition</span>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-4">
+                       <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+                          <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-4">
+                            <div><Label htmlFor="new-wf-name">Workflow Name</Label><Input id="new-wf-name" value={newWorkflowName} onChange={e => setNewWorkflowName(e.target.value)} placeholder="e.g., SME Credit Line" disabled={isSavingAll || isSavingData} /></div>
+                            <div>
+                              <Label htmlFor="new-wf-dept">Owning Department</Label>
+                              <Select value={newWorkflowDepartmentId} onValueChange={(value) => setNewWorkflowDepartmentId(value)}>
+                                <SelectTrigger id="new-wf-dept" className="mt-1"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                <SelectContent>{departments.map(d => <SelectItem key={`new-wf-dept-option-${d.id}`} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="new-wf-parent-sector">For Parent Sector</Label>
+                              <Select value={newWorkflowParentSectorId} onValueChange={(value) => setNewWorkflowParentSectorId(value)}>
+                                <SelectTrigger id="new-wf-parent-sector" className="mt-1"><SelectValue placeholder="Select Parent Sector" /></SelectTrigger>
+                                <SelectContent>{parentSectors.map(s => <SelectItem key={`new-wf-ps-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </div>
+                             <div>
+                              <Label htmlFor="new-wf-child-sector">For Child Sector</Label>
+                              <Select value={newWorkflowChildSectorId} onValueChange={(value) => setNewWorkflowChildSectorId(value)} disabled={!newWorkflowParentSectorId}>
+                                <SelectTrigger id="new-wf-child-sector" className="mt-1"><SelectValue placeholder="Select Child Sector" /></SelectTrigger>
+                                <SelectContent>
+                                  {childSectorsForSelectedParent.length === 0 && <SelectItem value="none" disabled>No child sectors</SelectItem>}
+                                  {childSectorsForSelectedParent.map(s => <SelectItem key={`new-wf-cs-option-${s.id}`} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="md:col-span-2"><Label htmlFor="new-wf-desc">Description</Label><Textarea id="new-wf-desc" value={newWorkflowDescription} onChange={e => setNewWorkflowDescription(e.target.value)} placeholder="Brief description of this workflow definition" disabled={isSavingAll || isSavingData} /></div>
+                          </div>
+                          <div className="grid md:grid-cols-3 gap-4 items-end pt-2">
+                            <div className="flex items-center space-x-2">
+                              <Label>Insert</Label>
+                              <Select value={newWorkflowInsertMode} onValueChange={(v) => setNewWorkflowInsertMode(v as 'before' | 'after')}>
+                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="before">Before</SelectItem>
+                                  <SelectItem value="after">After</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>Reference Workflow</Label>
+                              <Select value={newWorkflowReferenceId} onValueChange={setNewWorkflowReferenceId} disabled={referenceWorkflowOptions.length === 0}>
+                                <SelectTrigger className="mt-1"><SelectValue placeholder="Select reference"/></SelectTrigger>
+                                <SelectContent>
+                                  {referenceWorkflowOptions.length === 0 ? (<SelectItem value="no-workflows-found" disabled>No workflows in this category</SelectItem>) : (referenceWorkflowOptions.map(wf => <SelectItem key={wf.id} value={wf.id}>{wf.order + 1}. {wf.name}</SelectItem>))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button onClick={handleAddNewWorkflowDefinition} disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" /> Add Workflow</Button>
+                          </div>
+                          {(parentSectors.length === 0 || departments.length === 0) && <p className="text-xs text-destructive mt-1">Cannot add workflow: A parent sector and department must be configured first.</p>}
+                        </div>
+                    </AccordionContent>
+                  </AccordionItem>
+              </Accordion>
+              <Separator/>
+              <h4 className="font-medium text-lg pt-4">Current Workflow Paths & Definitions</h4>
+              <Accordion type="multiple" className="w-full space-y-4">
+              {Object.keys(workflowsByParentSector).length === 0 && <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>}
+              {Object.values(workflowsByParentSector).map(({ parentSectorName, workflows }) => (
+                <AccordionItem value={`path-${parentSectorName}`} key={`path-${parentSectorName}`}>
+                   <AccordionTrigger>
+                       <span className="flex items-center text-lg"><Briefcase className="mr-2 h-5 w-5 text-primary"/> Path for: {parentSectorName}</span>
+                   </AccordionTrigger>
+                   <AccordionContent className="space-y-4 pt-2">
+                      <div className="p-4 border rounded-lg">
+                        <h5 className="font-medium mb-3">Workflow Sequence</h5>
+                        <div className="flex flex-wrap items-center gap-4 pb-2">
+                          {workflows.length === 0 ? (
+                            <p className="text-muted-foreground">No workflows defined for this category.</p>
+                          ) : (
+                            workflows.map((def, index) => (
+                              <React.Fragment key={def.id}>
+                                <div className="flex flex-col items-center text-center w-36">
+                                  <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">{index + 1}</div>
+                                  <div className="mt-2 text-sm font-semibold max-w-[150px] break-words">{def.name}</div>
+                                   <div className="text-xs text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" />{def.sectorName}</div>
+                                  <div className="text-xs text-muted-foreground">{def.departmentName}</div>
+                                </div>
+                                {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
+                              </React.Fragment>
+                            ))
+                          )}
                         </div>
                       </div>
-                    ))}
-                  </AccordionContent>
+                      {workflows.map(def => (
+                        <Card key={def.id} className="shadow-sm">
+                            <CardHeader>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
+                                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
+                                    </div>
+                                  </div>
+                                  <Button variant="ghost" size="sm" onClick={() => handleOpenEditDefinitionDialog(def)}><Edit className="mr-2 h-4 w-4"/> Edit Definition</Button>
+                                </div>
+                                {def.description && <CardDescription className="pt-2">{def.description}</CardDescription>}
+                            </CardHeader>
+                            <CardContent className="space-y-3 p-4 pt-0">
+                                <h4 className="font-medium text-sm">Versions (Latest first):</h4>
+                                {def.versions.length === 0 && <p className="text-sm text-muted-foreground">No versions defined. Add one below.</p>}
+                                {def.versions.sort((a,b) => b.versionNumber - a.versionNumber).map(version => (
+                                  <div key={version.id} className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 border rounded-md gap-2 ${version.isActive ? "border-primary bg-primary/5" : "bg-muted/30"}`}>
+                                    <div>
+                                      <div className="font-semibold flex items-center">
+                                        Version {version.versionNumber}
+                                        {version.isActive && <Badge className="ml-2 bg-green-600 text-white">Active</Badge>}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">Created: {version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'N/A'} | Stages: {version.stages.length}</p>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                                        <Button variant={version.isActive ? "secondary" : "outline"} size="sm" onClick={() => handleActivateWorkflowVersion(def.id, version.id)} disabled={isSavingAll || isSavingData}>
+                                          {version.isActive ? <ShieldOff className="mr-2 h-4 w-4 text-amber-700"/> : <ShieldCheck className="mr-2 h-4 w-4"/>}
+                                          {version.isActive ? 'Deactivate' : 'Set Active'}
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => handleOpenEditVersionDialog(def, version)} disabled={isSavingAll || isSavingData}><Edit className="mr-2 h-4 w-4" />Edit Stages</Button>
+                                    </div>
+                                  </div>
+                                ))}
+                                <Button variant="outline" size="sm" onClick={() => handleAddNewVersion(def.id)} className="mt-2" disabled={isSavingAll || isSavingData}><PlusCircle className="mr-2 h-4 w-4" />Add New Version</Button>
+                            </CardContent>
+                        </Card>
+                      ))}
+                   </AccordionContent>
                 </AccordionItem>
               ))}
-            </Accordion>
-          </CardContent>
+              </Accordion>
+            </CardContent>
         </Card>
+      </>
+      )}
+      
+      <EditWorkflowVersionDialog isOpen={isEditVersionDialogOpen} onOpenChange={setIsEditVersionDialogOpen} workflowDefinition={currentWorkflowDefForEdit} versionToEdit={currentVersionToEdit} departments={departments} onSaveVersion={handleSaveVersion} departmentName={currentWorkflowDefForEdit?.departmentName || ''}/>
+      <EditWorkflowDefinitionDialog isOpen={isEditDefinitionDialogOpen} onOpenChange={setIsEditDefinitionDialogOpen} definitionToEdit={definitionToEdit} onSave={handleSaveDefinition} sectors={sectors} departments={departments} isSaving={isSavingAll || isSavingData} />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Request Types</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex gap-2 items-end">
-              <div className="flex-grow">
-                <Input placeholder="e.g. Restructuring" value={newRequestTypeName} onChange={e => setNewRequestTypeName(e.target.value)} />
-              </div>
-              <Button onClick={handleAddRequestType} disabled={!newRequestTypeName.trim()}>Add</Button>
-            </div>
-            <div className="space-y-2">
-              {requestTypes.map(rt => (
-                <div key={rt.id} className="flex items-center justify-between p-3 rounded-md border bg-card">
-                  <span className="text-sm font-semibold">{rt.name}</span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteRequestType(rt.id, rt.name)}><Trash2 className="h-3.5 w-3.5"/></Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Dialog open={isEditSectorDialogOpen} onOpenChange={setIsEditSectorDialogOpen}>
+        <DialogContent>
+            <DialogHeader><DialogTitle>Edit Sector</DialogTitle><DialogDescription>Update the name for &quot;{editingSector?.name}&quot;.</DialogDescription></DialogHeader>
+            <div className="grid gap-4 py-4"><Label htmlFor="editing-sector-name">New Name</Label><Input id="editing-sector-name" value={editingSectorName} onChange={(e) => setEditingSectorName(e.target.value)} disabled={isSavingData} /></div>
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleUpdateSector} disabled={isSavingData || !editingSectorName.trim()}>{isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isEditRequestTypeDialogOpen} onOpenChange={setIsEditRequestTypeDialogOpen}>
+        <DialogContent>
+            <DialogHeader><DialogTitle>Edit Request Type</DialogTitle><DialogDescription>Update the name for &quot;{editingRequestType?.name}&quot;.</DialogDescription></DialogHeader>
+            <div className="grid gap-4 py-4"><Label htmlFor="editing-rt-name">New Name</Label><Input id="editing-rt-name" value={editingRequestTypeName} onChange={(e) => setEditingRequestTypeName(e.target.value)} disabled={isSavingData} /></div>
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingData}>Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleUpdateRequestType} disabled={isSavingData || !editingRequestTypeName.trim()}>{isSavingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Define Workflow Definition</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="space-y-5">
-              <div><Label>Workflow Name</Label><Input value={newWorkflowForm.name} onChange={e => setNewWorkflowForm({...newWorkflowForm, name: e.target.value})} placeholder="e.g. Personal Loan Appraisal" /></div>
-              <div>
-                <Label>Parent Sector</Label>
-                <Select value={newWorkflowForm.parentSectorId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, parentSectorId: v})}>
-                  <SelectTrigger><SelectValue placeholder="Select Parent Sector"/></SelectTrigger>
-                  <SelectContent>{parentSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div><Label>Description</Label><Textarea value={newWorkflowForm.description} onChange={e => setNewWorkflowForm({...newWorkflowForm, description: e.target.value})} rows={3} /></div>
+      {/* <Card>
+        <CardHeader><CardTitle>Notification Settings (Conceptual)</CardTitle><CardDescription>Manage how and when notifications are sent for overdue tasks. (Currently UI only).</CardDescription></CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div><Label htmlFor="enable-notifications" className="font-medium">Enable Overdue Notifications</Label><p className="text-sm text-muted-foreground">Receive alerts for loan processes exceeding their timeline.</p></div>
+            <Switch id="enable-notifications" checked={enableNotifications} onCheckedChange={setEnableNotifications} disabled={isSavingAll || isSavingData}/>
+          </div>
+          {enableNotifications && (
+            <div className="space-y-2 p-4 border rounded-lg bg-muted/20">
+              <Label htmlFor="overdue-threshold">Notify if overdue by (days)</Label>
+              <div className="flex items-center gap-2"><Clock className="h-5 w-5 text-muted-foreground" /><Input id="overdue-threshold" type="number" value={overdueThreshold} onChange={(e) => setOverdueThreshold(parseInt(e.target.value,10))} className="max-w-xs" min="1" disabled={isSavingAll || isSavingData}/></div>
+              <p className="text-xs text-muted-foreground">Notifications will be triggered if a loan stage is {overdueThreshold} or more days past its deadline.</p>
             </div>
-            <div className="space-y-5">
-              <div>
-                <Label>Owning Department</Label>
-                <Select value={newWorkflowForm.departmentId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, departmentId: v})}>
-                  <SelectTrigger><SelectValue placeholder="Select Department"/></SelectTrigger>
-                  <SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Child Sector Alignment</Label>
-                <Select value={newWorkflowForm.childSectorId} onValueChange={v => setNewWorkflowForm({...newWorkflowForm, childSectorId: v})} disabled={!newWorkflowForm.parentSectorId}>
-                  <SelectTrigger><SelectValue placeholder="Select Sub-Sector"/></SelectTrigger>
-                  <SelectContent>{childSectors.filter(c => c.parentId === newWorkflowForm.parentSectorId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end gap-2 pt-2">
-                <Button onClick={handleAddWorkflowDefinition} className="w-full"><PlusCircle className="mr-2 h-4 w-4"/> Create Definition</Button>
-              </div>
-            </div>
+          )}
+          <div className="p-4 border-l-4 border-yellow-500 bg-yellow-50 dark:bg-yellow-900/30 rounded-r-md">
+             <div className="flex items-start"><AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-3 mt-0.5 flex-shrink-0" /><div><h5 className="font-semibold text-yellow-700 dark:text-yellow-300">System Note</h5><p className="text-sm text-yellow-600 dark:text-yellow-400">Actual notification delivery needs backend integration. This configures triggers.</p></div></div>
           </div>
         </CardContent>
-      </Card>
-
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold">Workflow Sequence Tracking</h2>
-        <Accordion type="multiple" value={expandedPaths} onValueChange={setExpandedPaths} className="space-y-6">
-          {parentSectors.map(parent => {
-            const pathWorkflows = workflowsByParent[parent.id] || [];
-            if (pathWorkflows.length === 0) return null;
-
-            return (
-              <AccordionItem key={parent.id} value={`path-${parent.id}`} className="border rounded-xl bg-muted/5">
-                <AccordionTrigger className="hover:no-underline px-6 py-4 font-bold text-lg">
-                  Path for {parent.name}
-                </AccordionTrigger>
-                <AccordionContent className="p-6 space-y-8">
-                    <div className="flex items-center w-full overflow-x-auto gap-4 pb-4">
-                      {pathWorkflows.map((wf, idx) => (
-                        <React.Fragment key={wf.id}>
-                          <div className="flex flex-col items-center min-w-[140px] text-center gap-2">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-                              {idx + 1}
-                            </div>
-                            <div className="text-xs font-bold truncate w-32">{wf.name}</div>
-                          </div>
-                          {idx < pathWorkflows.length - 1 && <ArrowRight className="h-5 w-5 text-muted-foreground" />}
-                        </React.Fragment>
-                      ))}
-                    </div>
-
-                    <div className="space-y-4">
-                      {pathWorkflows.map((wf, idx) => {
-                        const activeVer = wf.versions.find(v => v.isActive);
-                        return (
-                          <Card key={wf.id} className="shadow-sm">
-                            <CardContent className="p-4 flex flex-col md:flex-row justify-between gap-4">
-                              <div className="flex items-start gap-4">
-                                <div className="mt-1 font-bold text-xl opacity-20">{idx + 1}.</div>
-                                <div>
-                                  <h4 className="font-bold text-lg">{wf.name}</h4>
-                                  <div className="flex flex-wrap gap-2 mt-1">
-                                    <Badge variant="outline" className="text-[10px]">Dept: {wf.departmentName}</Badge>
-                                    <Badge variant="secondary" className="text-[10px]">Sub-Sector: {wf.sectorName}</Badge>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                  {activeVer && (
-                                    <Badge variant="secondary" className="h-9 px-3">
-                                      V{activeVer.versionNumber} ({activeVer.stages.length} Stages)
-                                    </Badge>
-                                  )}
-                                  <Button variant="ghost" size="sm" onClick={() => handleActivateWorkflowVersion(wf.id, activeVer?.id || '')}>{activeVer?.isActive ? 'Deactivate' : 'Activate'}</Button>
-                                  <Button size="sm" onClick={() => handleOpenEditVersionDialog(wf, activeVer || null)}><PlusCircle className="mr-2 h-4 w-4"/> Edit Stages</Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                </AccordionContent>
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
-      </div>
-
-      <EditWorkflowVersionDialog 
-        isOpen={isEditVersionDialogOpen} 
-        onOpenChange={setIsEditVersionDialogOpen} 
-        workflowDefinition={currentWorkflowDefForEdit} 
-        versionToEdit={currentVersionToEdit} 
-        departments={departments}
-        onSaveVersion={handleSaveVersion} 
-        departmentName={currentWorkflowDefForEdit?.departmentName || ''}
-      />
+      </Card> */}
+      <div className="flex justify-end"><Button onClick={handleSaveChanges} size="lg" disabled={isSavingAll || isSavingData}>
+        {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {isSavingAll ? "Saving..." : "Save All Settings to Database"}
+        </Button></div>
     </div>
   );
 }

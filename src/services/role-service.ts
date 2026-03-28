@@ -16,11 +16,20 @@ export interface AppRole {
   updatedAt: string;
 }
 
+const parseRolePermissions = (permissions: string): AppPermission[] => {
+  try {
+    const parsed = JSON.parse(permissions);
+    return Array.isArray(parsed) ? (parsed as AppPermission[]) : [];
+  } catch {
+    return [];
+  }
+};
+
 const mapPrismaRoleToAppRole = (prismaRole: PrismaRole): AppRole => ({
   id: prismaRole.id,
   name: prismaRole.name,
   description: prismaRole.description,
-  permissions: prismaRole.permissions as AppPermission[],
+  permissions: parseRolePermissions(prismaRole.permissions),
   createdAt: prismaRole.createdAt.toISOString(),
   updatedAt: prismaRole.updatedAt.toISOString(),
 });
@@ -74,7 +83,7 @@ export async function addRole(
       data: {
         name: name.trim(),
         description: description?.trim() || null,
-        permissions: permissions || [],
+        permissions: JSON.stringify(permissions || []),
       },
     });
     return { data: mapPrismaRoleToAppRole(newRole) };
@@ -109,7 +118,7 @@ export async function updateRole(
       data: {
         name: name.trim(),
         description: description === undefined ? undefined : (description?.trim() || null),
-        permissions: permissions || [],
+        permissions: JSON.stringify(permissions || []),
         updatedAt: new Date(),
       },
     });

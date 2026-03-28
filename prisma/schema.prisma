@@ -4,8 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -43,7 +43,7 @@ model Role {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
-  permissions String   // JSON array of permission strings
+  permissions String
   users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -137,6 +137,8 @@ model WorkflowStageDefinition {
   responsibleDepartmentId String
   responsibleDepartment Department @relation(fields: [responsibleDepartmentId], references: [id])
   availableStatuses     String?  // JSON object of department -> statuses
+  allowedRoles          String?  // JSON array of roles allowed to act in this stage
+  requiresApproval      Boolean  @default(true)
   documentRequirements  DocumentRequirement[]
   loanRequests          LoanRequest[]
   createdAt             DateTime @default(now())

@@ -37,6 +37,8 @@ export default function ManageDepartmentsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const canManageDepartments = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS);
 
@@ -71,6 +73,13 @@ export default function ManageDepartmentsPage() {
         fetchDepartmentsCallback();
     }
   }, [fetchDepartmentsCallback, authLoading, canManageDepartments]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(departments.length / pageSize));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [departments.length, currentPage, pageSize]);
 
   const handleAddDepartment = async () => {
     if (!canManageDepartments) return;
@@ -187,6 +196,15 @@ export default function ManageDepartmentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(departments.length / pageSize));
+            const safePage = Math.min(currentPage, totalPages);
+            const startIndex = (safePage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, departments.length);
+            const pagedDepartments = departments.slice(startIndex, endIndex);
+
+            return (
+              <>
           {isLoading && departments.length === 0 && (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -215,7 +233,7 @@ export default function ManageDepartmentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {departments.map((dept) => (
+                {pagedDepartments.map((dept) => (
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
                     <TableCell className="text-right">
@@ -252,6 +270,37 @@ export default function ManageDepartmentsPage() {
               </TableBody>
             </Table>
           )}
+          {!isLoading && !error && totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t mt-2">
+              <p className="text-sm text-muted-foreground">
+                Showing {startIndex + 1}-{endIndex} of {departments.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={safePage <= 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {safePage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={safePage >= totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>

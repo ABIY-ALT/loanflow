@@ -53,6 +53,12 @@ const navItemsConfig: NavItemConfig[] = [
     icon: LayoutGrid,
     requiredPermissions: [PERMISSIONS.VIEW_DASHBOARD]
   },
+  {
+    href: '/executive-overview',
+    label: 'Executive Overview',
+    icon: BarChartBig,
+    requiredPermissions: [PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW]
+  },
   { 
     href: '/loan-process', 
     label: 'Loan Pipeline', 

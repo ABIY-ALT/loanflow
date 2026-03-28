@@ -231,7 +231,7 @@ export default function NewLoanRequestPage() {
       customerEmail: '',
       customerPhone: '',
       customerBranch: '',
-      loanAmount: 0,
+      loanAmount: '' as unknown as number,
       sectorId: '',
       requestTypeId: '',
       loanPurpose: '',
@@ -403,7 +403,11 @@ export default function NewLoanRequestPage() {
                           type="number"
                           placeholder="e.g., 10000"
                           {...field}
-                          onChange={e => field.onChange(e.target.valueAsNumber || 0)}
+                          value={field.value || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            field.onChange(val === '' ? '' : Number(val));
+                          }}
                           disabled={isSubmitting}
                         />
                       </FormControl>

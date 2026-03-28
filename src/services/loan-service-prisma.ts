@@ -257,7 +257,7 @@ async function addLoanRequestInternal(
               stageName: firstStage.name,
               timestamp: currentDate,
               notes: initialHistoryNote,
-              user: { connect: { id: systemUserId } }
+              user: { connect: { id: user.id } }
             }
           ]
         }
@@ -639,7 +639,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
         const definitionId = upsertedDef.id;
 
         for (const version of versions) {
-          const { stages, ...versionData } = version;
+          const { stages, workflowDefinitionId, ...versionData } = version;
           const upsertedVersion = await tx.workflowVersion.upsert({
             where: { id: version.id || `_non_existent_ver_id_${Date.now()}` },
             create: { ...versionData, id: version.id || undefined, workflowDefinition: { connect: { id: definitionId } } },
@@ -650,7 +650,7 @@ export async function saveWorkflowDefinitions(definitions: WorkflowDefinition[])
           for (const stage of stages) {
              const department = await tx.department.findUnique({ where: {nameLowercase: stage.responsibleDepartment.toLowerCase() }});
              if (!department) throw new Error(`Department "${stage.responsibleDepartment}" not found.`);
-            const { documentRequirements, ...stageData } = stage;
+            const { documentRequirements, responsibleDepartment: _rd, workflowVersionId: _wvid, ...stageData } = stage as any;
             const upsertedStage = await tx.workflowStageDefinition.upsert({
               where: { id: stage.id || `_non_existent_stage_id_${Date.now()}` },
               create: { ...stageData, id: stage.id || undefined, availableStatuses: JSON.stringify(stage.availableStatuses || {}), allowedRoles: JSON.stringify(stage.allowedRoles || []), requiresApproval: stage.requiresApproval, workflowVersion: { connect: { id: versionId } }, responsibleDepartment: { connect: { id: department.id } } },

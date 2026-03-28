@@ -16,7 +16,8 @@ import {
   History,
   Users,
   Eye,
-  MessageSquare
+  MessageSquare,
+  Download
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,7 +58,7 @@ export default function IncomingCasesPage() {
         const result = await getLoanRequests();
         if (result.error) {
           setError(result.error);
-        } else if (result.loans) {
+        } else if ('loans' in result && result.loans) {
           setAllLoans(result.loans);
         }
       } catch (err: any) {
@@ -80,9 +81,15 @@ export default function IncomingCasesPage() {
     );
   }, [allLoans, currentUser]);
 
-  // Filter 2: Cases Assigned by Me
+  // Filter 2: Cases Ever Assigned by Me (historical)
   const delegatedLoans = useMemo(() => {
-    return allLoans.filter(loan => loan.assignedById === currentUser?.id);
+    return allLoans.filter(loan => {
+      // Show if user assigned, was assigned, or touched in history
+      const assignedByMe = loan.assignedById === currentUser?.id;
+      const everAssigned = loan.assignedToUsers.some(u => u.id === currentUser?.id);
+      const touchedInHistory = (loan.history || []).some(h => h.userId === currentUser?.id);
+      return assignedByMe || everAssigned || touchedInHistory;
+    });
   }, [allLoans, currentUser]);
 
   const filterLoans = (list: LoanRequest[]) => {
@@ -109,6 +116,40 @@ export default function IncomingCasesPage() {
   const openStatusView = (loan: LoanRequest) => {
     setSelectedLoanForStatus(loan);
     setIsStatusDialogOpen(true);
+  };
+
+  const exportDelegatedToCSV = () => {
+    if (filteredDelegated.length === 0) return;
+    const headers = [
+      'Loan Number', 'Customer', 'Current Stage', 'Current Assignees', 'Assigned Department', 'Stage Deadline', 'Assignment/Completion History'
+    ];
+    const csvData = filteredDelegated.map(loan => {
+      // Find assignment/completion events in history
+      const assignmentEvents = (loan.history || []).filter(h => h.notes && (h.notes.toLowerCase().includes('assigned') || h.notes.toLowerCase().includes('completed') || h.notes.toLowerCase().includes('reassign')));
+      const historySummary = assignmentEvents.map(h => `${h.timestamp}: ${h.userName} (${h.userRole || ''}) - ${h.notes}`).join(' | ');
+      return [
+        loan.loanNumber,
+        loan.customerName,
+        loan.currentStageName || '',
+        loan.assignedToUsers.map(u => u.fullName).join('; '),
+        loan.assignedDepartment || '',
+        loan.stageDeadline ? format(parseISO(loan.stageDeadline), 'MMM dd, yyyy') : '',
+        historySummary
+      ];
+    });
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'delegated_portfolio_cases.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (authLoading || isLoading) {
@@ -226,9 +267,6 @@ export default function IncomingCasesPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View History">
-                                <Button variant="ghost" size="icon"><History className="h-4 w-4" /></Button>
-                              </Link>
                               <Link href={`/loan-requests/${loan.id}`} passHref>
                                 <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold shadow-sm">
                                   <UserPlus className="mr-2 h-4 w-4" /> Assign Staff
@@ -248,12 +286,18 @@ export default function IncomingCasesPage() {
 
         <TabsContent value="assigned" className="space-y-4 animate-in fade-in-50 duration-300">
           <Card className="border-primary/20 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-xl flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
-                Delegated Portfolio
-              </CardTitle>
-              <CardDescription>Tracking cases where you have assigned the active staff.</CardDescription>
+            <CardHeader className="flex flex-row items-start sm:items-center justify-between space-y-0 pb-4">
+              <div className="space-y-1">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Delegated Portfolio
+                </CardTitle>
+                <CardDescription>Tracking cases where you have assigned the active staff.</CardDescription>
+              </div>
+              <Button onClick={exportDelegatedToCSV} variant="outline" size="sm" className="h-8 shadow-sm" disabled={filteredDelegated.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
             </CardHeader>
             <CardContent>
               {filteredDelegated.length === 0 ? (
@@ -314,9 +358,6 @@ export default function IncomingCasesPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Link href={`/loan-requests/${loan.id}?tab=history`} passHref title="View Full Audit Trail">
-                                <Button variant="ghost" size="icon"><History className="h-4 w-4" /></Button>
-                              </Link>
                               <Button 
                                 variant="outline" 
                                 size="sm" 

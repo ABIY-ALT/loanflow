@@ -808,11 +808,11 @@ export const mockDepartments: Department[] = [
   "Deputy Chief Credit Operation Office",
   "Director Credit Analysis and Appraisal",
   "Director Credit Monitoring and Portfolio Management",
-  "Director Institutional Banking and Green Financing",
+  "Institutional Banking and Hospitality and Green Financing Sector",
   "Director Legal Service",
-  "Director Manufacturing and Agricultural Sector",
+  "Construction Manufacturing and Agriculture Sector Department",
   "Director Property Valuation",
-  "Director Service and Mining Sector"
+  "Service sector Department"
 ];
 
 const createDocReq = (id: string, name: string, isMandatory: boolean, type: DocumentRequirementType): DocumentRequirement => ({

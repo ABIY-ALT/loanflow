@@ -50,6 +50,9 @@ export default function ManageBranchesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [districtPage, setDistrictPage] = useState(1);
+  const [branchPage, setBranchPage] = useState(1);
+  const pageSize = 10;
   
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EditableItem | null>(null);
@@ -88,6 +91,18 @@ export default function ManageBranchesPage() {
       fetchData(true);
     }
   }, [authLoading, canManageBranches, fetchData]);
+
+  useEffect(() => {
+    const districtPages = Math.max(1, Math.ceil(districts.length / pageSize));
+    const branchPages = Math.max(1, Math.ceil(branches.length / pageSize));
+
+    if (districtPage > districtPages) {
+      setDistrictPage(districtPages);
+    }
+    if (branchPage > branchPages) {
+      setBranchPage(branchPages);
+    }
+  }, [branches.length, branchPage, districts.length, districtPage, pageSize]);
 
   const handleOpenEditDialog = (item: EditableItem) => {
     setEditingItem(item);
@@ -197,21 +212,64 @@ export default function ManageBranchesPage() {
             <Button onClick={handleAddDistrict} disabled={isSaving || !newDistrictName.trim()}><PlusCircle className="mr-2 h-4 w-4" /> Add</Button>
           </CardContent>
           <CardHeader><CardTitle>Existing Districts ({districts.length})</CardTitle></CardHeader>
-          <CardContent><Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {districts.map((d) => (
-                <TableRow key={d.id}><TableCell>{d.name}</TableCell><TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: d.id, name: d.name, type: 'district'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSaving}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
-                    <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete District "{d.name}"?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will also delete all branches within this district.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete('district', d.id, d.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-                  </AlertDialog>
-                </TableCell></TableRow>
-              ))}
-               {districts.length === 0 && <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground">No districts defined.</TableCell></TableRow>}
-            </TableBody>
-          </Table></CardContent>
+          <CardContent>
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(districts.length / pageSize));
+              const safePage = Math.min(districtPage, totalPages);
+              const startIndex = (safePage - 1) * pageSize;
+              const endIndex = Math.min(startIndex + pageSize, districts.length);
+              const pagedDistricts = districts.slice(startIndex, endIndex);
+
+              return (
+                <>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {pagedDistricts.length === 0 ? (
+                        <TableRow><TableCell colSpan={2} className="text-center h-24 text-muted-foreground">No districts defined.</TableCell></TableRow>
+                      ) : pagedDistricts.map((d) => (
+                        <TableRow key={d.id}><TableCell>{d.name}</TableCell><TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: d.id, name: d.name, type: 'district'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSaving}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
+                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete District "{d.name}"?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will also delete all branches within this district.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete('district', d.id, d.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell></TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {totalPages > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t mt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {startIndex + 1}-{endIndex} of {districts.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDistrictPage((page) => Math.max(1, page - 1))}
+                          disabled={safePage <= 1}
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          Page {safePage} of {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDistrictPage((page) => Math.min(totalPages, page + 1))}
+                          disabled={safePage >= totalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </CardContent>
         </Card>
 
         <Card>
@@ -228,21 +286,64 @@ export default function ManageBranchesPage() {
             <Button onClick={handleAddBranch} disabled={isSaving || !newBranchName.trim() || !selectedDistrictId}><PlusCircle className="mr-2 h-4 w-4" /> Add Branch</Button>
           </CardContent>
           <CardHeader><CardTitle>Existing Branches ({branches.length})</CardTitle></CardHeader>
-          <CardContent><Table>
-            <TableHeader><TableRow><TableHead>Branch Name</TableHead><TableHead>District</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-                {branches.map((b) => (
-                    <TableRow key={b.id}><TableCell>{b.name}</TableCell><TableCell>{b.districtName}</TableCell><TableCell className="text-right">
-                         <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: b.id, name: b.name, type: 'branch'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
-                        <AlertDialog>
+          <CardContent>
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(branches.length / pageSize));
+              const safePage = Math.min(branchPage, totalPages);
+              const startIndex = (safePage - 1) * pageSize;
+              const endIndex = Math.min(startIndex + pageSize, branches.length);
+              const pagedBranches = branches.slice(startIndex, endIndex);
+
+              return (
+                <>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Branch Name</TableHead><TableHead>District</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {pagedBranches.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No branches defined.</TableCell></TableRow>
+                      ) : pagedBranches.map((b) => (
+                        <TableRow key={b.id}><TableCell>{b.name}</TableCell><TableCell>{b.districtName}</TableCell><TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog({id: b.id, name: b.name, type: 'branch'})} disabled={isSaving}><Edit className="mr-1 h-4 w-4" /> Edit</Button>
+                          <AlertDialog>
                             <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" disabled={isSaving}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Branch "{b.name}"?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete('branch', b.id, b.name)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Confirm Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-                        </AlertDialog>
-                    </TableCell></TableRow>
-                ))}
-                {branches.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No branches defined.</TableCell></TableRow>}
-            </TableBody>
-          </Table></CardContent>
+                          </AlertDialog>
+                        </TableCell></TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {totalPages > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t mt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {startIndex + 1}-{endIndex} of {branches.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setBranchPage((page) => Math.max(1, page - 1))}
+                          disabled={safePage <= 1}
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          Page {safePage} of {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setBranchPage((page) => Math.min(totalPages, page + 1))}
+                          disabled={safePage >= totalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </CardContent>
         </Card>
       </div>
 

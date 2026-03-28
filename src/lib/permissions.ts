@@ -5,6 +5,7 @@
 export const PERMISSIONS = {
   // General Access
   VIEW_DASHBOARD: "VIEW_DASHBOARD",
+  VIEW_EXECUTIVE_OVERVIEW: "VIEW_EXECUTIVE_OVERVIEW",
   VIEW_LOAN_PIPELINE: "VIEW_LOAN_PIPELINE",
   VIEW_LOAN_DETAILS: "VIEW_LOAN_DETAILS", // Generic view for any loan
   VIEW_LOAN_STATUS_LOOKUP: "VIEW_LOAN_STATUS_LOOKUP",
@@ -56,6 +57,7 @@ export const ALL_PERMISSIONS: AppPermission[] = Object.keys(
 
 export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_DASHBOARD: "Can view the main application dashboard.",
+  VIEW_EXECUTIVE_OVERVIEW: "Can view the Executive Overview loan dashboard for senior management.",
   VIEW_LOAN_PIPELINE: "Can view the loan Kanban board and loan cards.",
   VIEW_LOAN_DETAILS: "Can view the detailed information page for any loan.",
   VIEW_LOAN_STATUS_LOOKUP: "Can use the AI loan status lookup tool.",
@@ -95,6 +97,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
     name: "General Access & Viewing",
     permissions: [
       "VIEW_DASHBOARD",
+      "VIEW_EXECUTIVE_OVERVIEW",
       "VIEW_LOAN_PIPELINE",
       "VIEW_LOAN_DETAILS",
       "VIEW_LOAN_STATUS_LOOKUP",

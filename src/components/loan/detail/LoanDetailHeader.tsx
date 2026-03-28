@@ -64,6 +64,9 @@ export function LoanDetailHeader({
   const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
   const hasCurrentUserCompleted = loan.stageCompletedBy?.some(u => u.id === currentUser.id) || false;
 
+  // Permission-based checks for manager actions
+  const canApprove = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
+  const canReturn = userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
   // Determine if this user can promote the stage directly (if configured)
   const canDirectPromote = !requiresApproval && canPromote;
   const isDirectPromotion = !requiresApproval;
@@ -113,17 +116,29 @@ export function LoanDetailHeader({
              'Mark Stage Complete & Submit'}
           </Button>
         )}
-        
-        {/* Manager Approval Button: Shown only when a case is submitted for review */}
-        {isActionableStage && canPromote && loan.isReadyForManagerReview && (
-            <Button onClick={onManagerPromoteLoan} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white font-bold">
+
+        {/* Manager Approval Button: Always shown, disabled if no permission */}
+        {isActionableStage && (
+            <Button 
+              onClick={canApprove ? onManagerPromoteLoan : undefined}
+              disabled={isSaving || !canApprove}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold"
+              title={canApprove ? undefined : 'You do not have permission to approve'}
+            >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                <ArrowRight className="mr-2 h-4 w-4" /> Approve & Promote
             </Button>
         )}
 
-        {isActionableStage && userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK) && loan.isReadyForManagerReview && (
-             <Button variant="outline" onClick={onOpenReturnForReworkDialog} disabled={isSaving} className="border-amber-500 text-amber-700 hover:bg-amber-50">
+        {/* Return for Rework Button: Always shown, disabled if no permission */}
+        {isActionableStage && (
+             <Button 
+               variant="outline" 
+               onClick={canReturn ? onOpenReturnForReworkDialog : undefined}
+               disabled={isSaving || !canReturn}
+               className="border-amber-500 text-amber-700 hover:bg-amber-50"
+               title={canReturn ? undefined : 'You do not have permission to return for rework'}
+             >
                 <Undo2 className="mr-2 h-4 w-4" /> Return for Rework
             </Button>
         )}

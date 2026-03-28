@@ -12,7 +12,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
-import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck } from 'lucide-react';
+import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -141,28 +141,38 @@ export default function LoanDetailPage() {
 
   const handleMarkStageComplete = async () => {
     if (!loan || !currentStageDef || !currentUser) return;
-    const isApprovalRequired = currentStageDef.requiresApproval;
     const completedUserIds = new Set(loan.stageCompletedBy?.map(u => u.id) || []);
     completedUserIds.add(currentUser.id);
     const assignedUserIds = new Set(loan.assignedToUsers.map(u => u.id));
     const allAssignedHaveCompleted = assignedUserIds.size === 0 || Array.from(assignedUserIds).every(id => completedUserIds.has(id));
-    const canUserPromoteDirectly = !isApprovalRequired && userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
-
-    if (canUserPromoteDirectly && allAssignedHaveCompleted) {
-        await handleManagerPromoteLoan(true); 
-    } else {
-        const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
-        const newHistoryEntry: LoanHistoryEntry = {
-          id: `hist-complete-${Date.now()}`, stageName: currentStageDef.name, timestamp: formatISO(new Date()),
-          userId: currentUser.id, userName: currentUser.fullName,
-          notes: allAssignedHaveCompleted ? `Stage submitted for review.` : `Partial completion recorded.`,
-        };
-        await handleLocalAndUpdateService({ isReadyForManagerReview: allAssignedHaveCompleted, stageCompletedBy: updatedStageCompletedBy, history: [...loan.history, newHistoryEntry] }, allAssignedHaveCompleted ? "Submitted for review." : "Partial completion recorded.");
-    }
+    const updatedStageCompletedBy = users.filter(u => completedUserIds.has(u.id));
+    const newHistoryEntry: LoanHistoryEntry = {
+      id: `hist-complete-${Date.now()}`,
+      stageName: currentStageDef.name,
+      timestamp: formatISO(new Date()),
+      userId: currentUser.id,
+      userName: currentUser.fullName,
+      notes: allAssignedHaveCompleted ? `Stage submitted for review.` : `Partial completion recorded.`,
+    };
+    await handleLocalAndUpdateService({ isReadyForManagerReview: allAssignedHaveCompleted, stageCompletedBy: updatedStageCompletedBy, history: [...loan.history, newHistoryEntry] }, allAssignedHaveCompleted ? "Submitted for review." : "Partial completion recorded.");
   };
 
   const handleManagerPromoteLoan = async (isDirect: boolean = false) => {
     if (!currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !currentWorkflowDef) return;
+    // Prevent immediate self-approval unless explicitly allowed
+    if (
+      currentStageDef.requiresApproval &&
+      loan.stageCompletedBy.length === 1 &&
+      loan.stageCompletedBy[0].id === currentUser.id &&
+      !isDirect // Only block if not direct promotion (i.e., approval path)
+    ) {
+      toast({
+        title: "Approval Blocked",
+        description: "You cannot approve a stage you just completed. Another user must approve, or direct promotion must be enabled.",
+        variant: "destructive"
+      });
+      return;
+    }
     const idx = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (idx === -1) return;
     const actionText = isDirect ? `Completed & Promoted by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
