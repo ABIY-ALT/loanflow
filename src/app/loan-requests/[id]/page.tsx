@@ -11,7 +11,7 @@ import { LoanDocumentStatus, DocumentRequirementType, LoanDocumentStatus as AppL
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview } from '@/services/loan-service-prisma';
 import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -186,10 +186,12 @@ export default function LoanDetailPage() {
         if (!nextVer || nextVer.stages.length === 0) return;
         const firstStage = nextVer.stages[0];
         const hist: LoanHistoryEntry = { id: `hist-wf-${Date.now()}`, stageName: firstStage.name, timestamp: formatISO(new Date()), userId: currentUser.id, userName: currentUser.fullName, notes: `${actionText}. Workflow complete. Moved to '${nextWf.name}'.` };
+        await recordCaseReview({ loanRequestId: loan.id, action: 'APPROVED', comment: `${actionText}. Moved to '${nextWf.name}'.` });
         await handleLocalAndUpdateService({ workflowVersionId: nextVer.id, currentStageId: firstStage.id, assignedDepartmentId: nextWf.departmentId, assignedToUsers: [], stageCompletedBy: [], isReadyForManagerReview: false, history: [...loan.history, hist], stageDeadline: formatISO(addDays(new Date(), firstStage.defaultTimelineDays)) }, `Loan moved to ${nextWf.name}.`);
     } else {
         const nextStage = currentWorkflowVersion.stages[idx + 1];
         const hist: LoanHistoryEntry = { id: `hist-stg-${Date.now()}`, stageName: nextStage.name, timestamp: formatISO(new Date()), userId: currentUser.id, userName: currentUser.fullName, notes: `${actionText}. Moved to stage '${nextStage.name}'.` };
+        await recordCaseReview({ loanRequestId: loan.id, action: 'APPROVED', comment: `${actionText}. Moved to stage '${nextStage.name}'.` });
         await handleLocalAndUpdateService({ currentStageId: nextStage.id, assignedDepartmentId: users.find(u => u.department === nextStage.responsibleDepartment)?.departmentId, assignedToUsers: [], stageCompletedBy: [], history: [...loan.history, hist], isReadyForManagerReview: false, stageDeadline: formatISO(addDays(new Date(), nextStage.defaultTimelineDays)) }, `Promoted to ${nextStage.name}.`);
     }
   };
@@ -270,6 +272,7 @@ export default function LoanDetailPage() {
       <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={async r => { const h: LoanHistoryEntry = { id: `ir-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', requiredFulfilment: r, isFulfilled: false }; await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Request logged."); setIsLogInfoDialogOpen(false); }} isSaving={isSaving} />
       <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={setIsUploadDocDialogOpen} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={async (r, p, f) => { const nd: LoanDocument = { id: `doc-${Date.now()}`, name: r.name, requirementId: r.id, status: AppLoanDocumentStatus.SUBMITTED, filePath: p, uploadedAt: formatISO(new Date()) }; await handleLocalAndUpdateService({ documents: [...loan.documents, nd] }, "Uploaded."); setIsUploadDocDialogOpen(false); }} isParentSaving={isSaving} />
       <RespondToInfoRequestDialog isOpen={isRespondToInfoDialogOpen} onOpenChange={setIsRespondToInfoDialogOpen} entry={selectedEntryForResponse} onSubmit={async (id, res, fulfilled) => { await handleLocalAndUpdateService({ respondToInfoRequest: { entryId: id, response: res, markFulfilled: fulfilled } }, "Response saved."); setIsRespondToInfoDialogOpen(false); }} isSaving={isSaving} />
+      <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} onSubmit={async (note, assigneeIds) => { const h: LoanHistoryEntry = { id: `rw-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', notes: `Returned for rework: ${note}` }; await recordCaseReview({ loanRequestId: loan.id, action: 'REWORKED', comment: note }); await handleLocalAndUpdateService({ assignedToUsers: users.filter(u => assigneeIds.includes(u.id)), stageCompletedBy: [], isReadyForManagerReview: false, history: [...loan.history, h] }, "Returned for rework."); setIsReturnForReworkDialogOpen(false); }} isSaving={isSaving} />
     </div>
   );
 }

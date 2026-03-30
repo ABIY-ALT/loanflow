@@ -23,6 +23,7 @@ import {
   ChevronDown,
   FileOutput,
   BellRing,
+  History,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -101,6 +102,7 @@ const navItemsConfig: NavItemConfig[] = [
     icon: UserCheck,
     requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
   },
+
   {
     href: '/department-queue',
     label: 'Unassigned Cases',

@@ -809,3 +809,216 @@ export async function getPublicLoanStatusByLoanNumber(loanNumber: string) {
     return createErrorResult("Failed to fetch public loan status.", 'getPublicLoanStatusByLoanNumber', e);
   }
 }
+
+// ==================== ASSIGNED CASES (FIXED QUERY) ====================
+
+export async function getAssignedLoanRequests(): Promise<{ loans?: LoanRequest[], error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES)) {
+      return createErrorResult("Unauthorized", "getAssignedLoanRequests");
+    }
+
+    console.log("Current User:", user.id);
+
+    const prismaLoans = await prisma.loanRequest.findMany({
+      where: {
+        assignedToUsers: { some: { id: user.id } },
+      },
+      orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
+      include: {
+        customer: true,
+        sector: { include: { parent: true } },
+        requestType: true,
+        assignedToUsers: { include: { department: true, customRole: true } },
+        stageCompletedBy: { include: { department: true, customRole: true } },
+        currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
+        workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
+        assignedDepartment: true,
+        assignedBy: true,
+        history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
+        documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
+    console.log("Assigned Cases:", appLoans.length);
+    return { loans: appLoans };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch assigned loan requests.", "getAssignedLoanRequests", e);
+  }
+}
+
+// ==================== CASE REVIEW HISTORY ====================
+
+export async function recordCaseReview(data: {
+  loanRequestId: string;
+  action: 'APPROVED' | 'REWORKED';
+  comment?: string;
+}): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
+      return createErrorResult("Unauthorized", "recordCaseReview");
+    }
+
+    await prisma.caseReviewHistory.create({
+      data: {
+        loanRequest: { connect: { id: data.loanRequestId } },
+        performedBy: { connect: { id: user.id } },
+        action: data.action,
+        comment: data.comment || null,
+      },
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult("Failed to record case review.", "recordCaseReview", e);
+  }
+}
+
+export interface CaseReviewRecord {
+  id: string;
+  loanRequestId: string;
+  loanNumber: string;
+  customerName: string;
+  action: string;
+  performedByName: string;
+  performedByDepartment?: string;
+  caseDepartment?: string;
+  comment?: string;
+  createdAt: string;
+  finalStatus?: string;
+}
+
+export async function getCaseReviewHistory(departmentFilter?: string): Promise<{ reviews?: CaseReviewRecord[]; error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY)) {
+      return createErrorResult("Unauthorized", "getCaseReviewHistory");
+    }
+
+    const records = await prisma.caseReviewHistory.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        loanRequest: {
+          include: {
+            customer: true,
+            assignedDepartment: true,
+          },
+        },
+        performedBy: {
+          include: {
+            department: true,
+          },
+        },
+      },
+    });
+
+    let reviews: CaseReviewRecord[] = records.map(r => ({
+      id: r.id,
+      loanRequestId: r.loanRequestId,
+      loanNumber: r.loanRequest.loanNumber,
+      customerName: r.loanRequest.customer.name,
+      action: r.action,
+      performedByName: r.performedBy.name,
+      performedByDepartment: r.performedBy.department?.name,
+      caseDepartment: r.loanRequest.assignedDepartment?.name,
+      comment: r.comment || undefined,
+      createdAt: formatISO(new Date(r.createdAt)),
+      finalStatus: r.loanRequest.currentStageStatus || undefined,
+    }));
+
+    if (departmentFilter) {
+      reviews = reviews.filter(r => r.caseDepartment === departmentFilter);
+    }
+
+    return { reviews };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch case review history.", "getCaseReviewHistory", e);
+  }
+}
+
+// ==================== COMPLETED CASE HISTORY (Personal) ====================
+
+export interface CompletedCaseRecord {
+  id: string;
+  loanRequestId: string;
+  loanNumber: string;
+  customerName: string;
+  completedByName: string;
+  completionDate: string;
+  nextDestination: string;
+  comment: string;
+}
+
+export async function getCompletedCaseHistory(): Promise<{ cases?: CompletedCaseRecord[]; error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) {
+      return createErrorResult("Unauthorized", "getCompletedCaseHistory");
+    }
+
+    // Find history entries where the current user marked something as completed
+    const historyEntries = await prisma.loanHistoryEntry.findMany({
+      where: {
+        userId: user.id,
+        notes: { contains: 'completed', mode: 'insensitive' },
+      },
+      orderBy: { timestamp: 'desc' },
+      include: {
+        loanRequest: {
+          include: {
+            customer: true,
+            history: {
+              orderBy: { timestamp: 'asc' },
+              include: { user: { include: { department: true, customRole: true } } },
+            },
+          },
+        },
+        user: { include: { department: true, customRole: true } },
+      },
+    });
+
+    const cases: CompletedCaseRecord[] = historyEntries.map(entry => {
+      const loan = entry.loanRequest;
+      const allHistory = loan.history;
+
+      // Find what happened AFTER this completion entry
+      const entryTime = new Date(entry.timestamp).getTime();
+      const subsequentEntries = allHistory.filter(h => new Date(h.timestamp).getTime() > entryTime);
+      
+      let nextDestination = 'Pending';
+      if (subsequentEntries.length > 0) {
+        const nextEntry = subsequentEntries[0];
+        const notes = nextEntry.notes || '';
+        if (notes.toLowerCase().includes('rework')) {
+          nextDestination = 'Reworked';
+        } else if (notes.toLowerCase().includes('manager review') || notes.toLowerCase().includes('promoted') || notes.toLowerCase().includes('approved')) {
+          nextDestination = 'Sent to Manager Review';
+        } else if (notes.toLowerCase().includes('assigned') && nextEntry.stageName) {
+          nextDestination = `Sent to ${nextEntry.stageName}`;
+        } else if (notes.toLowerCase().includes('moved to')) {
+          nextDestination = notes;
+        } else {
+          nextDestination = notes || `Moved to ${nextEntry.stageName || 'next stage'}`;
+        }
+      }
+
+      return {
+        id: entry.id,
+        loanRequestId: loan.id,
+        loanNumber: loan.loanNumber,
+        customerName: loan.customer.name,
+        completedByName: entry.user?.name || user.fullName,
+        completionDate: formatISO(new Date(entry.timestamp)),
+        nextDestination,
+        comment: entry.notes || '',
+      };
+    });
+
+    return { cases };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch completed case history.", "getCompletedCaseHistory", e);
+  }
+}
