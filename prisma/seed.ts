@@ -1,7 +1,8 @@
 
-import { PrismaClient, DocumentRequirementType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { ALL_PERMISSIONS, PERMISSIONS } from '../src/lib/permissions';
 import bcrypt from 'bcryptjs';
+import { normalizeEthiopianPhone } from '../src/lib/utils';
 
 interface SeedUser {
   id: string;
@@ -116,6 +117,11 @@ const districtsToSeed: Record<string, string[]> = {
 
 const prisma = new PrismaClient();
 
+const DocumentRequirementType = {
+  CHECKBOX: 'CHECKBOX',
+  UPLOAD: 'UPLOAD',
+} as const;
+
 async function main() {
   console.log(`🚀 Start seeding ...`);
 
@@ -212,10 +218,12 @@ async function main() {
     { name: "Administrator", permissions: ALL_PERMISSIONS },
     { name: "Chief", permissions: ALL_PERMISSIONS },
     { name: "Ceo", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS,] },
-    { name: "Director", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK] },
-    { name: "Manager", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.ASSIGN_LOAN_TO_STAFF] },
-    { name: "CRM", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE] },
+    { name: "Director", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.VIEW_INCOMING_CASES, PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE, PERMISSIONS.ASSIGN_LOAN_TO_STAFF, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK] },
+    { name: "Manager", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.VIEW_INCOMING_CASES, PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.ASSIGN_LOAN_TO_STAFF] },
+    { name: "Deputy Chief", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.VIEW_INCOMING_CASES, PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.ASSIGN_LOAN_TO_STAFF, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.ADD_LOAN_NOTES] },
+    { name: "CRM", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.VIEW_CUSTOMERS, PERMISSIONS.CREATE_LOAN_REQUEST, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE, PERMISSIONS.PROMOTE_LOAN_STAGE] },
     { name: "Loan Officer", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE] },
+    { name: "Credit Appraisal Officer", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE] },
     { name: "Property Valuation Officer", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS, PERMISSIONS.VERIFY_LOAN_DOCUMENTS, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE, PERMISSIONS.FULFILL_INFO_REQUEST] },
     { name: "Manager, Property Valuation (Maker)", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.LOG_INFO_REQUEST, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.ASSIGN_LOAN_TO_STAFF, PERMISSIONS.FLAG_URGENT_CASE, PERMISSIONS.MARK_STAGE_COMPLETE] },
     { name: "Manager, Property Valuation (Checker)", permissions: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.VIEW_LOAN_PIPELINE, PERMISSIONS.VIEW_LOAN_DETAILS, PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE, PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.PROMOTE_LOAN_STAGE, PERMISSIONS.RETURN_LOAN_FOR_REWORK, PERMISSIONS.FLAG_URGENT_CASE] },
@@ -238,8 +246,12 @@ async function main() {
 
     // Map job title to role
     const jobTitle = (userData.jobTitle || '').toLowerCase();
+    const departmentName = dept?.name || userData.department;
     let roleName = "Loan Officer";
-    if (jobTitle.includes("director")) roleName = "Director";
+    if (departmentName === 'Property Valuation Department') roleName = 'Property Valuation Officer';
+    else if (departmentName === 'Credit Analysis & Appraisal Department') roleName = 'Credit Appraisal Officer';
+    if (jobTitle.includes("deputy chief")) roleName = "Deputy Chief";
+    else if (jobTitle.includes("director")) roleName = "Director";
     else if (jobTitle.includes("manager")) roleName = "Manager";
     else if (jobTitle.includes("crm")) roleName = "CRM";
     else if (jobTitle.includes("secretary")) roleName = "Secretary";
@@ -247,6 +259,7 @@ async function main() {
 
     const role = await prisma.role.findUnique({ where: { name: roleName } });
     const finalUserId = userData.userId || userData.id;
+    const normalizedPhoneNumber = normalizeEthiopianPhone(userData.phoneNumber);
 
     await prisma.user.upsert({
       where: { userId: finalUserId },
@@ -254,7 +267,7 @@ async function main() {
         name: userData.name,
         firstName: userData.firstName,
         lastName: userData.lastName,
-        phoneNumber: userData.phoneNumber,
+        phoneNumber: normalizedPhoneNumber || userData.phoneNumber,
         departmentId: dept?.id,
         customRoleId: role?.id,
         isActive: true,
@@ -265,7 +278,7 @@ async function main() {
         email: userData.email,
         firstName: userData.firstName,
         lastName: userData.lastName,
-        phoneNumber: userData.phoneNumber,
+        phoneNumber: normalizedPhoneNumber || userData.phoneNumber,
         passwordHash: passwordHash,
         isPasswordChanged: false,
         isActive: true,
@@ -304,52 +317,137 @@ async function main() {
     { name: 'WF-08 – RM Final Disbursement (Optional Workflow)', order: 8, purpose: 'Final approval and disbursement processing by RM following successful appraisal.' },
   ];
 
+  const sharedWorkflowStageDepartments: Record<string, string> = {
+    'WF-02 – Valuation': 'Property Valuation Department',
+    'WF-05 – Appraisal': 'Credit Analysis & Appraisal Department',
+  };
+
+  const resolveStageDepartmentName = (workflowName: string, sectorDepartmentName: string) => {
+    return sharedWorkflowStageDepartments[workflowName] || sectorDepartmentName;
+  };
+
   const seedWorkflowPath = async (
     parentSectorName: string,
     childSectorName: string,
     departmentName: string
   ) => {
-    console.log(`--- Seeding Workflows for ${parentSectorName}...`);
+    console.log(`--- Seeding Workflows for ${parentSectorName} / ${childSectorName}...`);
     const parentSector = await prisma.sector.findUnique({ where: { name: parentSectorName } });
     const childSector = await prisma.sector.findUnique({ where: { name: childSectorName } });
-    const department = await prisma.department.findUnique({ where: { nameLowercase: departmentName.toLowerCase() } });
+    const workflowDepartment = await prisma.department.findUnique({ where: { nameLowercase: departmentName.toLowerCase() } });
 
-    if (!parentSector || !childSector || !department) {
+    if (!parentSector || !childSector || !workflowDepartment) {
       console.error(`Could not find necessary entities for ${parentSectorName}. Aborting.`);
-      console.error(`Missing: ${!parentSector ? 'Parent Sector, ' : ''}${!childSector ? 'Child Sector, ' : ''}${!department ? 'Department' : ''}`);
+      console.error(`Missing: ${!parentSector ? 'Parent Sector, ' : ''}${!childSector ? 'Child Sector, ' : ''}${!workflowDepartment ? 'Department' : ''}`);
       return;
     }
 
-    const maxOrderResult = await prisma.workflowDefinition.aggregate({
-      _max: { order: true },
-      where: {
-        sector: {
-          parentId: parentSector.id,
-        },
-      },
-    });
-    let currentMaxOrder = maxOrderResult._max.order ?? -1;
-
     for (const wf of standardWorkflowsToSeed) {
-      const workflowDefinition = await prisma.workflowDefinition.create({
-        data: {
+      const duplicateDefinitions = await prisma.workflowDefinition.findMany({
+        where: {
+          sectorId: childSector.id,
           name: wf.name,
-          description: wf.purpose,
-          order: ++currentMaxOrder,
-          department: { connect: { id: department.id } },
-          sector: { connect: { id: childSector.id } },
+        },
+        orderBy: [{ createdAt: 'desc' }],
+        include: {
+          versions: { select: { id: true } },
         },
       });
-      console.log(`Created Workflow Definition: ${workflowDefinition.name}`);
 
-      const workflowVersion = await prisma.workflowVersion.create({
-        data: {
-          workflowDefinition: { connect: { id: workflowDefinition.id } },
-          versionNumber: 1,
+      let workflowDefinition = duplicateDefinitions[0];
+      if (workflowDefinition) {
+        workflowDefinition = await prisma.workflowDefinition.update({
+          where: { id: workflowDefinition.id },
+          data: {
+            description: wf.purpose,
+            order: wf.order,
+            departmentId: workflowDepartment.id,
+          },
+          include: {
+            versions: { select: { id: true } },
+          },
+        });
+        console.log(`Reused Workflow Definition: ${workflowDefinition.name}`);
+      } else {
+        workflowDefinition = await prisma.workflowDefinition.create({
+          data: {
+            name: wf.name,
+            description: wf.purpose,
+            order: wf.order,
+            department: { connect: { id: workflowDepartment.id } },
+            sector: { connect: { id: childSector.id } },
+          },
+          include: {
+            versions: { select: { id: true } },
+          },
+        });
+        console.log(`Created Workflow Definition: ${workflowDefinition.name}`);
+      }
+
+      // Keep one canonical workflow definition per child sector + workflow name.
+      for (const duplicate of duplicateDefinitions.slice(1)) {
+        const duplicateVersionIds = duplicate.versions.map((v) => v.id);
+        if (duplicateVersionIds.length === 0) {
+          await prisma.workflowDefinition.delete({ where: { id: duplicate.id } });
+          continue;
+        }
+
+        const usedByLoans = await prisma.loanRequest.count({
+          where: { workflowVersionId: { in: duplicateVersionIds } },
+        });
+
+        if (usedByLoans > 0) {
+          continue;
+        }
+
+        await prisma.documentRequirement.deleteMany({
+          where: {
+            workflowStage: {
+              workflowVersionId: { in: duplicateVersionIds },
+            },
+          },
+        });
+        await prisma.workflowStageDefinition.deleteMany({
+          where: { workflowVersionId: { in: duplicateVersionIds } },
+        });
+        await prisma.workflowVersion.deleteMany({
+          where: { id: { in: duplicateVersionIds } },
+        });
+        await prisma.workflowDefinition.delete({ where: { id: duplicate.id } });
+      }
+
+      let workflowVersion = await prisma.workflowVersion.findFirst({
+        where: {
+          workflowDefinitionId: workflowDefinition.id,
           isActive: true,
         },
+        orderBy: [{ versionNumber: 'desc' }, { createdAt: 'desc' }],
       });
-      console.log(`  - Created active Version 1 for ${workflowDefinition.name}`);
+
+      let shouldSeedStages = false;
+      if (!workflowVersion) {
+        workflowVersion = await prisma.workflowVersion.create({
+          data: {
+            workflowDefinition: { connect: { id: workflowDefinition.id } },
+            versionNumber: 1,
+            isActive: true,
+          },
+        });
+        shouldSeedStages = true;
+        console.log(`  - Created active Version 1 for ${workflowDefinition.name}`);
+      }
+
+      const responsibleDepartmentName = resolveStageDepartmentName(wf.name, workflowDepartment.name);
+      const responsibleDepartment = await prisma.department.findUnique({
+        where: { nameLowercase: responsibleDepartmentName.toLowerCase() },
+      });
+      if (!responsibleDepartment) {
+        throw new Error(`Department \"${responsibleDepartmentName}\" not found for ${wf.name}`);
+      }
+
+      if (!shouldSeedStages) {
+        continue;
+      }
 
       if (wf.name === 'WF-01 – RM Request Registration (Acceptance)') {
         const wf01Stages = [
@@ -374,8 +472,8 @@ async function main() {
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+              responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+              availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -446,8 +544,8 @@ async function main() {
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+              responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+              availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -488,8 +586,8 @@ async function main() {
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+              responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+              availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -529,8 +627,8 @@ async function main() {
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+              responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+              availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -573,8 +671,8 @@ async function main() {
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
               workflowVersion: { connect: { id: workflowVersion.id } },
-              responsibleDepartment: { connect: { id: department.id } },
-              availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+              responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+              availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
             },
           });
           console.log(`    - Created stage "${stage.name}" for Version 1`);
@@ -600,8 +698,8 @@ async function main() {
             defaultTimelineDays: 5,
             percentageWeight: 100,
             workflowVersion: { connect: { id: workflowVersion.id } },
-            responsibleDepartment: { connect: { id: department.id } },
-            availableStatuses: JSON.stringify({ [department.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
+            responsibleDepartment: { connect: { id: responsibleDepartment.id } },
+            availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),
           },
         });
         console.log(`    - Created stage "${stageName}" for Version 1`);
@@ -610,23 +708,31 @@ async function main() {
     console.log(`${parentSectorName} workflows seeded.`);
   };
 
-  await seedWorkflowPath(
-    'Institutional Banking and Hospitality and Green Financing Sector',
-    'Financial Institution',
-    'Institutional Banking and Hospitality, Green Financing Department'
-  );
+  const sectorWorkflowConfigs = [
+    {
+      parentSectorName: 'Institutional Banking and Hospitality and Green Financing Sector',
+      departmentName: 'Institutional Banking and Hospitality, Green Financing Department',
+    },
+    {
+      parentSectorName: 'Service sector Department',
+      departmentName: 'Service Sector Department',
+    },
+    {
+      parentSectorName: 'Construction Manufacturing and Agriculture Sector Department',
+      departmentName: 'Construction Manufacturing and Agriculture Sector Department',
+    },
+  ];
 
-  await seedWorkflowPath(
-    'Service sector Department',
-    'Domestic Trade and Service',
-    'Service Sector Department'
-  );
-
-  await seedWorkflowPath(
-    'Construction Manufacturing and Agriculture Sector Department',
-    'Manufacturing Industry',
-    'Construction Manufacturing and Agriculture Sector Department'
-  );
+  for (const config of sectorWorkflowConfigs) {
+    const sectorChildren = childSectors[config.parentSectorName] || [];
+    for (const childSectorName of sectorChildren) {
+      await seedWorkflowPath(
+        config.parentSectorName,
+        childSectorName,
+        config.departmentName
+      );
+    }
+  }
 
   console.log('🎉 Seeding finished successfully!');
 }

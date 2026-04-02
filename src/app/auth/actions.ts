@@ -10,6 +10,7 @@ import type { User as PrismaUser, Department as PrismaDepartment, Role as Prisma
 import bcrypt from 'bcryptjs';
 import { addMinutes, isAfter } from 'date-fns';
 import { encrypt, decrypt } from '@/lib/session';
+import { normalizeEthiopianPhone } from '@/lib/utils';
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 1;
@@ -52,13 +53,14 @@ function mapPrismaUserToAppUser(
 
 export async function loginUser(phoneNumberInput: string, passwordInput: string): Promise<{ success: boolean; user?: User; error?: string }> {
   const genericError = "Invalid phone number or password.";
-  if (!phoneNumberInput || !passwordInput) {
+  const normalizedPhoneNumber = normalizeEthiopianPhone(phoneNumberInput);
+  if (!normalizedPhoneNumber || !passwordInput) {
     return { success: false, error: "Phone number and password are required." };
   }
 
   try {
     const user = await prisma.user.findFirst({
-      where: { phoneNumber: phoneNumberInput },
+      where: { phoneNumber: normalizedPhoneNumber },
       include: {
         department: true,
         customRole: true,

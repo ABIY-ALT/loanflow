@@ -33,13 +33,16 @@ import type { LoanRequest, User as UserType, Department } from '@/types/loan';
 import { useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
+import { isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
 
 export const UNASSIGNED_DIALOG_OPTION_VALUE = "---UNASSIGNED-DIALOG---";
 
 const editLoanFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
   customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
-  customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
+  customerPhone: z.string()
+    .transform(normalizeEthiopianPhone)
+    .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678 or 0712345678.' }),
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   sectorName: z.string().min(2, { message: 'Sector is required.' }),
   requestTypeName: z.string().min(2, { message: 'Request Type is required.' }),
@@ -109,7 +112,7 @@ export function EditLoanDetailsDialog({
             <div className="grid md:grid-cols-2 gap-6">
               <FormField control={form.control} name="customerName" render={({ field }) => ( <FormItem> <FormLabel>Customer Name</FormLabel> <FormControl><div className="relative"><UserIconLucide className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="customerEmail" render={({ field }) => ( <FormItem> <FormLabel>Customer Email</FormLabel> <FormControl><div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
-              <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <FormControl><div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="tel" placeholder="e.g., (555) 123-4567" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
+              <FormField control={form.control} name="customerPhone" render={({ field }) => ( <FormItem> <FormLabel>Customer Phone</FormLabel> <FormControl><div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="tel" placeholder="e.g., 0912345678" {...field} onChange={(event) => field.onChange(normalizeEthiopianPhone(event.target.value))} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="loanAmount" render={({ field }) => ( <FormItem> <FormLabel>Loan Amount ($)</FormLabel> <FormControl><div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="e.g., 10000" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="sectorName" render={({ field }) => ( <FormItem> <FormLabel>Sector</FormLabel> <FormControl><div className="relative"><Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., Agriculture" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />
               <FormField control={form.control} name="requestTypeName" render={({ field }) => ( <FormItem> <FormLabel>Request Type</FormLabel> <FormControl><div className="relative"><Type className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="e.g., New Loan" {...field} className="pl-10" disabled={isSaving || !canEditDetails} /></div></FormControl> <FormMessage /> </FormItem> )} />

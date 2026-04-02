@@ -121,6 +121,8 @@ CREATE TABLE "WorkflowStageDefinition" (
     "percentageWeight" INTEGER NOT NULL,
     "responsibleDepartmentId" TEXT NOT NULL,
     "availableStatuses" TEXT,
+    "allowedRoles" TEXT,
+    "requiresApproval" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -215,6 +217,18 @@ CREATE TABLE "LoanHistoryEntry" (
 );
 
 -- CreateTable
+CREATE TABLE "CaseReviewHistory" (
+    "id" TEXT NOT NULL,
+    "loanRequestId" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "performedById" TEXT NOT NULL,
+    "comment" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CaseReviewHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "_AssignedStaff" (
     "A" TEXT NOT NULL,
     "B" TEXT NOT NULL,
@@ -258,7 +272,16 @@ CREATE UNIQUE INDEX "District_name_key" ON "District"("name");
 CREATE UNIQUE INDEX "Branch_name_districtId_key" ON "Branch"("name", "districtId");
 
 -- CreateIndex
+CREATE INDEX "WorkflowStageDefinition_responsibleDepartmentId_idx" ON "WorkflowStageDefinition"("responsibleDepartmentId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "LoanRequest_loanNumber_key" ON "LoanRequest"("loanNumber");
+
+-- CreateIndex
+CREATE INDEX "LoanRequest_assignedDepartmentId_idx" ON "LoanRequest"("assignedDepartmentId");
+
+-- CreateIndex
+CREATE INDEX "LoanRequest_currentStageId_idx" ON "LoanRequest"("currentStageId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Customer_email_key" ON "Customer"("email");
@@ -334,6 +357,12 @@ ALTER TABLE "LoanHistoryEntry" ADD CONSTRAINT "LoanHistoryEntry_loanRequestId_fk
 
 -- AddForeignKey
 ALTER TABLE "LoanHistoryEntry" ADD CONSTRAINT "LoanHistoryEntry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CaseReviewHistory" ADD CONSTRAINT "CaseReviewHistory_loanRequestId_fkey" FOREIGN KEY ("loanRequestId") REFERENCES "LoanRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CaseReviewHistory" ADD CONSTRAINT "CaseReviewHistory_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "_AssignedStaff" ADD CONSTRAINT "_AssignedStaff_A_fkey" FOREIGN KEY ("A") REFERENCES "LoanRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { PERMISSIONS } from '@/lib/permissions';
+import { isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
 
 interface RegisterUserFormProps {
   registerUserAction: (formData: FormData) => Promise<{ success: boolean; message: string; errors?: any }>;
@@ -19,8 +20,8 @@ const userSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   phoneNumber: z.string()
-    .length(10, "Phone number must be exactly 10 digits.")
-    .regex(/^(09|07)\d{8}$/, "Phone number must start with 09 or 07."),
+    .transform(normalizeEthiopianPhone)
+    .refine(isValidLocalEthiopianPhone, "Phone number must be in local format like 0912345678 or 0712345678."),
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters")
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
@@ -45,7 +46,8 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormDataState(prev => ({ ...prev, [name]: value }));
+    const nextValue = name === 'phoneNumber' ? normalizeEthiopianPhone(value) : value;
+    setFormDataState(prev => ({ ...prev, [name]: nextValue }));
     // Clear specific field error on change
     if (formErrors[name]) {
         setFormErrors(prev => ({...prev, [name]: undefined}));
@@ -70,6 +72,7 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
 
     setIsSubmitting(true);
     const formPayload = new FormData(e.currentTarget);
+    formPayload.set('phoneNumber', normalizeEthiopianPhone(formDataState.phoneNumber));
     // Ensure FormData reflects the state if state is the source of truth
     // Or ensure state is directly used if not using FormData propagation
     
@@ -127,7 +130,7 @@ export default function RegisterUserForm({ registerUserAction }: RegisterUserFor
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="phoneNumber">Phone Number</Label>
-              <Input id="phoneNumber" name="phoneNumber" value={formDataState.phoneNumber} onChange={handleChange} disabled={isSubmitting} />
+              <Input id="phoneNumber" name="phoneNumber" placeholder="e.g., 0912345678" value={formDataState.phoneNumber} onChange={handleChange} disabled={isSubmitting} />
               {formErrors.phoneNumber && <p className="text-xs text-destructive mt-1">{formErrors.phoneNumber.join(', ')}</p>}
             </div>
             <div className="flex flex-col space-y-1.5">

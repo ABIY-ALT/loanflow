@@ -47,6 +47,9 @@ interface EditLoanDetailsDialogProps {
   currentDepartment?: Department;
   onSubmit: (data: AssignStaffFormValues) => Promise<void>;
   isSaving: boolean;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
 }
 
 export function EditLoanDetailsDialog({
@@ -57,11 +60,14 @@ export function EditLoanDetailsDialog({
   currentDepartment,
   onSubmit,
   isSaving,
+  title,
+  description,
+  submitLabel,
 }: EditLoanDetailsDialogProps) {
   const { user: currentUser } = useAuth();
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
   
-  // This dialog is now only for assigning staff
+  // Assignment is strictly controlled by explicit assign permission.
   const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
 
   const form = useForm<AssignStaffFormValues>({
@@ -82,9 +88,13 @@ export function EditLoanDetailsDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Assign Staff</DialogTitle>
+          <DialogTitle>{title || 'Assign Staff'}</DialogTitle>
           <DialogDescription>
-            Select staff members from the <span className="font-semibold">{currentDepartment || 'current'}</span> department to assign to this loan.
+            {description || (
+              <>
+                Select staff members from the <span className="font-semibold">{currentDepartment || 'current'}</span> department to assign to this loan.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -139,7 +149,7 @@ export function EditLoanDetailsDialog({
             />
             <DialogFooter className="pt-4">
               <DialogClose asChild><Button type="button" variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isSaving}> {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes </Button>
+              <Button type="submit" disabled={isSaving}> {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {submitLabel || 'Save Changes'} </Button>
             </DialogFooter>
           </form>
         </Form>

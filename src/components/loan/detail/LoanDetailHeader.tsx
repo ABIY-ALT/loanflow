@@ -29,6 +29,7 @@ interface LoanDetailHeaderProps {
   onOpenLogInfoDialog: () => void;
   onMarkStageComplete: () => Promise<void>; 
   onManagerPromoteLoan: () => Promise<void>; 
+  onOpenApproveReassignDialog: () => void;
   onOpenReturnForReworkDialog: () => void;
   onOpenTerminateLoanDialog: () => void;
   onOpenManualTransitionDialog: () => void;
@@ -46,6 +47,7 @@ export function LoanDetailHeader({
   onOpenLogInfoDialog,
   onMarkStageComplete,
   onManagerPromoteLoan,
+  onOpenApproveReassignDialog,
   onOpenReturnForReworkDialog,
   onOpenTerminateLoanDialog,
   onOpenManualTransitionDialog,
@@ -60,6 +62,7 @@ export function LoanDetailHeader({
   if (!loan || !currentUser) return null;
   
   const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
+  // Assignment is strictly controlled by explicit assign permission.
   const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
   const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
   const hasCurrentUserCompleted = loan.stageCompletedBy?.some(u => u.id === currentUser.id) || false;
@@ -67,8 +70,9 @@ export function LoanDetailHeader({
   // Permission-based checks for manager actions
   const canApprove = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
   const canReturn = userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
-  // Determine if this user can promote the stage directly (if configured)
-  const canDirectPromote = !requiresApproval && canPromote;
+  const canMarkStageComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
+  // Users with promote permission can directly approve and move their assigned case.
+  const canDirectPromote = canPromote;
   const isDirectPromotion = !requiresApproval;
 
   return (
@@ -77,10 +81,10 @@ export function LoanDetailHeader({
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
       <div className="flex flex-wrap gap-2 mt-2 sm:mt-0 justify-end flex-grow">
-        {(canEditDetails || canAssignStaff) && isActionableStage &&
-            <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
-                <UserPlus className="mr-2 h-4 w-4" /> Edit / Assign
-            </Button>
+        {canAssignStaff && isActionableStage &&
+          <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
+            <UserPlus className="mr-2 h-4 w-4" /> Assign
+          </Button>
         }
         {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && isActionableStage && 
             <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
@@ -90,13 +94,13 @@ export function LoanDetailHeader({
         }
 
         {/* Primary Staff Action Button: Dynamically changes based on direct promotion capability */}
-        {isActionableStage && isCurrentUserAssigned && !loan.isReadyForManagerReview && (
+        {isActionableStage && isCurrentUserAssigned && !loan.isReadyForManagerReview && (canMarkStageComplete || canDirectPromote) && (
           <Button 
             onClick={onMarkStageComplete} 
             disabled={isSaving || hasCurrentUserCompleted}
             className={cn(
               canDirectPromote ? "bg-green-600 hover:bg-green-700" : 
-              isDirectPromotion ? "bg-blue-600 hover:bg-blue-700" : ""
+               isDirectPromotion ? "bg-blue-600 hover:bg-blue-700" : ""
             )}
           >
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -117,17 +121,27 @@ export function LoanDetailHeader({
           </Button>
         )}
 
-        {/* Manager Approval Button: Always shown, disabled if no permission */}
-        {isActionableStage && (
-            <Button 
-              onClick={canApprove ? onManagerPromoteLoan : undefined}
-              disabled={isSaving || !canApprove}
+        {/* Direct Approve Button: Only shown for users with approve permission once pending approval */}
+        {isActionableStage && loan.isReadyForManagerReview && canApprove && (
+          <>
+            <Button
+              onClick={onManagerPromoteLoan}
+              disabled={isSaving}
               className="bg-green-600 hover:bg-green-700 text-white font-bold"
-              title={canApprove ? undefined : 'You do not have permission to approve'}
             >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-               <ArrowRight className="mr-2 h-4 w-4" /> Approve & Promote
+              <ArrowRight className="mr-2 h-4 w-4" /> Approve
             </Button>
+            {canAssignStaff && (
+              <Button
+                variant="outline"
+                onClick={onOpenApproveReassignDialog}
+                disabled={isSaving}
+              >
+                <UserPlus className="mr-2 h-4 w-4" /> Approve & Reassign
+              </Button>
+            )}
+          </>
         )}
 
         {/* Return for Rework Button: Always shown, disabled if no permission */}

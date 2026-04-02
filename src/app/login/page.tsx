@@ -12,6 +12,7 @@ import { Loader2, LogIn, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import Image from 'next/image'; // Import next/image
+import { normalizeEthiopianPhone } from '@/lib/utils';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -66,7 +67,7 @@ export default function LoginPage() {
                 type="tel"
                 placeholder="e.g., 0912345678"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(e) => setPhoneNumber(normalizeEthiopianPhone(e.target.value))}
                 required
                 disabled={isProcessing}
                 className="text-base"

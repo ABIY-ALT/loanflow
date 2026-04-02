@@ -6,13 +6,14 @@ import { getCurrentUser as getAdminPerformingAction } from '@/app/auth/actions';
 import { z } from 'zod';
 import { PERMISSIONS } from '@/lib/permissions';
 import bcrypt from 'bcryptjs';
+import { isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
 
 const registerUserFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   phoneNumber: z.string()
-    .length(10, 'Phone number must be exactly 10 digits.')
-    .regex(/^(09|07)\d{8}$/, 'Phone number must start with 09 or 07.'),
+    .transform(normalizeEthiopianPhone)
+    .refine(isValidLocalEthiopianPhone, 'Phone number must be in local format like 0912345678 or 0712345678.'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters')
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
@@ -29,7 +30,11 @@ export async function registerUserAction(formData: FormData): Promise<{ success:
       return { success: false, message: 'Unauthorized: You do not have permission to register users.' };
     }
 
-    const validationResult = registerUserFormSchema.safeParse(Object.fromEntries(formData.entries()));
+    const rawEntries = Object.fromEntries(formData.entries());
+    const validationResult = registerUserFormSchema.safeParse({
+      ...rawEntries,
+      phoneNumber: normalizeEthiopianPhone(String(rawEntries.phoneNumber || '')),
+    });
 
     if (!validationResult.success) {
       return { success: false, message: 'Validation failed', errors: validationResult.error.flatten().fieldErrors };

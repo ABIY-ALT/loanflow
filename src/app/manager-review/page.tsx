@@ -3,11 +3,12 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building, Flame, Users as UsersIcon, Download, Inbox, CheckCircle2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, UserCheck, ExternalLink, Loader2, AlertCircle, Building, Flame, Users as UsersIcon, Download, Inbox, CheckCircle2, RotateCcw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { getLoanRequests, getCaseReviewHistory, type CaseReviewRecord } from '@/services/loan-service-prisma';
 import type { LoanRequest, User } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
@@ -31,6 +32,7 @@ export default function ManagerReviewQueuePage() {
   const [reviews, setReviews] = useState<CaseReviewRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const canViewPage = currentUser?.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
 
@@ -91,8 +93,36 @@ export default function ManagerReviewQueuePage() {
     return users.map(u => u.fullName).join(', ');
   };
   
+  const filteredReviewLoans = useMemo(() => {
+    const lowerSearch = searchTerm.trim().toLowerCase();
+    if (!lowerSearch) return reviewLoans;
+
+    return reviewLoans.filter((loan) => {
+      const assignedNames = loan.assignedToUsers.map((u) => u.fullName).join(' ').toLowerCase();
+      return (
+        loan.loanNumber.toLowerCase().includes(lowerSearch) ||
+        loan.customerName.toLowerCase().includes(lowerSearch) ||
+        (loan.currentStageName || '').toLowerCase().includes(lowerSearch) ||
+        assignedNames.includes(lowerSearch)
+      );
+    });
+  }, [reviewLoans, searchTerm]);
+
+  const filteredReviews = useMemo(() => {
+    const lowerSearch = searchTerm.trim().toLowerCase();
+    if (!lowerSearch) return reviews;
+
+    return reviews.filter((review) =>
+      review.loanNumber.toLowerCase().includes(lowerSearch) ||
+      review.customerName.toLowerCase().includes(lowerSearch) ||
+      review.action.toLowerCase().includes(lowerSearch) ||
+      review.performedByName.toLowerCase().includes(lowerSearch) ||
+      (review.comment || '').toLowerCase().includes(lowerSearch)
+    );
+  }, [reviews, searchTerm]);
+
   const sortedLoans = useMemo(() => {
-    return [...reviewLoans].sort((a, b) => {
+    return [...filteredReviewLoans].sort((a, b) => {
       // Prioritize "Ready for Review"
       if (a.isReadyForManagerReview && !b.isReadyForManagerReview) return -1;
       if (!a.isReadyForManagerReview && b.isReadyForManagerReview) return 1;
@@ -105,12 +135,12 @@ export default function ManagerReviewQueuePage() {
       // Finally, by last updated date
       return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
     });
-  }, [reviewLoans]);
+  }, [filteredReviewLoans]);
 
   const exportReviewHistoryToCSV = () => {
-    if (reviews.length === 0) return;
+    if (filteredReviews.length === 0) return;
     const headers = ['Loan Number', 'Customer Name', 'Action', 'Reviewed By', 'Department', 'Date & Time', 'Final Status', 'Comment'];
-    const csvData = reviews.map(r => [
+    const csvData = filteredReviews.map(r => [
       r.loanNumber, r.customerName, r.action,
       r.performedByName, r.performedByDepartment || '',
       r.createdAt ? format(parseISO(r.createdAt), 'MMM dd, yyyy HH:mm') : '',
@@ -179,7 +209,18 @@ export default function ManagerReviewQueuePage() {
             These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department have been submitted for review. Urgent cases are prioritized.
           </p>
         </div>
-        <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search cases..."
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
+        </div>
       </div>
       
       {error && (
@@ -192,14 +233,14 @@ export default function ManagerReviewQueuePage() {
 
       <Tabs defaultValue="queue" className="w-full">
         <TabsList>
-          <TabsTrigger value="queue">Queue ({reviewLoans.length})</TabsTrigger>
-          <TabsTrigger value="history">History ({reviews.length})</TabsTrigger>
+          <TabsTrigger value="queue">Queue ({sortedLoans.length})</TabsTrigger>
+          <TabsTrigger value="history">History ({filteredReviews.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="queue">
           <Card>
             <CardHeader>
-              <CardTitle>Cases for Your Review ({reviewLoans.length})</CardTitle>
+              <CardTitle>Cases for Your Review ({sortedLoans.length})</CardTitle>
               <CardDescription>
                 Select a case to review its details. Cases marked 'Ready for Review' can be promoted or returned for rework.
               </CardDescription>
@@ -294,12 +335,12 @@ export default function ManagerReviewQueuePage() {
                 <CardTitle>Manager Review History</CardTitle>
                 <CardDescription>Track all approval and rework decisions made by managers and directors.</CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={exportReviewHistoryToCSV} disabled={reviews.length === 0}>
+              <Button variant="outline" size="sm" onClick={exportReviewHistoryToCSV} disabled={filteredReviews.length === 0}>
                 <Download className="mr-2 h-4 w-4" />Export CSV
               </Button>
             </CardHeader>
             <CardContent>
-              {reviews.length === 0 ? (
+              {filteredReviews.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground">
                   <Inbox className="mx-auto mb-4 h-12 w-12" />
                   <p className="text-lg font-semibold">No Review History</p>
@@ -320,7 +361,7 @@ export default function ManagerReviewQueuePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reviews.map((review) => (
+                    {filteredReviews.map((review) => (
                       <TableRow key={review.id} className="hover:bg-muted/50">
                         <TableCell>
                           {review.action === 'APPROVED' ? (

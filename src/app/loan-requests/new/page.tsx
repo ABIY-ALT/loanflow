@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type FieldErrors } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
+import { isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
 import Link from 'next/link';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
@@ -103,7 +104,9 @@ function numberToWords(num: number): string {
 const loanRequestFormSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
   customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
-  customerPhone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
+  customerPhone: z.string()
+    .transform(normalizeEthiopianPhone)
+    .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678 or 0712345678.' }),
   customerBranch: z.string().min(1, { message: 'A branch must be selected.' }),
   loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
   sectorId: z.string().min(1, { message: 'A sector must be selected.' }),
@@ -131,6 +134,8 @@ export default function NewLoanRequestPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [workflowDefs, setWorkflowDefs] = useState<WorkflowDefinition[]>([]);
   const [selectedWorkflowInfo, setSelectedWorkflowInfo] = useState<WorkflowInfo | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   
   const [isLoading, setIsLoading] = useState(true);
@@ -212,14 +217,16 @@ export default function NewLoanRequestPage() {
 
     const parentSector = sectors.find(s => s.id === selectedChildSector.parentId);
     
-    // Find the first workflow in the sequence for this parent sector
+    // Pick the newest WF-01 for this child sector path to avoid stale seeded duplicates.
     const firstWorkflow = workflowDefs
-        .filter(wf => wf.parentSectorId === parentSector?.id)
-        .sort((a,b) => (a.order ?? 0) - (b.order ?? 0))[0];
+      .filter(wf => wf.sectorId === selectedChildSector.id && wf.name.startsWith('WF-01'))
+      .sort((a, b) => (b.order ?? 0) - (a.order ?? 0))[0];
+
+    const firstStage = firstWorkflow?.versions.find(v => v.isActive)?.stages[0];
 
     setSelectedWorkflowInfo({
         parentSectorName: parentSector?.name,
-        initialDepartmentName: firstWorkflow?.departmentName,
+      initialDepartmentName: firstStage?.responsibleDepartment || firstWorkflow?.departmentName,
     });
   };
 
@@ -241,8 +248,39 @@ export default function NewLoanRequestPage() {
   const loanAmountValue = form.watch('loanAmount');
 
   function onFormSubmit(data: LoanRequestFormValues) {
+    setValidationErrors([]);
+    setSubmissionError(null);
     setFormDataToSubmit(data);
     setIsConfirming(true);
+  }
+
+  function onFormInvalid(errors: FieldErrors<LoanRequestFormValues>) {
+    const fieldLabels: Record<keyof LoanRequestFormValues, string> = {
+      customerName: 'Customer Full Name',
+      customerEmail: 'Customer Email',
+      customerPhone: 'Customer Phone',
+      customerBranch: 'Customer Branch',
+      loanAmount: 'Loan Amount',
+      sectorId: 'Child Sector',
+      requestTypeId: 'Request Type',
+      loanPurpose: 'Loan Purpose',
+    };
+
+    const messages = Object.entries(errors).map(([key, value]) => {
+      const fieldKey = key as keyof LoanRequestFormValues;
+      const message = value?.message ? String(value.message) : 'This field is required.';
+      return `${fieldLabels[fieldKey]}: ${message}`;
+    });
+
+    setSubmissionError(null);
+    setValidationErrors(messages);
+
+    const firstField = Object.keys(errors)[0] as keyof LoanRequestFormValues | undefined;
+    if (firstField) {
+      form.setFocus(firstField);
+    }
+
+    document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   async function handleConfirmSubmit() {
@@ -250,11 +288,17 @@ export default function NewLoanRequestPage() {
     setIsSubmitting(true);
     setIsConfirming(false);
     try {
-      const result = await addLoanRequest(formDataToSubmit);
+      const result = await addLoanRequest({
+        ...formDataToSubmit,
+        customerPhone: normalizeEthiopianPhone(formDataToSubmit.customerPhone),
+      });
 
       if (result.error) {
+        setSubmissionError(result.error);
         toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
       } else if (result.id) {
+        setValidationErrors([]);
+        setSubmissionError(null);
         toast({ title: "Loan Request Submitted", description: `Request for ${formDataToSubmit.customerName} submitted successfully.` });
         form.reset();
         setFormDataToSubmit(null);
@@ -263,6 +307,7 @@ export default function NewLoanRequestPage() {
         toast({ title: "Submission Error", description: "An unexpected issue occurred.", variant: "destructive" });
       }
     } catch (error: any) {
+      setSubmissionError(error.message || 'Unexpected error during submission.');
       toast({ title: "Submission Failed", description: `Error: ${error.message || 'Unexpected error'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -315,7 +360,21 @@ export default function NewLoanRequestPage() {
 
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onFormSubmit, onFormInvalid)} className="space-y-8">
+              {(validationErrors.length > 0 || submissionError) && (
+                <Alert id="loan-form-errors" variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Please fix the following issues before submitting:</AlertTitle>
+                  <div className="text-sm mt-2 space-y-1">
+                    {validationErrors.length > 0 ? (
+                      validationErrors.map((msg, idx) => <p key={idx}>{msg}</p>)
+                    ) : (
+                      <p>{submissionError}</p>
+                    )}
+                  </div>
+                </Alert>
+              )}
+
               <div className="grid md:grid-cols-2 gap-8">
 
                 <FormField
@@ -362,7 +421,7 @@ export default function NewLoanRequestPage() {
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input type="tel" placeholder="e.g., 0912345678" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input type="tel" placeholder="e.g., 0912345678" {...field} onChange={(event) => field.onChange(normalizeEthiopianPhone(event.target.value))} className="pl-10" disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />

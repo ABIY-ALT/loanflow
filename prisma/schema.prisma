@@ -144,6 +144,8 @@ model WorkflowStageDefinition {
   loanRequests          LoanRequest[]
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([responsibleDepartmentId])
 }
 
 model DocumentRequirement {
@@ -200,6 +202,9 @@ model LoanRequest {
 
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+
+  @@index([assignedDepartmentId])
+  @@index([currentStageId])
 }
 
 model Customer {

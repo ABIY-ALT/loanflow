@@ -27,14 +27,15 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getAssignedByMePortfolio, getIncomingLoanRequests } from '@/services/loan-service-prisma';
 import type { LoanRequest } from '@/types/loan';
 import { cn } from '@/lib/utils';
 import { QuickFollowUpDialog } from '@/components/loan/dialogs/QuickFollowUpDialog';
 
 export default function IncomingCasesPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
-  const [allLoans, setAllLoans] = useState<LoanRequest[]>([]);
+  const [delegatedPortfolioLoans, setDelegatedPortfolioLoans] = useState<LoanRequest[]>([]);
+  const [incomingLoans, setIncomingLoans] = useState<LoanRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,11 +56,25 @@ export default function IncomingCasesPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getLoanRequests();
-        if (result.error) {
-          setError(result.error);
-        } else if ('loans' in result && result.loans) {
-          setAllLoans(result.loans);
+        const [incomingResult, delegatedResult] = await Promise.all([
+          getIncomingLoanRequests(),
+          getAssignedByMePortfolio(),
+        ]);
+
+        if (incomingResult.error) {
+          setError(incomingResult.error);
+          return;
+        }
+        if (delegatedResult.error) {
+          setError(delegatedResult.error);
+          return;
+        }
+
+        if ('loans' in incomingResult && incomingResult.loans) {
+          setIncomingLoans(incomingResult.loans);
+        }
+        if ('loans' in delegatedResult && delegatedResult.loans) {
+          setDelegatedPortfolioLoans(delegatedResult.loans);
         }
       } catch (err: any) {
         setError(err.message || "An unexpected error occurred.");
@@ -69,28 +84,16 @@ export default function IncomingCasesPage() {
     }
 
     fetchLoans();
+    const intervalId = window.setInterval(fetchLoans, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [currentUser, authLoading, canViewPage]);
 
   // Filter 1: Queue Awaiting Assignment
-  const incomingLoans = useMemo(() => {
-    return allLoans.filter(loan => 
-      loan.assignedDepartment === currentUser?.department && 
-      loan.assignedToUsers.length === 0 &&
-      !loan.isReadyForManagerReview &&
-      !loan.isTerminalStage
-    );
-  }, [allLoans, currentUser]);
-
   // Filter 2: Cases Ever Assigned by Me (historical)
-  const delegatedLoans = useMemo(() => {
-    return allLoans.filter(loan => {
-      // Show if user assigned, was assigned, or touched in history
-      const assignedByMe = loan.assignedById === currentUser?.id;
-      const everAssigned = loan.assignedToUsers.some(u => u.id === currentUser?.id);
-      const touchedInHistory = (loan.history || []).some(h => h.userId === currentUser?.id);
-      return assignedByMe || everAssigned || touchedInHistory;
-    });
-  }, [allLoans, currentUser]);
+  const delegatedLoans = useMemo(() => delegatedPortfolioLoans, [delegatedPortfolioLoans]);
 
   const filterLoans = (list: LoanRequest[]) => {
     if (!searchTerm) return list;
@@ -121,12 +124,13 @@ export default function IncomingCasesPage() {
   const exportDelegatedToCSV = () => {
     if (filteredDelegated.length === 0) return;
     const headers = [
-      'Loan Number', 'Customer', 'Current Stage', 'Current Assignees', 'Assigned Department', 'Stage Deadline', 'Assignment/Completion History'
+      'Loan Number', 'Customer', 'Current Stage', 'Current Assignees', 'Assigned Department', 'Stage Deadline', 'Latest Activity', 'Latest Activity At', 'Assignment/Completion History'
     ];
     const csvData = filteredDelegated.map(loan => {
       // Find assignment/completion events in history
       const assignmentEvents = (loan.history || []).filter(h => h.notes && (h.notes.toLowerCase().includes('assigned') || h.notes.toLowerCase().includes('completed') || h.notes.toLowerCase().includes('reassign')));
       const historySummary = assignmentEvents.map(h => `${h.timestamp}: ${h.userName} (${h.userRole || ''}) - ${h.notes}`).join(' | ');
+      const latestHistory = (loan.history || [])[0];
       return [
         loan.loanNumber,
         loan.customerName,
@@ -134,6 +138,8 @@ export default function IncomingCasesPage() {
         loan.assignedToUsers.map(u => u.fullName).join('; '),
         loan.assignedDepartment || '',
         loan.stageDeadline ? format(parseISO(loan.stageDeadline), 'MMM dd, yyyy') : '',
+        latestHistory?.notes || '',
+        latestHistory?.timestamp ? format(parseISO(latestHistory.timestamp), 'MMM dd, yyyy HH:mm') : '',
         historySummary
       ];
     });
@@ -317,6 +323,7 @@ export default function IncomingCasesPage() {
                         <TableHead>Assigned Staff</TableHead>
                         <TableHead>Current Stage</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Latest Activity</TableHead>
                         <TableHead>Last Updated</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -352,6 +359,12 @@ export default function IncomingCasesPage() {
                             ) : (
                               <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">In Progress</Badge>
                             )}
+                          </TableCell>
+                          <TableCell className="max-w-[280px]">
+                            <div className="text-xs font-medium truncate">{loan.history?.[0]?.notes || 'No recent update'}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {loan.history?.[0]?.timestamp ? format(parseISO(loan.history[0].timestamp), 'MMM dd, HH:mm') : '-'}
+                            </div>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {format(parseISO(loan.lastUpdatedDate), 'MMM dd, HH:mm')}

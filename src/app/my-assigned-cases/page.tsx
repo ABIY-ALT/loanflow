@@ -2,12 +2,13 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, History, Download, Inbox } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ExternalLink, Loader2, AlertCircle, Building, Clock, Flame, History, Download, Inbox, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { QuickFollowUpDialog } from '@/components/loan/dialogs/QuickFollowUpDialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { getAssignedLoanRequests, getCompletedCaseHistory, type CompletedCaseRecord } from '@/services/loan-service-prisma';
 import type { LoanRequest } from '@/types/loan';
 import { format, parseISO } from 'date-fns';
@@ -27,6 +28,7 @@ export default function MyAssignedCasesPage() {
   const [completedCases, setCompletedCases] = useState<CompletedCaseRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const canViewPage = useMemo(() => currentUser?.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES), [currentUser]);
 
@@ -67,24 +69,56 @@ export default function MyAssignedCasesPage() {
       }
     }
     fetchPageData();
+    const intervalId = window.setInterval(fetchPageData, 15000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [currentUser, authIsLoading, canViewPage]);
 
+  const filteredAssignedLoans = useMemo(() => {
+    const lowerSearch = searchTerm.trim().toLowerCase();
+    if (!lowerSearch) return assignedLoans;
+
+    return assignedLoans.filter((loan) =>
+      loan.loanNumber.toLowerCase().includes(lowerSearch) ||
+      loan.customerName.toLowerCase().includes(lowerSearch) ||
+      (loan.currentStageName || '').toLowerCase().includes(lowerSearch) ||
+      (loan.assignedDepartment || '').toLowerCase().includes(lowerSearch)
+    );
+  }, [assignedLoans, searchTerm]);
+
+  const filteredCompletedCases = useMemo(() => {
+    const lowerSearch = searchTerm.trim().toLowerCase();
+    if (!lowerSearch) return completedCases;
+
+    return completedCases.filter((c) =>
+      c.loanNumber.toLowerCase().includes(lowerSearch) ||
+      c.customerName.toLowerCase().includes(lowerSearch) ||
+      c.actionType.toLowerCase().includes(lowerSearch) ||
+      (c.currentDepartment || '').toLowerCase().includes(lowerSearch) ||
+      (c.currentStage || '').toLowerCase().includes(lowerSearch) ||
+      (c.latestEvent || '').toLowerCase().includes(lowerSearch)
+    );
+  }, [completedCases, searchTerm]);
+
   const sortedLoans = useMemo(() => {
-    return [...assignedLoans].sort((a, b) => {
+    return [...filteredAssignedLoans].sort((a, b) => {
       if (a.isUrgent && !b.isUrgent) return -1;
       if (!a.isUrgent && b.isUrgent) return 1;
       if (a.isOverdue && !b.isOverdue) return -1;
       if (!a.isOverdue && b.isOverdue) return 1;
       return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
     });
-  }, [assignedLoans]);
+  }, [filteredAssignedLoans]);
+
+  const currentUserDepartmentNormalized = (currentUser?.department || '').trim().toLowerCase();
 
   const exportAssignedCasesToCSV = () => {
-    if (assignedLoans.length === 0) return;
+    if (sortedLoans.length === 0) return;
     const headers = [
       'Loan Number', 'Customer', 'Current Stage', 'Current Assignees', 'Assigned Department', 'Stage Deadline', 'Assignment/Completion History'
     ];
-    const csvData = assignedLoans.map(loan => {
+    const csvData = sortedLoans.map(loan => {
       const assignmentEvents = (loan.history || []).filter(h => h.notes && (h.notes.toLowerCase().includes('assigned') || h.notes.toLowerCase().includes('completed') || h.notes.toLowerCase().includes('reassign')));
       const historySummary = assignmentEvents.map(h => `${h.timestamp}: ${h.userName} (${h.userRole || ''}) - ${h.notes}`).join(' | ');
       return [
@@ -113,12 +147,31 @@ export default function MyAssignedCasesPage() {
   };
 
   const exportCaseHistoryToCSV = () => {
-    if (completedCases.length === 0) return;
-    const headers = ['Loan Number', 'Customer Name', 'Marked Completed By', 'Completion Date & Time', 'Next Destination', 'Reason / Comment'];
-    const csvData = completedCases.map(c => [
-      c.loanNumber, c.customerName, c.completedByName,
+    if (filteredCompletedCases.length === 0) return;
+    const headers = [
+      'Loan Number',
+      'Customer Name',
+      'Action Type',
+      'Marked Completed By',
+      'Completion Date & Time',
+      'Next Destination',
+      'Current Department',
+      'Current Stage',
+      'Current Status',
+      'Latest Event',
+      'Latest Event At',
+      'Reason / Comment'
+    ];
+    const csvData = filteredCompletedCases.map(c => [
+      c.loanNumber, c.customerName, c.actionType, c.completedByName,
       c.completionDate ? format(parseISO(c.completionDate), 'MMM dd, yyyy HH:mm') : '',
-      c.nextDestination, c.comment || '',
+      c.nextDestination,
+      c.currentDepartment,
+      c.currentStage,
+      c.currentStatus,
+      c.latestEvent,
+      c.latestEventAt ? format(parseISO(c.latestEventAt), 'MMM dd, yyyy HH:mm') : '',
+      c.comment || '',
     ]);
     const csvContent = [
       headers.join(','),
@@ -218,7 +271,16 @@ export default function MyAssignedCasesPage() {
               Cases currently assigned to <span className="font-semibold text-primary">{currentUser?.fullName || 'you'}</span>.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search cases..."
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
             <Link href="/" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard</Button></Link>
           </div>
         </div>
@@ -233,18 +295,18 @@ export default function MyAssignedCasesPage() {
 
         <Tabs defaultValue="assigned" className="w-full">
           <TabsList>
-            <TabsTrigger value="assigned">Assigned Cases ({assignedLoans.length})</TabsTrigger>
-            <TabsTrigger value="history">Case History ({completedCases.length})</TabsTrigger>
+            <TabsTrigger value="assigned">Assigned Cases ({sortedLoans.length})</TabsTrigger>
+            <TabsTrigger value="history">Case History ({filteredCompletedCases.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="assigned">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle>Assigned Cases ({assignedLoans.length})</CardTitle>
+                  <CardTitle>Assigned Cases ({sortedLoans.length})</CardTitle>
                   <CardDescription>Loan cases where you are currently assigned as a staff member. Click to view details.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={exportAssignedCasesToCSV} disabled={assignedLoans.length === 0}>
+                <Button variant="outline" size="sm" onClick={exportAssignedCasesToCSV} disabled={sortedLoans.length === 0}>
                   <Download className="mr-2 h-4 w-4" />Export CSV
                 </Button>
               </CardHeader>
@@ -327,18 +389,18 @@ export default function MyAssignedCasesPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Case History</CardTitle>
-                  <CardDescription>History of cases previously assigned to you. View where the case went next after you marked it complete.</CardDescription>
+                  <CardDescription>History of your case interactions (assigned by you, assigned to you, complete, approve, and review actions). Track where each case is now and the latest activity in real time.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={exportCaseHistoryToCSV} disabled={completedCases.length === 0}>
+                <Button variant="outline" size="sm" onClick={exportCaseHistoryToCSV} disabled={filteredCompletedCases.length === 0}>
                   <Download className="mr-2 h-4 w-4" />Export CSV
                 </Button>
               </CardHeader>
               <CardContent>
-                {completedCases.length === 0 ? (
+                {filteredCompletedCases.length === 0 ? (
                   <div className="py-16 text-center text-muted-foreground">
                     <Inbox className="mx-auto mb-4 h-12 w-12" />
                     <p className="text-lg font-semibold">No Case History</p>
-                    <p className="mt-1">You have not marked any assigned cases as completed yet.</p>
+                    <p className="mt-1">No matching interaction records found yet.</p>
                   </div>
                 ) : (
                   <Table>
@@ -346,25 +408,57 @@ export default function MyAssignedCasesPage() {
                       <TableRow>
                         <TableHead>Loan Number</TableHead>
                         <TableHead>Customer Name</TableHead>
-                        <TableHead>Marked Completed By</TableHead>
-                        <TableHead>Completion Date & Time</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Action Date & Time</TableHead>
                         <TableHead>Next Destination</TableHead>
+                        <TableHead>Current Location</TableHead>
+                        <TableHead>Latest Activity</TableHead>
                         <TableHead>Reason / Comment</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {completedCases.map((c) => (
+                      {filteredCompletedCases.map((c) => {
+                        const caseDepartmentNormalized = (c.currentDepartment || '').trim().toLowerCase();
+                        const isMovedOutOfDepartment = !!currentUserDepartmentNormalized && !!caseDepartmentNormalized && caseDepartmentNormalized !== currentUserDepartmentNormalized;
+                        return (
                         <TableRow key={c.id} className="hover:bg-muted/50">
                           <TableCell className="font-medium">{c.loanNumber}</TableCell>
                           <TableCell>{c.customerName}</TableCell>
-                          <TableCell>{c.completedByName}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{c.actionType}</Badge>
+                          </TableCell>
                           <TableCell>{format(parseISO(c.completionDate), 'MMM dd, yyyy HH:mm')}</TableCell>
                           <TableCell>{c.nextDestination}</TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p className="font-medium">{c.currentDepartment}</p>
+                              <p className="text-muted-foreground">{c.currentStage} ({c.currentStatus})</p>
+                              {isMovedOutOfDepartment && (
+                                <Badge variant="outline" className="mt-1 text-[11px] border-amber-400 text-amber-700 bg-amber-50">
+                                  Moved out of your department
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[260px]">
+                              <p className="truncate" title={c.latestEvent}>{c.latestEvent}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {c.latestEventAt ? format(parseISO(c.latestEventAt), 'MMM dd, yyyy HH:mm') : '-'}
+                              </p>
+                            </div>
+                          </TableCell>
                           <TableCell className="max-w-[250px] truncate" title={c.comment || ''}>
                             {c.comment || '-'}
                           </TableCell>
+                          <TableCell className="text-center">
+                            <Link href={`/loan-requests/${c.loanRequestId}`} passHref>
+                              <Button variant="ghost" size="sm"><ExternalLink className="h-4 w-4 mr-1" />View</Button>
+                            </Link>
+                          </TableCell>
                         </TableRow>
-                      ))}
+                      )})}
                     </TableBody>
                   </Table>
                 )}
