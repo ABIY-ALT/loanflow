@@ -103,7 +103,7 @@ const navItemsConfig: NavItemConfig[] = [
     icon: Network,
     requiredPermissions: [
       PERMISSIONS.VIEW_DISTRICT_DASHBOARD,
-      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
+      PERMISSIONS.VIEW_DISTRICT_ANALYST_REVIEW,
       PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE,
       PERMISSIONS.VIEW_OWN_SUBMITTED_CASES,
       PERMISSIONS.APPROVE_COMMITTEE_CASES,
@@ -120,7 +120,7 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/analyst/review',
         label: 'Analyst Review',
         icon: FileSearch,
-        requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+        requiredPermissions: [PERMISSIONS.VIEW_DISTRICT_ANALYST_REVIEW]
       },
       {
         href: '/committee/approval',
@@ -129,8 +129,8 @@ const navItemsConfig: NavItemConfig[] = [
         requiredPermissions: [PERMISSIONS.APPROVE_COMMITTEE_CASES]
       },
       {
-        href: '/manager-review',
-        label: 'Manager Review',
+        href: '/district/manager-review',
+        label: 'Manager Review (District)',
         icon: UserCheck,
         requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
       },
@@ -149,7 +149,7 @@ const navItemsConfig: NavItemConfig[] = [
     requiredPermissions: [
       PERMISSIONS.VIEW_DISTRICT_VALUATION,
       PERMISSIONS.VIEW_INCOMING_CASES,
-      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
+      PERMISSIONS.VIEW_MY_VALUATION_CASES,
       PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE,
     ],
     subItems: [
@@ -169,7 +169,7 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/valuation/my-cases',
         label: 'My Valuation',
         icon: ClipboardList,
-        requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+        requiredPermissions: [PERMISSIONS.VIEW_MY_VALUATION_CASES]
       },
     ]
   },

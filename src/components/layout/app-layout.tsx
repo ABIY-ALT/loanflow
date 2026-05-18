@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Bell, UserCircle, LogOut, Loader2, PanelLeft } from 'lucide-react'; // Landmark removed
+import { UserCircle, LogOut, Loader2, PanelLeft } from 'lucide-react';
+import { NotificationBell } from './notification-bell';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -98,10 +99,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <div className="flex items-center gap-4 ml-auto">
             {user ? (
               <>
-                <Button variant="ghost" size="icon" aria-label="Notifications">
-                  <Bell className="h-5 w-5" />
-                  <span className="sr-only">Notifications</span>
-                </Button>
+                <NotificationBell />
                 <div className="flex items-center gap-2">
                   <UserCircle className="h-6 w-6 text-muted-foreground" />
                   <div className="text-sm">

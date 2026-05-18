@@ -1,6 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
+import { ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -21,6 +24,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { ValuationQueueItem, ValuationStaff } from '@/types/valuation';
 
 export default function MyValuationCases() {
+  const { user: currentUser, isLoading: authLoading } = useAuth();
+  const canViewPage = useMemo(
+    () => currentUser?.permissions.includes(PERMISSIONS.VIEW_MY_VALUATION_CASES),
+    [currentUser]
+  );
   const [cases, setCases] = useState<ValuationQueueItem[]>([]);
   const [staff, setStaff] = useState<ValuationStaff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,8 +59,12 @@ export default function MyValuationCases() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!authLoading && canViewPage) {
+      fetchData();
+    } else if (!authLoading) {
+      setIsLoading(false);
+    }
+  }, [authLoading, canViewPage]);
 
   const handleRoute = async () => {
     if (!selectedCase || !selectedAssignee) return;
@@ -76,8 +88,20 @@ export default function MyValuationCases() {
 
   const officers = staff.filter(s => !s.customRole?.name.includes('Manager') && !s.customRole?.name.includes('Director'));
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  if (!canViewPage) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+        <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+        <p className="text-muted-foreground mb-6">
+          You need the My Valuation permission to access this page.
+        </p>
+      </div>
+    );
   }
 
   return (

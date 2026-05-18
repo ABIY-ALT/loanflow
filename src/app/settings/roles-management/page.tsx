@@ -342,12 +342,12 @@ export default function ManageRolesPage() {
                           return (
                            <div key={`${permissionKey}-${category.name}-${index}`} className="flex items-center space-x-2">
                              <Checkbox
-                               id={`perm-${permissionKey}`}
+                               id={`perm-${category.name}-${index}`}
                                checked={selectedPermissions.has(permissionKey)}
                                onCheckedChange={(checked) => handlePermissionChange(permissionKey, !!checked)}
                                disabled={isSubmitting}
                              />
-                             <Label htmlFor={`perm-${permissionKey}`} className="text-sm font-normal cursor-pointer leading-tight">
+                             <Label htmlFor={`perm-${category.name}-${index}`} className="text-sm font-normal cursor-pointer leading-tight">
                                {label}
                              </Label>
                            </div>

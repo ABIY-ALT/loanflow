@@ -180,6 +180,10 @@ export async function getMyValuationCases(): Promise<ValuationResult<{ cases: Va
   try {
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "getMyValuationCases");
+    const canView =
+      user.permissions.includes(PERMISSIONS.VIEW_MY_VALUATION_CASES) ||
+      user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+    if (!canView) return createErrorResult("Unauthorized", "getMyValuationCases");
 
     // For testing/Admin: Show everything in the department if admin
     // Otherwise show only what's assigned to the specific user

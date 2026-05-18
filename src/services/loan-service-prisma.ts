@@ -23,6 +23,7 @@ import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowSt
 import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import { getCommitteeSettings, getDistrictSettings } from './settings-service';
+import { createCaseAssignedNotifications } from './notification-service';
 import { getCurrentUser } from '@/app/auth/actions';
 import { normalizeEthiopianPhone } from '@/lib/utils';
 
@@ -652,7 +653,10 @@ export async function returnToDistrictAnalyst(
     await prisma.$transaction(async (tx) => {
       const loan = await tx.loanRequest.findUnique({
         where: { id: loanRequestId },
-        include: { workflowVersion: { include: { stages: true } } }
+        include: {
+          workflowVersion: { include: { stages: true } },
+          customer: { select: { name: true } },
+        },
       });
 
       if (!loan) throw new Error("Loan not found");
@@ -704,6 +708,17 @@ export async function returnToDistrictAnalyst(
           createdAt: now,
         }
       });
+
+      if (returnAssigneeIds.length > 0) {
+        await createCaseAssignedNotifications(tx, {
+          loanRequestId,
+          loanNumber: loan.loanNumber,
+          customerName: loan.customer?.name,
+          assigneeIds: returnAssigneeIds,
+          assignedByUserId: user.id,
+          assignedByName: user.fullName,
+        });
+      }
     });
 
     return { success: true };
@@ -1025,22 +1040,40 @@ export async function handoffValuationReturnToAnalyst(
       return createErrorResult("Selected user is not an analyst.", "handoffValuationReturnToAnalyst");
     }
 
-    await prisma.loanRequest.update({
+    const loanMeta = await prisma.loanRequest.findUnique({
       where: { id: loanRequestId },
-      data: {
-        assignedToUsers: { set: [{ id: analyst.id }] },
-        assignedBy: { connect: { id: user.id } },
-        currentStageStatus: "UNDER_ANALYSIS",
-        lastUpdatedDate: new Date(),
-        isReadyForManagerReview: false,
-        history: {
-          create: {
-            userId: user.id,
-            stageName: "Forward to Analyst",
-            notes: `Case returned from valuation and forwarded to district analyst (${analyst.name || analyst.id}) by ${user.name}.`,
+      select: { loanNumber: true, customer: { select: { name: true } } },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.loanRequest.update({
+        where: { id: loanRequestId },
+        data: {
+          assignedToUsers: { set: [{ id: analyst.id }] },
+          assignedBy: { connect: { id: user.id } },
+          currentStageStatus: "UNDER_ANALYSIS",
+          lastUpdatedDate: new Date(),
+          isReadyForManagerReview: false,
+          history: {
+            create: {
+              userId: user.id,
+              stageName: "Forward to Analyst",
+              notes: `Case returned from valuation and forwarded to district analyst (${analyst.name || analyst.id}) by ${user.name}.`,
+            },
           },
         },
-      },
+      });
+
+      if (loanMeta) {
+        await createCaseAssignedNotifications(tx, {
+          loanRequestId,
+          loanNumber: loanMeta.loanNumber,
+          customerName: loanMeta.customer?.name,
+          assigneeIds: [analyst.id],
+          assignedByUserId: user.id,
+          assignedByName: user.fullName,
+        });
+      }
     });
 
     return { success: true };
@@ -1145,6 +1178,7 @@ export async function updateLoanRequest(
         documents: true,
         assignedToUsers: true,
         currentWorkflowStage: true,
+        customer: { select: { name: true } },
       }
     });
     if (!existingLoan) throw new Error(`Loan not found.`);
@@ -1366,7 +1400,10 @@ export async function updateLoanRequest(
           });
 
           if (nextIds.length > 0) {
-            for (const assignedUser of selectedUsersForAssignmentAudit) {
+            const newlyAssigned = selectedUsersForAssignmentAudit.filter(
+              (u) => !previousIds.includes(u.id)
+            );
+            for (const assignedUser of newlyAssigned) {
               await tx.loanHistoryEntry.create({
                 data: {
                   loanRequest: { connect: { id } },
@@ -1375,6 +1412,16 @@ export async function updateLoanRequest(
                   timestamp: new Date(),
                   notes: `Case assigned to you by ${user.fullName}.`,
                 },
+              });
+            }
+            if (newlyAssigned.length > 0) {
+              await createCaseAssignedNotifications(tx, {
+                loanRequestId: id,
+                loanNumber: existingLoan.loanNumber,
+                customerName: existingLoan.customer?.name,
+                assigneeIds: newlyAssigned.map((u) => u.id),
+                assignedByUserId: user.id,
+                assignedByName: user.fullName,
               });
             }
           }
@@ -2110,19 +2157,50 @@ export interface CaseReviewRecord {
   performedByName: string;
   performedByDepartment?: string;
   caseDepartment?: string;
+  submissionType?: string;
   comment?: string;
   createdAt: string;
   finalStatus?: string;
 }
 
-export async function getCaseReviewHistory(departmentFilter?: string): Promise<{ reviews?: CaseReviewRecord[]; error?: string }> {
+export type CaseReviewHistoryFilter =
+  | string
+  | {
+      departmentFilter?: string;
+      performedByUserId?: string;
+      /** When set, limits history to district (TYPE2) or head office (non-TYPE2) workflow cases. */
+      workflowPath?: 'headoffice' | 'district';
+    };
+
+export async function getCaseReviewHistory(
+  filter?: CaseReviewHistoryFilter
+): Promise<{ reviews?: CaseReviewRecord[]; error?: string }> {
   try {
     const { user } = await getCurrentUser();
     if (!user || !user.permissions.includes(PERMISSIONS.VIEW_MANAGER_REVIEW_HISTORY)) {
       return createErrorResult("Unauthorized", "getCaseReviewHistory");
     }
 
+    let departmentFilter: string | undefined;
+    let performedByUserId: string | undefined;
+    let workflowPath: 'headoffice' | 'district' | undefined;
+    if (typeof filter === 'string') {
+      departmentFilter = filter;
+    } else if (filter) {
+      departmentFilter = filter.departmentFilter;
+      performedByUserId = filter.performedByUserId;
+      workflowPath = filter.workflowPath;
+    }
+
     const records = await prisma.caseReviewHistory.findMany({
+      where: {
+        ...(performedByUserId ? { performedById: performedByUserId } : {}),
+        ...(workflowPath === 'district'
+          ? { loanRequest: { submissionType: 'TYPE2' } }
+          : workflowPath === 'headoffice'
+            ? { loanRequest: { submissionType: { not: 'TYPE2' } } }
+            : {}),
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         loanRequest: {
@@ -2148,6 +2226,7 @@ export async function getCaseReviewHistory(departmentFilter?: string): Promise<{
       performedByName: r.performedBy.name,
       performedByDepartment: r.performedBy.department?.name,
       caseDepartment: r.loanRequest.assignedDepartment?.name,
+      submissionType: r.loanRequest.submissionType,
       comment: r.comment || undefined,
       createdAt: formatISO(new Date(r.createdAt)),
       finalStatus: r.loanRequest.currentStageStatus || undefined,

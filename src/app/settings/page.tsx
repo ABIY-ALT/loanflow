@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreVertical, ChevronDown, ChevronUp, Map, Briefcase, Network } from 'lucide-react';
+import { Check, PlusCircle, Trash2, AlertTriangle, Save, Clock, GripVertical, FileText, Users, Percent, Copy, Eye, Edit, History, Type as TypeIcon, ShieldCheck, ShieldOff, Loader2, ShieldAlert, ArrowLeft, ArrowRight, MoreVertical, ChevronDown, ChevronUp, Map, Briefcase, Network, GitBranch } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Accordion,
@@ -749,6 +749,58 @@ export default function SettingsPage() {
     }
   }, [referenceWorkflowOptions, newWorkflowReferenceId]);
 
+  // Parent path → child sector → workflows (drill-down tree)
+  const workflowPathTree = useMemo(() => {
+    const sortWorkflows = (list: WorkflowDefinition[]) =>
+      [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    const paths = parentSectors.map((parent) => {
+      const childSectorList = sectors.filter((s) => s.parentId === parent.id);
+      const children = childSectorList.map((child) => ({
+        id: child.id,
+        name: child.name,
+        workflows: sortWorkflows(workflowDefinitions.filter((wf) => wf.sectorId === child.id)),
+      }));
+
+      const directWorkflows = sortWorkflows(
+        workflowDefinitions.filter((wf) => wf.sectorId === parent.id)
+      );
+      if (directWorkflows.length > 0 && !children.some((c) => c.id === parent.id)) {
+        children.unshift({
+          id: parent.id,
+          name: parent.name,
+          workflows: directWorkflows,
+        });
+      }
+
+      return { id: parent.id, name: parent.name, children };
+    });
+
+    const coveredIds = new Set(
+      paths.flatMap((p) => p.children.flatMap((c) => c.workflows.map((w) => w.id)))
+    );
+    const orphans = workflowDefinitions.filter((wf) => !coveredIds.has(wf.id));
+    if (orphans.length > 0) {
+      const bySector = new Map<string, WorkflowDefinition[]>();
+      for (const wf of orphans) {
+        const key = wf.sectorId || 'unknown';
+        if (!bySector.has(key)) bySector.set(key, []);
+        bySector.get(key)!.push(wf);
+      }
+      paths.push({
+        id: 'unclassified',
+        name: 'Unclassified',
+        children: Array.from(bySector.entries()).map(([sectorId, wfs]) => ({
+          id: sectorId,
+          name: wfs[0]?.sectorName || 'Unknown sector',
+          workflows: sortWorkflows(wfs),
+        })),
+      });
+    }
+
+    return paths;
+  }, [parentSectors, sectors, workflowDefinitions]);
+
 
   const handleActivateWorkflowVersion = (definitionId: string, versionId: string) => {
     if (!canManageWorkflows) return;
@@ -1086,24 +1138,6 @@ export default function SettingsPage() {
         </div>
     );
   }
-  
-  // Map all parent sectors, even those with no workflows
-  const workflowsByParentSector: Record<string, { parentSectorName: string; workflows: WorkflowDefinition[] }> = {};
-  parentSectors.forEach(parent => {
-    workflowsByParentSector[parent.id] = {
-      parentSectorName: parent.name,
-      workflows: workflowDefinitions.filter(wf => wf.parentSectorId === parent.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    };
-  });
-  // Optionally, handle workflows with no parent sector
-  const orphanWorkflows = workflowDefinitions.filter(wf => !wf.parentSectorId);
-  if (orphanWorkflows.length > 0) {
-    workflowsByParentSector['unclassified'] = {
-      parentSectorName: 'Unclassified',
-      workflows: orphanWorkflows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    };
-  }
-
 
   return (
     <div className="space-y-8">
@@ -1346,21 +1380,44 @@ export default function SettingsPage() {
               </Accordion>
               <Separator/>
               <h4 className="font-medium text-lg pt-4">Current Workflow Paths & Definitions</h4>
-              <Accordion type="multiple" className="w-full space-y-4">
-              {Object.keys(workflowsByParentSector).length === 0 && <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>}
-              {Object.values(workflowsByParentSector).map(({ parentSectorName, workflows }) => (
-                <AccordionItem value={`path-${parentSectorName}`} key={`path-${parentSectorName}`}>
-                   <AccordionTrigger>
-                       <span className="flex items-center text-lg"><Briefcase className="mr-2 h-5 w-5 text-primary"/> Path for: {parentSectorName}</span>
+              <p className="text-sm text-muted-foreground mb-3">
+                Expand a path to see child sectors, then expand a child to view its workflow sequence.
+              </p>
+              <Accordion type="single" collapsible className="w-full space-y-2">
+              {workflowPathTree.length === 0 && (
+                <div className="p-4 border rounded-lg text-center text-muted-foreground">No workflows defined yet.</div>
+              )}
+              {workflowPathTree.map((path) => (
+                <AccordionItem value={`path-${path.id}`} key={`path-${path.id}`} className="border rounded-lg px-2">
+                   <AccordionTrigger className="hover:no-underline py-3">
+                       <span className="flex items-center text-lg flex-wrap gap-2">
+                         <Briefcase className="mr-1 h-5 w-5 text-primary shrink-0"/>
+                         Path for: {path.name}
+                         <Badge variant="secondary">{path.children.length} {path.children.length === 1 ? 'sector' : 'sectors'}</Badge>
+                       </span>
                    </AccordionTrigger>
-                   <AccordionContent className="space-y-4 pt-2">
-                      <div className="p-4 border rounded-lg">
-                        <h5 className="font-medium mb-3">Workflow Sequence</h5>
-                        <div className="flex flex-wrap items-center gap-4 pb-2">
-                          {workflows.length === 0 ? (
-                            <p className="text-muted-foreground">No workflows defined for this category.</p>
-                          ) : (
-                            workflows.map((def, index) => (
+                   <AccordionContent className="space-y-3 pt-1 pb-4 pl-2">
+                      {path.children.length === 0 ? (
+                        <p className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/20">No child sectors or workflows under this path.</p>
+                      ) : (
+                        <Accordion type="single" collapsible className="w-full space-y-2">
+                          {path.children.map((child) => (
+                            <AccordionItem value={`child-${path.id}-${child.id}`} key={`child-${path.id}-${child.id}`} className="border rounded-md px-2 bg-muted/10">
+                              <AccordionTrigger className="hover:no-underline py-2.5">
+                                <span className="flex items-center text-base flex-wrap gap-2">
+                                  <GitBranch className="h-4 w-4 text-primary shrink-0" />
+                                  {child.name}
+                                  <Badge variant="outline">{child.workflows.length} workflow{child.workflows.length === 1 ? '' : 's'}</Badge>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className="space-y-4 pt-2 pb-3">
+                                <div className="p-4 border rounded-lg bg-background">
+                                  <h5 className="font-medium mb-3">Workflow Sequence — {child.name}</h5>
+                                  <div className="flex flex-wrap items-center gap-4 pb-2">
+                                    {child.workflows.length === 0 ? (
+                                      <p className="text-muted-foreground text-sm">No workflows defined for this sector.</p>
+                                    ) : (
+                                      child.workflows.map((def, index) => (
                               <React.Fragment key={def.id}>
                                 <div className="flex flex-col items-center text-center w-36">
                                   <div className="h-10 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full font-bold text-lg shrink-0">{index + 1}</div>
@@ -1368,13 +1425,13 @@ export default function SettingsPage() {
                                    <div className="text-xs text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" />{def.sectorName}</div>
                                   <div className="text-xs text-muted-foreground">{def.departmentName}</div>
                                 </div>
-                                {index < workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
+                                {index < child.workflows.length - 1 && <ArrowRight className="h-6 w-6 text-muted-foreground shrink-0" />}
                               </React.Fragment>
                             ))
                           )}
                         </div>
                       </div>
-                      {workflows.map(def => (
+                      {child.workflows.map(def => (
                         <Card key={def.id} className="shadow-sm">
                             <CardHeader>
                                 <div className="flex justify-between items-start">
@@ -1382,7 +1439,7 @@ export default function SettingsPage() {
                                     <CardTitle className="text-xl">{def.order + 1}. {def.name}</CardTitle>
                                     <div className="flex flex-wrap items-center gap-2 mt-2">
                                         <Badge variant="outline">Dept: {def.departmentName || 'N/A'}</Badge>
-                                        <Badge variant="secondary">Child Sector: {def.sectorName || 'N/A'}</Badge>
+                                        <Badge variant="secondary">Sector: {def.sectorName || 'N/A'}</Badge>
                                     </div>
                                   </div>
                                   <Button variant="ghost" size="sm" onClick={() => handleOpenEditDefinitionDialog(def)}><Edit className="mr-2 h-4 w-4"/> Edit Definition</Button>
@@ -1414,6 +1471,11 @@ export default function SettingsPage() {
                             </CardContent>
                         </Card>
                       ))}
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
+                      )}
                    </AccordionContent>
                 </AccordionItem>
               ))}

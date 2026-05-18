@@ -41,7 +41,13 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import Link from 'next/link';
 import { PERMISSIONS } from '@/lib/permissions';
 
-export default function ManagerReviewQueuePage() {
+export function ManagerReviewQueuePage({
+  defaultTab = 'headoffice',
+  pageTitle = 'Manager Review Queue',
+}: {
+  defaultTab?: 'district' | 'headoffice';
+  pageTitle?: string;
+}) {
   const { toast } = useToast();
   const router = useRouter();
   const { user: currentUser, isLoading: authIsLoading } = useAuth();
@@ -79,7 +85,10 @@ export default function ManagerReviewQueuePage() {
       try {
         const [loansResult, historyResult, usersResult, wfResult] = await Promise.all([
           getLoanRequests(),
-          getCaseReviewHistory(currentUser.department),
+          getCaseReviewHistory({
+            performedByUserId: currentUser.id,
+            workflowPath: defaultTab === 'district' ? 'district' : 'headoffice',
+          }),
           getDepartmentUsers(),
           getWorkflowDefinitions()
         ]);
@@ -88,14 +97,17 @@ export default function ManagerReviewQueuePage() {
         if (loansResult && 'loans' in loansResult) {
           const districtDepartments = ['District', 'Service Sector Department'];
           const isDistrictReviewer = districtDepartments.includes(currentUser.department || '');
+          const isDistrictQueue = defaultTab === 'district';
 
           const filtered = (loansResult.loans as LoanRequest[]).filter(l => {
             if (!(l.isReadyForManagerReview || l.isTerminalStage)) return false;
 
-            if (l.submissionType === 'TYPE2') {
-              return isDistrictReviewer;
+            if (isDistrictQueue) {
+              return l.submissionType === 'TYPE2' && isDistrictReviewer;
             }
 
+            // Head Office manager review — exclude district (TYPE-2) workflow cases
+            if (l.submissionType === 'TYPE2') return false;
             return l.assignedDepartment === currentUser.department;
           });
 
@@ -113,7 +125,7 @@ export default function ManagerReviewQueuePage() {
       }
     }
     fetchPageData();
-  }, [currentUser, authIsLoading, canViewPage]);
+  }, [currentUser, authIsLoading, canViewPage, defaultTab]);
 
   const handleLocalAndUpdateService = async (loanId: string, updates: Partial<LoanRequest>, successMsg: string) => {
     setIsSaving(true);
@@ -258,6 +270,13 @@ export default function ManagerReviewQueuePage() {
       return new Date(b.lastUpdatedDate).getTime() - new Date(a.lastUpdatedDate).getTime();
     });
   }, [filteredReviewLoans]);
+
+  const visibleTabs = useMemo(() => {
+    if (defaultTab === 'district') return ['district', 'history'];
+    return ['headoffice', 'history'];
+  }, [defaultTab]);
+
+  const selectedTab = visibleTabs.includes(defaultTab) ? defaultTab : visibleTabs[0];
 
   const exportReviewHistoryToCSV = () => {
     if (filteredReviews.length === 0) return;
@@ -487,10 +506,12 @@ export default function ManagerReviewQueuePage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
             <UserCheck className="mr-3 h-8 w-8 text-primary" />
-            Manager Review Queue
+            {pageTitle}
           </h1>
           <p className="text-muted-foreground">
-            These loans for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department have been submitted for review. Urgent cases are prioritized.
+            {defaultTab === 'district'
+              ? <>District (TYPE-2) cases for the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department awaiting manager review. Urgent cases are prioritized.</>
+              : <>Head Office cases assigned to the <span className="font-semibold text-primary">{currentUser?.department || 'N/A'}</span> department awaiting manager review. Urgent cases are prioritized.</>}
           </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -515,45 +536,52 @@ export default function ManagerReviewQueuePage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="all" className="w-full">
+      <Tabs defaultValue={selectedTab} className="w-full">
         <TabsList>
-          <TabsTrigger value="all">All Cases ({sortedLoans.length})</TabsTrigger>
-          <TabsTrigger value="district">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-amber-500"/>
-              District ({sortedLoans.filter(l => l.submissionType === 'TYPE2').length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="headoffice">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-blue-500"/>
-              Head Office ({sortedLoans.filter(l => l.submissionType !== 'TYPE2').length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="history">History ({filteredReviews.length})</TabsTrigger>
+          {visibleTabs.includes('district') && (
+            <TabsTrigger value="district">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-amber-500"/>
+                District ({sortedLoans.length})
+              </span>
+            </TabsTrigger>
+          )}
+          {visibleTabs.includes('headoffice') && (
+            <TabsTrigger value="headoffice">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-blue-500"/>
+                Head Office ({sortedLoans.length})
+              </span>
+            </TabsTrigger>
+          )}
+          {visibleTabs.includes('history') && (
+            <TabsTrigger value="history">History ({filteredReviews.length})</TabsTrigger>
+          )}
         </TabsList>
 
-        {/* ALL CASES TAB */}
-        <TabsContent value="all">
-          {renderQueueTable(sortedLoans, 'all')}
-        </TabsContent>
+        {visibleTabs.includes('district') && (
+          <TabsContent value="district">
+            {renderQueueTable(sortedLoans, 'district')}
+          </TabsContent>
+        )}
 
-        {/* DISTRICT SPECIALIZED TAB */}
-        <TabsContent value="district">
-          {renderQueueTable(sortedLoans.filter(l => l.submissionType === 'TYPE2'), 'district')}
-        </TabsContent>
+        {visibleTabs.includes('headoffice') && (
+          <TabsContent value="headoffice">
+            {renderQueueTable(sortedLoans, 'headoffice')}
+          </TabsContent>
+        )}
 
-        {/* HEAD OFFICE NORMAL TAB */}
-        <TabsContent value="headoffice">
-          {renderQueueTable(sortedLoans.filter(l => l.submissionType !== 'TYPE2'), 'headoffice')}
-        </TabsContent>
-
-        <TabsContent value="history">
+        {visibleTabs.includes('history') && (
+          <TabsContent value="history">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Manager Review History</CardTitle>
-                <CardDescription>Track all approval and rework decisions made by managers and directors.</CardDescription>
+                <CardTitle>My Review History</CardTitle>
+                <CardDescription>
+                  {defaultTab === 'district'
+                    ? 'Your district (TYPE-2) approvals, assignments, and rework decisions only.'
+                    : 'Your head office workflow decisions only — district (TYPE-2) cases are listed under District Manager Review.'}
+                </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={exportReviewHistoryToCSV} disabled={filteredReviews.length === 0}>
                 <Download className="mr-2 h-4 w-4" />Export CSV
@@ -564,7 +592,7 @@ export default function ManagerReviewQueuePage() {
                 <div className="py-16 text-center text-muted-foreground">
                   <Inbox className="mx-auto mb-4 h-12 w-12" />
                   <p className="text-lg font-semibold">No Review History</p>
-                  <p className="mt-1">No approval or rework decisions have been recorded for your department yet.</p>
+                  <p className="mt-1">You have not recorded any approval or rework decisions yet.</p>
                 </div>
               ) : (
                 <Table>
@@ -619,6 +647,7 @@ export default function ManagerReviewQueuePage() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
       </Tabs>
       <EditLoanDetailsDialog 
         isOpen={isAssignDialogOpen} 
@@ -656,4 +685,8 @@ export default function ManagerReviewQueuePage() {
       />
     </div>
   );
+}
+
+export default function ManagerReviewPage() {
+  return <ManagerReviewQueuePage />;
 }

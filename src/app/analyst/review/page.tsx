@@ -26,7 +26,7 @@ import { useRouter } from 'next/navigation';
 export default function AnalystReview() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const canViewPage = useMemo(
-    () => currentUser?.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES),
+    () => currentUser?.permissions.includes(PERMISSIONS.VIEW_DISTRICT_ANALYST_REVIEW),
     [currentUser]
   );
   const [loans, setLoans] = useState<any[]>([]);
@@ -71,7 +71,7 @@ export default function AnalystReview() {
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
         <p className="text-muted-foreground mb-6">
-          You need the Analyst Review permission (My Assigned Cases) to access this page.
+          You need the Analyst Review permission to access this page.
         </p>
       </div>
     );

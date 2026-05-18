@@ -13,7 +13,9 @@ export const PERMISSIONS = {
 
   // Loan Creation & Officer Actions
   CREATE_LOAN_REQUEST: "CREATE_LOAN_REQUEST",
-  VIEW_OWN_ASSIGNED_CASES: "VIEW_OWN_ASSIGNED_CASES", // Specific to logged-in user
+  VIEW_OWN_ASSIGNED_CASES: "VIEW_OWN_ASSIGNED_CASES", // My Workspace — general assigned cases
+  VIEW_MY_VALUATION_CASES: "VIEW_MY_VALUATION_CASES", // District Valuation — My Valuation page
+  VIEW_DISTRICT_ANALYST_REVIEW: "VIEW_DISTRICT_ANALYST_REVIEW", // District Workflow — Analyst Review page
   VIEW_OWN_SUBMITTED_CASES: "VIEW_OWN_SUBMITTED_CASES", // Visibility for inputters/creators
   EDIT_LOAN_DETAILS: "EDIT_LOAN_DETAILS", // Can edit core loan data
   ASSIGN_LOAN_TO_STAFF: "ASSIGN_LOAN_TO_STAFF", // Can assign/reassign staff
@@ -68,6 +70,8 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_CUSTOMERS: "Can view the list of all customers.",
   CREATE_LOAN_REQUEST: "Can submit new loan requests into the system.",
   VIEW_OWN_ASSIGNED_CASES: "Can view the 'My Assigned Cases' page (cases assigned to them).",
+  VIEW_MY_VALUATION_CASES: "Can view the 'My Valuation' page (valuation cases assigned to them).",
+  VIEW_DISTRICT_ANALYST_REVIEW: "Can access the District Analyst Review queue.",
   VIEW_OWN_SUBMITTED_CASES: "Can view the 'My Submitted Cases' page (cases they created).",
   EDIT_LOAN_DETAILS: "Can edit loan details and customer information.",
   ASSIGN_LOAN_TO_STAFF: "Can assign or re-assign a loan to a specific staff member.",
@@ -133,7 +137,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: PermissionCateg
     name: "District Workflow (Sidebar)",
     permissions: [
       { permission: "VIEW_DISTRICT_DASHBOARD", label: "District Dashboard — analytics, CRM performance, loan summaries" },
-      { permission: "VIEW_OWN_ASSIGNED_CASES", label: "Analyst Review — review assigned district cases" },
+      { permission: "VIEW_DISTRICT_ANALYST_REVIEW", label: "Analyst Review — review assigned district cases" },
       { permission: "APPROVE_COMMITTEE_CASES", label: "Committee Approval — view and vote on committee cases" },
       { permission: "VIEW_MANAGER_REVIEW_QUEUE", label: "Manager Review (District) — district manager review queue" },
       { permission: "VIEW_OWN_SUBMITTED_CASES", label: "District Submissions — cases submitted by the user" },
@@ -146,7 +150,7 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: PermissionCateg
       { permission: "VIEW_DISTRICT_VALUATION", label: "District Valuation — access valuation queues and review" },
       { permission: "VIEW_INCOMING_CASES", label: "Valuation Queue — incoming valuation cases" },
       { permission: "VIEW_MANAGER_REVIEW_QUEUE", label: "Valuation Review — manager valuation review" },
-      { permission: "VIEW_OWN_ASSIGNED_CASES", label: "My Valuation — assigned valuation cases" },
+      { permission: "VIEW_MY_VALUATION_CASES", label: "My Valuation — assigned valuation cases" },
     ],
   },
   {
