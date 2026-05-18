@@ -25,6 +25,9 @@ model User {
   departmentId        String?
   department          Department? @relation(fields: [departmentId], references: [id])
 
+  districtId          String?
+  district            District?   @relation(fields: [districtId], references: [id])
+
   customRoleId        String?
   customRole          Role?       @relation(fields: [customRoleId], references: [id])
 
@@ -35,6 +38,12 @@ model User {
   submittedLoans      LoanRequest[] @relation("LoanCreator")
   historyEntries      LoanHistoryEntry[]
   caseReviews         CaseReviewHistory[] @relation("CaseReviewPerformer")
+
+  // Type 2 Enhancements
+  crmMappings         BranchCRMMapping[]
+  valuationAssignments ValuationQueue[] @relation("ValuationAssignee")
+  valuationMakedCases  ValuationQueue[] @relation("ValuationMaker")
+  committeeDecisions  CommitteeDecision[]
 
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -86,6 +95,7 @@ model District {
   id        String   @id @default(cuid())
   name      String   @unique
   branches  Branch[]
+  users     User[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -97,6 +107,8 @@ model Branch {
   district   District @relation(fields: [districtId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  crmMappings BranchCRMMapping[]
 
   @@unique([name, districtId])
 }
@@ -196,6 +208,18 @@ model LoanRequest {
   createdById             String?
   createdBy               User?    @relation("LoanCreator", fields: [createdById], references: [id])
 
+  // Type 2 Enhancements
+  submissionType          String   @default("TYPE1")
+  lafStatus               String   @default("PENDING")
+  lafData                 String?  // JSON string for LAF specific fields
+  pvrData                 String?  // JSON string for PVR specific fields
+  customerSummaryData     String?  // JSON string for CAFC specific fields
+  valuationReportData     String?  // JSON string for Valuation Report fields
+  isReadyForValuation     Boolean  @default(false)
+  isValuationCompleted    Boolean  @default(false)
+  valuationQueue          ValuationQueue?
+  committeeDecisions      CommitteeDecision[]
+
   history                 LoanHistoryEntry[]
   documents               LoanDocument[]
   caseReviews             CaseReviewHistory[]
@@ -261,4 +285,50 @@ model CaseReviewHistory {
   performedBy   User     @relation("CaseReviewPerformer", fields: [performedById], references: [id])
   comment       String?
   createdAt     DateTime @default(now())
+}
+
+model BranchCRMMapping {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, userId])
+}
+
+model ValuationQueue {
+  id              String   @id @default(cuid())
+  loanRequestId   String   @unique
+  loanRequest     LoanRequest @relation(fields: [loanRequestId], references: [id])
+  status          String   // PENDING, ASSIGNED_TO_MANAGER, ASSIGNED_TO_OFFICER, COMPLETED
+  routingOption   String?  // MANAGER, OFFICER
+  assignedToId    String?
+  assignedTo      User?    @relation("ValuationAssignee", fields: [assignedToId], references: [id])
+  makerId         String?  // The Manager (Maker) who assigned this to an officer
+  maker           User?    @relation("ValuationMaker", fields: [makerId], references: [id])
+  isCheckedByChecker Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CommitteeDecision {
+  id              String   @id @default(cuid())
+  loanRequestId   String
+  loanRequest     LoanRequest @relation(fields: [loanRequestId], references: [id])
+  memberId        String
+  member          User     @relation(fields: [memberId], references: [id])
+  decision        String   // APPROVE, REJECT
+  comment         String?
+  createdAt       DateTime @default(now())
+
+  @@unique([loanRequestId, memberId])
+}
+
+model SystemSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
 }

@@ -41,8 +41,8 @@ const appMockUsers: SeedUser[] = [
   { id: '00000022-aaaa-4b0b-a81f-000000000022', userId: '11111126-bbbb-49f0-b7c2-000000000022', name: 'Anteneh Mekonnen', email: 'Anteneh.Mekonnen@nibbank.com.et', firstName: 'Anteneh', lastName: 'Mekonnen', phoneNumber: '0911116228', department: 'Construction Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
   { id: '00000023-aaaa-4b0b-a81f-000000000023', userId: '11111127-bbbb-49f0-b7c2-000000000023', name: 'Abenezer Abraham', email: 'Abenezer.Abraham@nibbank.com.et', firstName: 'Abenezer', lastName: 'Abraham', phoneNumber: '0911698289', department: 'Construction Manufacturing and Agriculture Sector Department', jobTitle: 'CRM' },
   { id: '00000024-aaaa-4b0b-a81f-000000000024', userId: '11111128-bbbb-49f0-b7c2-000000000024', name: 'Wondwossen Enko', email: 'Wondwossen.Enko@nibbank.com.et', firstName: 'Wondwossen', lastName: 'Enko', phoneNumber: '0922577300', department: 'Property Valuation Department', jobTitle: 'Director' },
-  { id: '00000025-aaaa-4b0b-a81f-000000000025', userId: '11111129-bbbb-49f0-b7c2-000000000025', name: 'Natnael Bereded', email: 'Natnael.Bereded@nibbank.com.et', firstName: 'Natnael', lastName: 'Bereded', phoneNumber: '0911658056', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation' },
-  { id: '00000026-aaaa-4b0b-a81f-000000000026', userId: '1111112a-bbbb-49f0-b7c2-000000000026', name: 'Daniel Andualem', email: 'Daniel.Andualem@nibbank.com.et', firstName: 'Daniel', lastName: 'Andualem', phoneNumber: '0911156151', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation' },
+  { id: '00000025-aaaa-4b0b-a81f-000000000025', userId: '11111129-bbbb-49f0-b7c2-000000000025', name: 'Natnael Bereded', email: 'Natnael.Bereded@nibbank.com.et', firstName: 'Natnael', lastName: 'Bereded', phoneNumber: '0911658056', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation (Maker)' },
+  { id: '00000026-aaaa-4b0b-a81f-000000000026', userId: '1111112a-bbbb-49f0-b7c2-000000000026', name: 'Daniel Andualem', email: 'Daniel.Andualem@nibbank.com.et', firstName: 'Daniel', lastName: 'Andualem', phoneNumber: '0911156151', department: 'Property Valuation Department', jobTitle: 'Manager, Property Valuation (Checker)' },
   { id: '00000027-aaaa-4b0b-a81f-000000000027', userId: '1111112b-bbbb-49f0-b7c2-000000000027', name: 'Yidnekachew Awraris', email: 'Yidnekachew.Awraris@nibbank.com.et', firstName: 'Yidnekachew', lastName: 'Awraris', phoneNumber: '0913001100', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
   { id: '00000028-aaaa-4b0b-a81f-000000000028', userId: '1111112c-bbbb-49f0-b7c2-000000000028', name: 'Michael Abate', email: 'Michael.Abate@nibbank.com.et', firstName: 'Michael', lastName: 'Abate', phoneNumber: '0913597100', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
   { id: '00000029-aaaa-4b0b-a81f-000000000029', userId: '1111112d-bbbb-49f0-b7c2-000000000029', name: 'Frezer Endalkachew', email: 'Frezer.Endalkachew@nibbank.com.et', firstName: 'Frezer', lastName: 'Endalkachew', phoneNumber: '0911079216', department: 'Property Valuation Department', jobTitle: 'Senior Property Valuation Officer' },
@@ -248,14 +248,23 @@ async function main() {
     const jobTitle = (userData.jobTitle || '').toLowerCase();
     const departmentName = dept?.name || userData.department;
     let roleName = "Loan Officer";
-    if (departmentName === 'Property Valuation Department') roleName = 'Property Valuation Officer';
-    else if (departmentName === 'Credit Analysis & Appraisal Department') roleName = 'Credit Appraisal Officer';
-    if (jobTitle.includes("deputy chief")) roleName = "Deputy Chief";
-    else if (jobTitle.includes("director")) roleName = "Director";
-    else if (jobTitle.includes("manager")) roleName = "Manager";
-    else if (jobTitle.includes("crm")) roleName = "CRM";
-    else if (jobTitle.includes("secretary")) roleName = "Secretary";
-    else if (jobTitle.includes("chief")) roleName = "Chief";
+    if (departmentName === 'Property Valuation Department') {
+      if (jobTitle.includes("manager") && jobTitle.includes("maker")) roleName = "Manager, Property Valuation (Maker)";
+      else if (jobTitle.includes("manager") && jobTitle.includes("checker")) roleName = "Manager, Property Valuation (Checker)";
+      else if (jobTitle.includes("manager")) roleName = "Manager"; // Fallback
+      else roleName = 'Property Valuation Officer';
+    } else if (departmentName === 'Credit Analysis & Appraisal Department') {
+      roleName = 'Credit Appraisal Officer';
+    }
+    
+    if (roleName === "Loan Officer" || roleName === "Property Valuation Officer" || roleName === "Credit Appraisal Officer") {
+      if (jobTitle.includes("deputy chief")) roleName = "Deputy Chief";
+      else if (jobTitle.includes("director")) roleName = "Director";
+      else if (jobTitle.includes("manager") && departmentName !== 'Property Valuation Department') roleName = "Manager";
+      else if (jobTitle.includes("crm")) roleName = "CRM";
+      else if (jobTitle.includes("secretary")) roleName = "Secretary";
+      else if (jobTitle.includes("chief")) roleName = "Chief";
+    }
 
     const role = await prisma.role.findUnique({ where: { name: roleName } });
     const finalUserId = userData.userId || userData.id;
@@ -291,7 +300,11 @@ async function main() {
   // Admin Account
   await prisma.user.upsert({
     where: { email: 'system@loanflow.app' },
-    update: {},
+    update: {
+      phoneNumber: '0000000000',
+      isActive: true,
+      isPasswordChanged: true,
+    },
     create: {
       userId: 'system-admin',
       name: 'System Admin',

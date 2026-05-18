@@ -1,18 +1,21 @@
 'use client';
 import { Button } from '@/components/ui/button';
-import { 
-  ArrowLeft, 
-  StickyNote, 
-  Edit3, 
-  CheckSquare, 
-  ArrowRight, 
-  Undo2, 
-  Loader2, 
-  UserPlus, 
-  ShieldX, 
-  Shuffle, 
-  BadgeCheck, 
-  CheckCircle2 
+import { Badge } from '@/components/ui/badge';
+import {
+  ArrowLeft,
+  StickyNote,
+  Edit3,
+  CheckSquare,
+  ArrowRight,
+  Undo2,
+  Loader2,
+  UserPlus,
+  ShieldX,
+  Shuffle,
+  BadgeCheck,
+  CheckCircle2,
+  FileText,
+  SearchCheck,
 } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -22,17 +25,18 @@ import { cn } from '@/lib/utils';
 
 interface LoanDetailHeaderProps {
   loan: LoanRequest | null;
-  currentStageName: string; 
+  currentStageName: string;
   onBack: () => void;
   onOpenEditDialog: () => void;
   onOpenAddNoteDialog: () => void;
   onOpenLogInfoDialog: () => void;
-  onMarkStageComplete: () => Promise<void>; 
-  onManagerPromoteLoan: () => Promise<void>; 
+  onMarkStageComplete: () => Promise<void>;
+  onManagerPromoteLoan: () => Promise<void>;
   onOpenApproveReassignDialog: () => void;
   onOpenReturnForReworkDialog: () => void;
   onOpenTerminateLoanDialog: () => void;
   onOpenManualTransitionDialog: () => void;
+  onOpenDistributeDialog?: () => void;
   isSaving: boolean;
   isActionableStage: boolean;
   canPromote: boolean;
@@ -41,6 +45,7 @@ interface LoanDetailHeaderProps {
 
 export function LoanDetailHeader({
   loan,
+  currentStageName,
   onBack,
   onOpenEditDialog,
   onOpenAddNoteDialog,
@@ -51,6 +56,7 @@ export function LoanDetailHeader({
   onOpenReturnForReworkDialog,
   onOpenTerminateLoanDialog,
   onOpenManualTransitionDialog,
+  onOpenDistributeDialog,
   isSaving,
   isActionableStage,
   canPromote,
@@ -60,112 +66,384 @@ export function LoanDetailHeader({
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
   if (!loan || !currentUser) return null;
-  
-  const canEditDetails = userPermissions.has(PERMISSIONS.EDIT_LOAN_DETAILS);
-  // Assignment is strictly controlled by explicit assign permission.
-  const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
-  const isCurrentUserAssigned = loan.assignedToUsers.some(u => u.id === currentUser.id);
-  const hasCurrentUserCompleted = loan.stageCompletedBy?.some(u => u.id === currentUser.id) || false;
 
-  // Permission-based checks for manager actions
+  const isDistrict = loan.submissionType === 'TYPE2';
+
+  const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+  const isCurrentUserAssigned = loan.assignedToUsers.some((u) => u.id === currentUser.id);
+  const hasCurrentUserCompleted =
+    loan.stageCompletedBy?.some((u) => u.id === currentUser.id) || false;
+
   const canApprove = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
+
+  const stageGuidance = useMemo(() => {
+    if (loan.currentStageOrder === 6 && loan.currentStageStatus === 'RETURNED_FOR_COMMENT') {
+      return 'Returned by Operations Manager for comment only. Review the case and distribute to Committee Approval when ready.';
+    }
+    if (loan.currentStageOrder === 6 && loan.currentStageStatus === 'RETURNED_FOR_REWORK') {
+      return 'Returned by Operations Manager for rework. Update the analysis and distribute to Committee Approval once the case is ready.';
+    }
+    if (loan.currentStageOrder === 7) {
+      return 'Final Operation Manager Review: add feedback, or return to the analyst for comment/rework and later committee distribution.';
+    }
+    if (loan.currentStageStatus === 'RETURNED_FROM_VALUATION') {
+      return 'Returned from Valuation to District CRM. Resume the CRM review and prepare the case for the next district analyst handoff.';
+    }
+    if (loan.currentStageOrder === 8) {
+      return 'Committee Distribution stage: this case is ready for Committee Approval after analyst distribution.';
+    }
+    return undefined;
+  }, [loan.currentStageOrder, loan.currentStageStatus]);
   const canReturn = userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
   const canMarkStageComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
-  // Users with promote permission can directly approve and move their assigned case.
   const canDirectPromote = canPromote;
   const isDirectPromotion = !requiresApproval;
 
-  return (
-    <div className="flex items-center justify-between mb-8 flex-wrap gap-2">
-      <Button variant="outline" onClick={onBack} disabled={isSaving}>
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-      </Button>
-      <div className="flex flex-wrap gap-2 mt-2 sm:mt-0 justify-end flex-grow">
-        {canAssignStaff && isActionableStage &&
-          <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
-            <UserPlus className="mr-2 h-4 w-4" /> Assign
-          </Button>
-        }
-        {userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) && isActionableStage && 
-            <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}><StickyNote className="mr-2 h-4 w-4" /> Add Note</Button>
-        }
-        {isActionableStage && userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) &&
-            <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}><Edit3 className="mr-2 h-4 w-4" /> Log Request</Button>
-        }
-
-        {/* Primary Staff Action Button: Dynamically changes based on direct promotion capability */}
-        {isActionableStage && isCurrentUserAssigned && !loan.isReadyForManagerReview && (canMarkStageComplete || canDirectPromote) && (
-          <Button 
-            onClick={onMarkStageComplete} 
-            disabled={isSaving || hasCurrentUserCompleted}
-            className={cn(
-              canDirectPromote ? "bg-green-600 hover:bg-green-700" : 
-               isDirectPromotion ? "bg-blue-600 hover:bg-blue-700" : ""
-            )}
-          >
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {hasCurrentUserCompleted ? (
-              <BadgeCheck className="mr-2 h-4 w-4" />
-            ) : canDirectPromote ? (
-              <ArrowRight className="mr-2 h-4 w-4" />
-            ) : isDirectPromotion ? (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            ) : (
-              <CheckSquare className="mr-2 h-4 w-4" />
-            )}
-
-            {hasCurrentUserCompleted ? 'Part Submitted' : 
-             canDirectPromote ? 'Approve & Promote' :
-             isDirectPromotion ? 'Complete & Promote' : 
-             'Mark Stage Complete & Submit'}
+  /* ─── Shared utility blocks ─── */
+  const SharedLeftActions = (
+    <>
+      {canAssignStaff && isActionableStage && (
+        <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
+          <UserPlus className="mr-2 h-4 w-4" /> Assign
+        </Button>
+      )}
+      {(userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) ||
+        (isDistrict && loan.currentStageOrder === 6)) &&
+        isActionableStage && (
+          <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}>
+            <StickyNote className="mr-2 h-4 w-4" />
+            {isDistrict && loan.currentStageOrder === 6 ? 'Add Remark' : 'Add Note'}
           </Button>
         )}
+      {isActionableStage && userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && (
+        <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}>
+          <Edit3 className="mr-2 h-4 w-4" /> Log Request
+        </Button>
+      )}
+    </>
+  );
 
-        {/* Direct Approve Button: Only shown for users with approve permission once pending approval */}
-        {isActionableStage && loan.isReadyForManagerReview && canApprove && (
-          <>
-            <Button
-              onClick={onManagerPromoteLoan}
-              disabled={isSaving}
-              className="bg-green-600 hover:bg-green-700 text-white font-bold"
-            >
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <ArrowRight className="mr-2 h-4 w-4" /> Approve
-            </Button>
-            {canAssignStaff && (
+  const SharedRightActions = (
+    <>
+      {isActionableStage && userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
+        <Button variant="secondary" onClick={onOpenManualTransitionDialog} disabled={isSaving}>
+          <Shuffle className="mr-2 h-4 w-4" /> Manual Transition
+        </Button>
+      )}
+      {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
+        <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
+          <ShieldX className="mr-2 h-4 w-4" /> Terminate
+        </Button>
+      )}
+    </>
+  );
+
+  /* ════════════════════════════════════════════════════
+     🏢  DISTRICT SPECIALIZED WORKFLOW  (TYPE-2)
+  ════════════════════════════════════════════════════ */
+  if (isDistrict) {
+    return (
+      <div className="space-y-3 mb-8">
+        {/* Path banner */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Button variant="outline" onClick={onBack} disabled={isSaving}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-50 border border-amber-300 shadow-sm flex-shrink-0">
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-sm font-bold text-amber-800 tracking-wide uppercase">
+              District Specialized Workflow
+            </span>
+            <Badge className="ml-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] px-2 py-0">
+              TYPE-2
+            </Badge>
+            <span className="text-xs text-amber-600 font-medium hidden sm:inline">
+              · Stage {loan.currentStageOrder}
+            </span>
+          </div>
+        </div>
+
+        {/* Action bar — amber tinted */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
+          {/* LEFT: general utility */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-700 hidden sm:inline">
+              General
+            </span>
+            {SharedLeftActions}
+          </div>
+
+          {/* CENTRE: workflow guidance */}
+          {stageGuidance ? (
+            <div className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 sm:w-auto">
+              {stageGuidance}
+            </div>
+          ) : null}
+
+          {/* CENTRE: core workflow progression */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Staff mark complete */}
+            {isActionableStage &&
+              isCurrentUserAssigned &&
+              !loan.isReadyForManagerReview &&
+              (canMarkStageComplete || canDirectPromote) && (
+                <Button
+                  onClick={onMarkStageComplete}
+                  disabled={isSaving || hasCurrentUserCompleted}
+                  className={cn(
+                    canDirectPromote
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : isDirectPromotion
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : ''
+                  )}
+                >
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {hasCurrentUserCompleted ? (
+                    <BadgeCheck className="mr-2 h-4 w-4" />
+                  ) : canDirectPromote ? (
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                  ) : isDirectPromotion ? (
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                  ) : (
+                    <CheckSquare className="mr-2 h-4 w-4" />
+                  )}
+                  {hasCurrentUserCompleted
+                    ? 'Part Submitted'
+                    : canDirectPromote
+                    ? 'Approve & Promote'
+                    : isDirectPromotion
+                    ? 'Complete & Promote'
+                    : 'Mark Stage Complete & Submit'}
+                </Button>
+              )}
+
+            {/* Manager approval */}
+            {isActionableStage && loan.isReadyForManagerReview && canApprove && (
+              <>
+                <Button
+                  onClick={onManagerPromoteLoan}
+                  disabled={isSaving}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                >
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <ArrowRight className="mr-2 h-4 w-4" /> Approve
+                </Button>
+                {canAssignStaff && (
+                  <Button variant="outline" onClick={onOpenApproveReassignDialog} disabled={isSaving}>
+                    <UserPlus className="mr-2 h-4 w-4" /> Approve & Reassign
+                  </Button>
+                )}
+              </>
+            )}
+
+            {/* Stage 7 → Operation Manager returns case for comment ONLY */}
+            {isActionableStage && loan.currentStageOrder === 7 && canReturn && (
               <Button
                 variant="outline"
-                onClick={onOpenApproveReassignDialog}
+                onClick={onOpenReturnForReworkDialog}
+                className="border-indigo-500 text-indigo-700 hover:bg-indigo-50"
                 disabled={isSaving}
               >
-                <UserPlus className="mr-2 h-4 w-4" /> Approve & Reassign
+                <Undo2 className="mr-2 h-4 w-4" /> Return for Comment
               </Button>
             )}
-          </>
-        )}
 
-        {/* Return for Rework Button: Always shown, disabled if no permission */}
-        {isActionableStage && (
-             <Button 
-               variant="outline" 
-               onClick={canReturn ? onOpenReturnForReworkDialog : undefined}
-               disabled={isSaving || !canReturn}
-               className="border-amber-500 text-amber-700 hover:bg-amber-50"
-               title={canReturn ? undefined : 'You do not have permission to return for rework'}
-             >
-                <Undo2 className="mr-2 h-4 w-4" /> Return for Rework
+            {/* Stage 6 → Analyst distributes to District Approval */}
+            {isActionableStage &&
+              loan.currentStageOrder === 6 &&
+              (loan.currentStageStatus === 'RETURNED_FOR_COMMENT' ||
+                loan.currentStageStatus === 'RETURNED_FOR_REWORK') &&
+              onOpenDistributeDialog && (
+                <Button
+                  onClick={onOpenDistributeDialog}
+                  disabled={isSaving}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold animate-pulse"
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" /> Distribute for District Approval
+                </Button>
+              )}
+          </div>
+
+          {/* RIGHT: district document tools + admin */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {isActionableStage && (
+              <>
+                {(currentStageName.includes('PVR Preparation') ||
+                  currentStageName.includes('Valuation Review')) && (
+                  <Button
+                    variant="secondary"
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={() =>
+                      window.open(`/loan-requests/district/pvr/${loan.id}`, '_blank')
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    {currentStageName.includes('Valuation') ? 'View PVR Form' : 'Prepare PVR Form'}
+                  </Button>
+                )}
+                {currentStageName.includes('LAF & Summary Preparation') && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      onClick={() =>
+                        window.open(`/loan-requests/district/laf/${loan.id}`, '_blank')
+                      }
+                    >
+                      <FileText className="mr-2 h-4 w-4" /> Prepare LAF
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() =>
+                        window.open(
+                          `/loan-requests/district/customer-summary/${loan.id}`,
+                          '_blank'
+                        )
+                      }
+                    >
+                      <FileText className="mr-2 h-4 w-4" /> Prepare Customer Summary
+                    </Button>
+                  </>
+                )}
+                {(currentStageName.includes('Analyst Review') ||
+                  currentStageName.includes('Manager Check')) && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        window.open(`/loan-requests/district/laf/${loan.id}`, '_blank')
+                      }
+                    >
+                      <SearchCheck className="mr-2 h-4 w-4" /> Review LAF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        window.open(
+                          `/loan-requests/district/customer-summary/${loan.id}`,
+                          '_blank'
+                        )
+                      }
+                    >
+                      <SearchCheck className="mr-2 h-4 w-4" /> Review Summary
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+            {SharedRightActions}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ════════════════════════════════════════════════════
+     🏦  HEAD OFFICE NORMAL WORKFLOW  (TYPE-1)
+  ════════════════════════════════════════════════════ */
+  return (
+    <div className="space-y-3 mb-8">
+      {/* Path banner */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Button variant="outline" onClick={onBack} disabled={isSaving}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 border border-blue-300 shadow-sm flex-shrink-0">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+          <span className="text-sm font-bold text-blue-800 tracking-wide uppercase">
+            Head Office Normal Workflow
+          </span>
+          <Badge className="ml-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-2 py-0">
+            TYPE-1
+          </Badge>
+        </div>
+      </div>
+
+      {/* Action bar — blue tinted */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50/60 px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
+        {/* LEFT: general utility */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700 hidden sm:inline">
+            General
+          </span>
+          {SharedLeftActions}
+        </div>
+
+        {/* CENTRE: core workflow progression */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {isActionableStage &&
+            isCurrentUserAssigned &&
+            !loan.isReadyForManagerReview &&
+            (canMarkStageComplete || canDirectPromote) && (
+              <Button
+                onClick={onMarkStageComplete}
+                disabled={isSaving || hasCurrentUserCompleted}
+                className={cn(
+                  canDirectPromote
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : isDirectPromotion
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : ''
+                )}
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {hasCurrentUserCompleted ? (
+                  <BadgeCheck className="mr-2 h-4 w-4" />
+                ) : canDirectPromote ? (
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                ) : isDirectPromotion ? (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                ) : (
+                  <CheckSquare className="mr-2 h-4 w-4" />
+                )}
+                {hasCurrentUserCompleted
+                  ? 'Part Submitted'
+                  : canDirectPromote
+                  ? 'Approve & Promote'
+                  : isDirectPromotion
+                  ? 'Complete & Promote'
+                  : 'Mark Stage Complete & Submit'}
+              </Button>
+            )}
+
+          {isActionableStage && loan.isReadyForManagerReview && canApprove && (
+            <>
+              <Button
+                onClick={onManagerPromoteLoan}
+                disabled={isSaving}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <ArrowRight className="mr-2 h-4 w-4" /> Approve
+              </Button>
+              {canAssignStaff && (
+                <Button variant="outline" onClick={onOpenApproveReassignDialog} disabled={isSaving}>
+                  <UserPlus className="mr-2 h-4 w-4" /> Approve & Reassign
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* Return for Rework — Head Office path only */}
+          {isActionableStage && (
+            <Button
+              variant="outline"
+              onClick={canReturn ? onOpenReturnForReworkDialog : undefined}
+              disabled={isSaving || !canReturn}
+              className="border-amber-500 text-amber-700 hover:bg-amber-50"
+              title={
+                canReturn ? undefined : 'You do not have permission to return for rework'
+              }
+            >
+              <Undo2 className="mr-2 h-4 w-4" /> Return for Rework
             </Button>
-        )}
-        {isActionableStage && userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
-             <Button variant="secondary" onClick={onOpenManualTransitionDialog} disabled={isSaving}>
-                <Shuffle className="mr-2 h-4 w-4" /> Manual Transition
-            </Button>
-        )}
-        {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
-            <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
-                <ShieldX className="mr-2 h-4 w-4" /> Terminate
-            </Button>
-        )}
+          )}
+        </div>
+
+        {/* RIGHT: admin */}
+        <div className="flex flex-wrap gap-2 items-center">{SharedRightActions}</div>
       </div>
     </div>
   );

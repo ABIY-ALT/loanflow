@@ -13,6 +13,8 @@ export interface UserForAssignment {
   phoneNumber: string | null;
   departmentId: string | null;
   departmentName: string | null;
+  districtId: string | null;
+  districtName: string | null;
   customRoleId: string | null;
   customRoleName: string | null;
   isActive: boolean;
@@ -20,11 +22,13 @@ export interface UserForAssignment {
 
 export interface AssignableData {
   departments: { id: string; name: string }[];
+  districts: { id: string; name: string }[];
   customRoles: { id: string; name: string }[];
 }
 
 export interface UserAssignmentUpdatePayload {
   departmentId?: string | null;
+  districtId?: string | null;
   customRoleId?: string | null;
 }
 
@@ -74,10 +78,24 @@ export async function getUsersForAssignment(): Promise<{ users?: UserForAssignme
       include: {
         department: true,
         customRole: true,
+        crmMappings: {
+          include: {
+            branch: {
+              include: { district: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
     const mappedUsers: UserForAssignment[] = users.map(u => ({
+      // One district per user for assignment/visibility control.
+      // Stored via existing branchCRMMapping table (first mapping as primary district).
+      // This avoids schema migration for now.
+      districtId: u.crmMappings[0]?.branch?.districtId || null,
+      districtName: u.crmMappings[0]?.branch?.district?.name || null,
       id: u.id,
       name: u.name,
       email: u.email,
@@ -108,12 +126,17 @@ export async function getAssignableData(): Promise<{ data?: AssignableData; erro
       select: { id: true, name: true },
     });
 
+    const districts = await prisma.district.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+
     const customRoles = await prisma.role.findMany({
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
     });
 
-    return { data: { departments, customRoles } };
+    return { data: { departments, districts, customRoles } };
   } catch (e: any) {
     const { message } = createErrorReturn("Failed to fetch assignable data.", "getAssignableData", e);
     return { error: message };
@@ -155,6 +178,37 @@ export async function updateUserAssignments(
         updateData.customRoleId = data.customRoleId;
       }
     }
+
+    if (data.hasOwnProperty('districtId')) {
+      if (data.districtId === null || data.districtId === "none") {
+        await prisma.branchCRMMapping.deleteMany({
+          where: { userId },
+        });
+      } else if (data.districtId) {
+        const district = await prisma.district.findUnique({
+          where: { id: data.districtId },
+          select: { id: true },
+        });
+        if (!district) return { success: false, error: "District not found." };
+
+        const primaryBranch = await prisma.branch.findFirst({
+          where: { districtId: data.districtId },
+          orderBy: { name: 'asc' },
+          select: { id: true },
+        });
+        if (!primaryBranch) return { success: false, error: "No branch configured in selected district." };
+
+        await prisma.branchCRMMapping.deleteMany({
+          where: { userId },
+        });
+        await prisma.branchCRMMapping.create({
+          data: {
+            userId,
+            branchId: primaryBranch.id,
+          },
+        });
+      }
+    }
     
     if (Object.keys(updateData).length === 0) {
         return { success: false, error: "No changes provided for update." };
@@ -168,10 +222,21 @@ export async function updateUserAssignments(
       include: {
         department: true,
         customRole: true,
+        crmMappings: {
+          include: {
+            branch: {
+              include: { district: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
     const mappedUser: UserForAssignment = {
+      districtId: updatedUserPrisma.crmMappings[0]?.branch?.districtId || null,
+      districtName: updatedUserPrisma.crmMappings[0]?.branch?.district?.name || null,
       id: updatedUserPrisma.id,
       name: updatedUserPrisma.name,
       email: updatedUserPrisma.email,

@@ -34,14 +34,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const pathname = usePathname();
 
   const handleSignOut = async () => {
-    await logout(); 
+    await logout();
     toast({ title: "Signed Out", description: "You have been successfully signed out." });
     // Navigation to /login is handled by AuthContext's useEffect
   };
-  
+
   const publicPages = ['/login', '/force-password-change', '/track-loan'];
   const isPublicPage = publicPages.some(p => pathname.startsWith(p));
-  
+
   // Do not render the main layout for specified public pages
   if (isPublicPage && !user) {
     return <>{children}</>;
@@ -50,7 +50,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   // This prevents rendering the layout while auth state is resolving or if user is not authenticated.
   // AuthProvider already handles showing a loading screen.
   if (authIsLoadingGlobal || !user) {
-    return null; 
+    return null;
   }
 
   const SidebarCollapseControl = () => {
@@ -75,10 +75,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <SidebarRail />
         <SidebarHeader className="p-4">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Image 
-              src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg" 
-              alt="LoanFlow Logo" 
-              width={32} 
+            <Image
+              src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg"
+              alt="LoanFlow Logo"
+              width={32}
               height={32}
               className="h-8 w-8 text-primary" // Keep similar sizing classes
             />
@@ -110,7 +110,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   </div>
                   <Button variant="ghost" size="sm" onClick={handleSignOut} disabled={authIsLoadingGlobal}>
                     {authIsLoadingGlobal && pathname === '/login' ? <Loader2 className="animate-spin mr-1 h-4 w-4" /> : <LogOut className="mr-1 h-4 w-4" />}
-                     Sign Out
+                    Sign Out
                   </Button>
                 </div>
               </>

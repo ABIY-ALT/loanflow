@@ -25,7 +25,7 @@ export async function middleware(request: NextRequest) {
   // 3. Clone headers to create a new response
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
-  requestHeaders.set('Content-Security-Policy', cspHeader);
+  // requestHeaders.set('Content-Security-Policy', cspHeader);
   
   // NOTE: Authentication and redirection logic has been moved to AuthProvider
   // to resolve race conditions between server-side middleware and client-side routing.
@@ -43,7 +43,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Permissions-Policy', 'geolocation=(self), microphone=(self), camera=(self)');
-  response.headers.set('Content-Security-Policy', cspHeader);
+  // response.headers.set('Content-Security-Policy', cspHeader);
 
   return response;
 }

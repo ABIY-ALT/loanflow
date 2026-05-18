@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@/types/loan';
 import { Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -23,18 +23,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isProcessingAuth, setIsProcessingAuth] = useState(false);
+  const sessionFetchRequestIdRef = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
 
   const fetchAndSetCurrentUser = useCallback(async () => {
+    const requestId = ++sessionFetchRequestIdRef.current;
     setIsInitialLoading(true);
     try {
       const { user: currentUserData } = await serverGetCurrentUser();
+      if (requestId !== sessionFetchRequestIdRef.current) return null;
       setUser(currentUserData);
+      return currentUserData;
     } catch (error) {
       console.error("Error fetching current user:", error);
+      if (requestId !== sessionFetchRequestIdRef.current) return null;
       setUser(null);
+      return null;
     } finally {
+      if (requestId !== sessionFetchRequestIdRef.current) return;
       setIsInitialLoading(false);
     }
   }, []);
@@ -47,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsProcessingAuth(true);
     const result = await serverLoginUser(phoneNumberInput, passwordInput);
     if (result.success && result.user) {
-      setUser(result.user);
+      await fetchAndSetCurrentUser();
     } else {
       setUser(null);
     }

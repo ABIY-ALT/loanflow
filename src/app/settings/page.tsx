@@ -50,6 +50,7 @@ import { DocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getWorkflowDefinitions, saveWorkflowDefinitions, getDepartments, addWorkflowDefinition } from '@/services/loan-service-prisma';
 import { getSectors, addSector, deleteSector, updateSector, getRequestTypes, addRequestType, deleteRequestType, updateRequestType } from '@/services/sector-and-request-type-service';
+import { getCommitteeSettings, updateCommitteeSettings, getDistrictSettings, updateDistrictSettings } from '@/services/settings-service';
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -653,6 +654,10 @@ export default function SettingsPage() {
   const [overdueThreshold, setOverdueThreshold] = useState(2);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
+  const [committeeSize, setCommitteeSize] = useState(4);
+  const [committeeThreshold, setCommitteeThreshold] = useState(3);
+  const [districtOverdueHours, setDistrictOverdueHours] = useState(24);
+
   const canManageWorkflows = currentUser?.permissions.includes(PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS);
 
   const fetchInitialData = useCallback(() => {
@@ -687,6 +692,14 @@ export default function SettingsPage() {
           const parentSectors = fetchedSectors.filter(s => !s.parentId);
           if(parentSectors.length > 0 && newWorkflowParentSectorId === '') setNewWorkflowParentSectorId(parentSectors[0].id);
           if(parentSectors.length > 0 && newChildSectorParentId === '') setNewChildSectorParentId(parentSectors[0].id);
+          
+          getCommitteeSettings().then(settings => {
+              setCommitteeSize(settings.size);
+              setCommitteeThreshold(settings.threshold);
+          });
+          getDistrictSettings().then(settings => {
+              setDistrictOverdueHours(settings.overdueHours);
+          });
       }).catch(err => {
         const errorMessage = err.message || "Failed to load settings data.";
         setError(errorMessage);
@@ -1000,6 +1013,11 @@ export default function SettingsPage() {
     setIsSavingAll(true);
     setError(null);
     try {
+        // Save committee and district settings
+        await Promise.all([
+          updateCommitteeSettings(committeeSize, committeeThreshold),
+          updateDistrictSettings(districtOverdueHours)
+        ]);
         if (canManageWorkflows) {
             const result = await saveWorkflowDefinitions(workflowDefinitions);
             if (result.error) {
@@ -1448,6 +1466,82 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card> */}
+      <Card>
+        <CardHeader>
+          <CardTitle>District Workflow Settings</CardTitle>
+          <CardDescription>Configure rules specific to District (Type 2) submissions.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="p-4 border rounded-lg bg-muted/20">
+            <div className="space-y-2">
+              <Label htmlFor="district-overdue">District Overdue Threshold (Hours)</Label>
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-muted-foreground" />
+                <Input 
+                  id="district-overdue" 
+                  type="number" 
+                  value={districtOverdueHours} 
+                  onChange={(e) => setDistrictOverdueHours(parseInt(e.target.value, 10) || 0)}
+                  className="max-w-xs"
+                  min="1"
+                  disabled={isSavingAll}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                District loan requests will be marked as "Overdue" if they are not forwarded to Valuation within this many hours of creation. (Default is 24).
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Committee Configuration</CardTitle>
+          <CardDescription>Configure rules for the District Committee approval process.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg bg-muted/20">
+            <div className="space-y-2">
+              <Label htmlFor="committee-size">Committee Size (Number of Voters)</Label>
+              <Input 
+                id="committee-size" 
+                type="number" 
+                value={committeeSize} 
+                onChange={(e) => setCommitteeSize(parseInt(e.target.value, 10) || 0)}
+                min="1"
+                disabled={isSavingAll}
+              />
+              <p className="text-xs text-muted-foreground">The total number of members required to vote before a final decision is reached.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="committee-threshold">Approval Threshold (Minimum Approvals)</Label>
+              <Input 
+                id="committee-threshold" 
+                type="number" 
+                value={committeeThreshold} 
+                onChange={(e) => setCommitteeThreshold(parseInt(e.target.value, 10) || 0)}
+                min="1"
+                max={committeeSize}
+                disabled={isSavingAll}
+              />
+              <p className="text-xs text-muted-foreground">The minimum number of "Approve" votes needed for the case to be finalized as APPROVED.</p>
+            </div>
+          </div>
+          <div className="p-4 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-r-md">
+             <div className="flex items-start">
+               <ShieldAlert className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5 flex-shrink-0" />
+               <div>
+                 <h5 className="font-semibold text-blue-700 dark:text-blue-300">Majority Rule Logic</h5>
+                 <p className="text-sm text-blue-600 dark:text-blue-400">
+                   If approvals &ge; {committeeThreshold} out of {committeeSize}, status = APPROVED. Otherwise status = REJECTED.
+                 </p>
+               </div>
+             </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end"><Button onClick={handleSaveChanges} size="lg" disabled={isSavingAll || isSavingData}>
         {(isSavingAll || isSavingData) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSavingAll ? "Saving..." : "Save All Settings to Database"}

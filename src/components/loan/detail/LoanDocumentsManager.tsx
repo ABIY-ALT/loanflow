@@ -15,6 +15,10 @@ import {
   Download,
   Square,
   CheckSquare,
+  LayoutDashboard,
+  ExternalLink,
+  UserCircle,
+  Landmark,
 } from 'lucide-react';
 import type {
   LoanRequest,
@@ -25,18 +29,20 @@ import type {
 import { LoanDocumentStatus, DocumentRequirementType } from '@/types/loan';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
 
 const getDocumentStatusIcon = (
-  status: LoanDocument['status'] | 'Missing'
+  status: LoanDocumentStatus | 'Missing'
 ) => {
   switch (status) {
-    case 'Pending':
+    case LoanDocumentStatus.PENDING:
       return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-    case 'Submitted':
+    case LoanDocumentStatus.SUBMITTED:
       return <FileSymlink className="h-4 w-4 text-blue-500" />;
-    case 'Verified':
+    case LoanDocumentStatus.VERIFIED:
       return <CheckCircle className="h-4 w-4 text-green-500" />;
-    case 'Rejected':
+    case LoanDocumentStatus.REJECTED:
       return <XCircle className="h-4 w-4 text-red-500" />;
     case 'Missing':
       return <FileText className="h-4 w-4 text-gray-400" />;
@@ -46,16 +52,16 @@ const getDocumentStatusIcon = (
 };
 
 const getDocumentBadgeVariant = (
-  status: LoanDocument['status'] | 'Missing'
+  status: LoanDocumentStatus | 'Missing'
 ): 'default' | 'secondary' | 'destructive' | 'outline' => {
   switch (status) {
-    case 'Verified':
+    case LoanDocumentStatus.VERIFIED:
       return 'default'; // Greenish, but relies on theme
-    case 'Submitted':
+    case LoanDocumentStatus.SUBMITTED:
       return 'secondary';
-    case 'Pending':
+    case LoanDocumentStatus.PENDING:
       return 'outline';
-    case 'Rejected':
+    case LoanDocumentStatus.REJECTED:
       return 'destructive';
     case 'Missing':
       return 'outline';
@@ -96,11 +102,105 @@ export function LoanDocumentsManager({
   const isActionable = !loan.isTerminalStage;
 
   return (
-    <div>
-      <h3 className="text-lg font-semibold mb-4 flex items-center">
-        <FileText className="mr-2 h-5 w-5 text-primary" />
-        Documents
-      </h3>
+    <div className="space-y-6">
+      {/* System Generated Documents for Type 2 */}
+      {loan.submissionType === 'TYPE2' && (
+        <div>
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <LayoutDashboard className="mr-2 h-5 w-5 text-primary" />
+            System Documents
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {(currentStageDef?.order ?? 0) >= 4 && (
+              <Card className="border-amber-100 bg-amber-50/30">
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm font-bold flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-amber-600" />
+                    Loan Approval Form (LAF)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex justify-between items-center">
+                  <Badge variant={loan.lafData ? "default" : "outline"} className={loan.lafData ? "bg-amber-100 text-amber-700 border-amber-200" : ""}>
+                    {loan.lafData ? "Prepared" : "Not Started"}
+                  </Badge>
+                  <Link href={`/loan-requests/district/laf/${loan.id}`} passHref>
+                    <Button variant="ghost" size="sm" className="h-8 text-amber-700 hover:text-amber-800 hover:bg-amber-100">
+                      {(currentStageDef?.order ?? 0) > 4 ? "View / Export" : "View / Edit"} <ExternalLink className="ml-1.5 h-3 w-3" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
+
+            {(currentStageDef?.order ?? 0) >= 4 && (
+              <Card className="border-blue-100 bg-blue-50/30">
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm font-bold flex items-center gap-2">
+                    <UserCircle className="h-4 w-4 text-blue-600" />
+                    Customer Summary (CAFC)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex justify-between items-center">
+                  <Badge variant={loan.customerSummaryData ? "default" : "outline"} className={loan.customerSummaryData ? "bg-blue-100 text-blue-700 border-blue-200" : ""}>
+                    {loan.customerSummaryData ? "Prepared" : "Not Started"}
+                  </Badge>
+                  <Link href={`/loan-requests/district/customer-summary/${loan.id}`} passHref>
+                    <Button variant="ghost" size="sm" className="h-8 text-blue-700 hover:text-blue-800 hover:bg-blue-100">
+                      {(currentStageDef?.order ?? 0) > 4 ? "View / Export" : "View / Edit"} <ExternalLink className="ml-1.5 h-3 w-3" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="border-emerald-100 bg-emerald-50/30">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Landmark className="h-4 w-4 text-emerald-600" />
+                  Property Valuation Requisition (PVR)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 flex justify-between items-center">
+                <Badge variant={loan.pvrData ? "default" : "outline"} className={loan.pvrData ? "bg-emerald-100 text-emerald-700 border-emerald-200" : ""}>
+                  {loan.pvrData ? "Prepared" : "Not Started"}
+                </Badge>
+                <Link href={`/loan-requests/district/pvr/${loan.id}`} passHref>
+                  <Button variant="ghost" size="sm" className="h-8 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-100">
+                    {(currentStageDef?.order ?? 0) > 2 ? "View / Export" : "View / Edit"} <ExternalLink className="ml-1.5 h-3 w-3" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {(currentStageDef?.order ?? 0) >= 3 && (
+              <Card className="border-green-100 bg-green-50/30">
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm font-bold flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-green-600" />
+                    Valuation Report
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex justify-between items-center">
+                  <Badge variant={loan.isValuationCompleted ? "default" : "outline"} className={loan.isValuationCompleted ? "bg-green-100 text-green-700 border-green-200" : ""}>
+                    {loan.isValuationCompleted ? "Completed" : (loan.valuationReportData ? "Draft Saved" : "Not Started")}
+                  </Badge>
+                  <Link href={`/valuation/report/${loan.id}`} passHref>
+                    <Button variant="ghost" size="sm" className="h-8 text-green-700 hover:text-green-800 hover:bg-green-100">
+                      View / Prepare <ExternalLink className="ml-1.5 h-3 w-3" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <FileText className="mr-2 h-5 w-5 text-primary" />
+          Stage Documents
+        </h3>
       <p className="text-sm text-muted-foreground mb-1">
         Required for current stage:{' '}
         <span className="font-semibold">
@@ -176,9 +276,9 @@ export function LoanDocumentsManager({
                     <Badge
                       variant={getDocumentBadgeVariant(status)}
                       className={
-                        status === 'Verified'
+                        status === LoanDocumentStatus.VERIFIED
                           ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-800/30 dark:text-green-300 dark:border-green-700'
-                          : status === 'Rejected'
+                          : status === LoanDocumentStatus.REJECTED
                           ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-800/30 dark:text-red-300 dark:border-red-700'
                           : ''
                       }
@@ -239,6 +339,7 @@ export function LoanDocumentsManager({
           No specific documents formally required for this stage in settings.
         </p>
       )}
+      </div>
     </div>
   );
 }

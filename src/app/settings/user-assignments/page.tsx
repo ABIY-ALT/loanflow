@@ -77,10 +77,12 @@ export default function ManageUserAssignmentsPage() {
   const [actionToConfirm, setActionToConfirm] = useState<{ action: 'reset' | 'activate' | 'deactivate'; user: UserForAssignment; } | null>(null);
 
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null | undefined>(undefined);
+  const [selectedDistrictId, setSelectedDistrictId] = useState<string | null | undefined>(undefined);
   const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string | null | undefined>(undefined);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [districtFilter, setDistrictFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -103,12 +105,12 @@ export default function ManageUserAssignmentsPage() {
       setUsers(usersResult.users || []);
 
       if (assignableResult.error) throw new Error(assignableResult.error);
-      setAssignableData(assignableResult.data || { departments: [], customRoles: [] });
+      setAssignableData(assignableResult.data || { departments: [], districts: [], customRoles: [] });
 
     } catch (err: any) {
       setError(err.message || "Failed to load page data.");
       setUsers([]);
-      setAssignableData({ departments: [], customRoles: [] });
+      setAssignableData({ departments: [], districts: [], customRoles: [] });
       toast({ title: "Error Loading Data", description: err.message, variant: "destructive" });
     } finally {
       setIsLoadingData(false);
@@ -127,11 +129,12 @@ export default function ManageUserAssignmentsPage() {
       const nameMatch = user.name?.toLowerCase().includes(searchTermLower) || user.email.toLowerCase().includes(searchTermLower) || user.phoneNumber?.includes(searchTerm);
       
       const deptMatch = departmentFilter === 'all' || user.departmentId === departmentFilter || (departmentFilter === 'unassigned' && !user.departmentId);
+      const districtMatch = districtFilter === 'all' || user.districtId === districtFilter || (districtFilter === 'unassigned' && !user.districtId);
       const roleMatch = roleFilter === 'all' || user.customRoleId === roleFilter || (roleFilter === 'unassigned' && !user.customRoleId);
 
-      return nameMatch && deptMatch && roleMatch;
+      return nameMatch && deptMatch && districtMatch && roleMatch;
     });
-  }, [users, searchTerm, departmentFilter, roleFilter]);
+  }, [users, searchTerm, departmentFilter, districtFilter, roleFilter]);
 
   const paginatedUsers = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -142,13 +145,14 @@ export default function ManageUserAssignmentsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, departmentFilter, roleFilter]);
+  }, [searchTerm, departmentFilter, districtFilter, roleFilter]);
 
 
   const handleOpenEditDialog = (userToEdit: UserForAssignment) => {
     if (!canManageAssignments) return;
     setEditingUser(userToEdit);
     setSelectedDepartmentId(userToEdit.departmentId);
+    setSelectedDistrictId(userToEdit.districtId);
     setSelectedCustomRoleId(userToEdit.customRoleId);
     setIsFormDialogOpen(true);
   };
@@ -162,6 +166,9 @@ export default function ManageUserAssignmentsPage() {
     
     if (selectedDepartmentId !== editingUser.departmentId) {
         payload.departmentId = selectedDepartmentId === "none" ? null : selectedDepartmentId;
+    }
+    if (selectedDistrictId !== editingUser.districtId) {
+        payload.districtId = selectedDistrictId === "none" ? null : selectedDistrictId;
     }
     if (selectedCustomRoleId !== editingUser.customRoleId) {
         payload.customRoleId = selectedCustomRoleId === "none" ? null : selectedCustomRoleId;
@@ -265,7 +272,7 @@ export default function ManageUserAssignmentsPage() {
       
        <Card>
         <CardHeader>
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -283,6 +290,18 @@ export default function ManageUserAssignmentsPage() {
                   <SelectItem value="unassigned">Unassigned</SelectItem>
                   {assignableData?.departments.map(dept => (
                     <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Select value={districtFilter} onValueChange={setDistrictFilter}>
+                <SelectTrigger><SelectValue placeholder="Filter by District" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Districts</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {assignableData?.districts.map(d => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -324,6 +343,7 @@ export default function ManageUserAssignmentsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email / Phone</TableHead>
                     <TableHead>Department</TableHead>
+                    <TableHead>District</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -331,7 +351,7 @@ export default function ManageUserAssignmentsPage() {
                 <TableBody>
                    {paginatedUsers.length === 0 ? (
                      <TableRow>
-                        <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
                             No users found matching your criteria.
                         </TableCell>
                     </TableRow>
@@ -351,6 +371,9 @@ export default function ManageUserAssignmentsPage() {
                       </TableCell>
                       <TableCell>
                         {user.departmentName ? <Badge variant="outline">{user.departmentName}</Badge> : <span className="text-xs">N/A</span>}
+                      </TableCell>
+                      <TableCell>
+                        {user.districtName ? <Badge variant="outline">{user.districtName}</Badge> : <span className="text-xs">N/A</span>}
                       </TableCell>
                       <TableCell>
                         {user.customRoleName ? <Badge>{user.customRoleName}</Badge> : <span className="text-xs">N/A</span>}
@@ -431,7 +454,7 @@ export default function ManageUserAssignmentsPage() {
             <DialogHeader>
               <DialogTitle>Edit Assignments for {editingUser.name}</DialogTitle>
               <DialogDescription>
-                Modify department and role for this user.
+                Modify department, district, and role for this user.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleFormSubmit}>
@@ -453,6 +476,28 @@ export default function ManageUserAssignmentsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="district-select" className="block text-sm font-medium mb-1">District</Label>
+                  <Select
+                    value={selectedDistrictId || "none"}
+                    onValueChange={(value) => setSelectedDistrictId(value === "none" ? null : value)}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="district-select">
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (Unassign)</SelectItem>
+                      {assignableData.districts.map(d => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    District assignment controls which district cases this user can see/work.
+                  </p>
                 </div>
 
                 <div>

@@ -48,10 +48,13 @@ export interface User {
 
   departmentId?: string;
   department?: Department; // Name of the department
+  districtId?: string;
+  districtName?: string;
 
   customRoleId?: string;
   customRoleName?: string; // Name of the custom role
   permissions: AppPermission[]; // All permissions granted by the custom role
+  assignedBranches?: string[]; // Branches mapped to the user (for CRMs)
 }
 
 export interface Customer {
@@ -203,9 +206,31 @@ export interface LoanRequest {
   isReadyForManagerReview?: boolean;
 
   currentStageName?: string;
+  currentStageOrder?: number;
   isTerminalStage?: boolean;
+  progressPercentage?: number;
 
   createdById?: string; // Added to track submission origin
+  createdBy?: User; // Creator object populated for rich UI display
+
+  // Type 2 Enhancements
+  submissionType?: 'TYPE1' | 'TYPE2';
+  lafStatus?: 'PENDING' | 'COMPLETED' | 'EXPORTED';
+  lafData?: any;
+  pvrData?: any;
+  customerSummaryData?: any;
+  valuationReportData?: any;
+  isReadyForValuation?: boolean;
+  isValuationCompleted?: boolean;
+  committeeDecisions: {
+    id: string;
+    decision: 'APPROVE' | 'REJECT';
+    comment?: string;
+    member: {
+      id: string;
+      name: string;
+    };
+  }[];
 
   createdAt?: string;
   updatedAt?: string;

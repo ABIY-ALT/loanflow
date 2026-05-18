@@ -1,0 +1,661 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Loader2, Printer, Save, ArrowLeft, Edit, FileDown, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { getLoanRequestById, updateLAF, submitType2ToValuation, submitDistrictLafAndSummary, approveDistrictManagerCheck, approveDistrictAnalyst, approveFinalDistrictManager } from '@/services/loan-service-prisma';
+import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import { cn } from '@/lib/utils';
+import Image from 'next/image';
+
+export default function LAFPage() {
+  const { id } = useParams();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [loan, setLoan] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isSubmittingToValuation, setIsSubmittingToValuation] = useState(false);
+  const [isSubmittingToManager, setIsSubmittingToManager] = useState(false);
+  const [isSubmittingToAnalyst, setIsSubmittingToAnalyst] = useState(false);
+  const [isSubmittingToFinalManager, setIsSubmittingToFinalManager] = useState(false);
+
+  // Expanded LAF Data Structure to match the image
+  const [lafData, setLafData] = useState<any>({
+    acknowledgmentDate: '',
+    crmName: '',
+    loanOfficer: '',
+    dateReceivedBy: '',
+    creditRiskTeam: '',
+    creditApprovingTeam: '',
+    dateCommunicated: '',
+
+    sector: '',
+    subSector: '',
+    subSectorCode: '',
+    totalCapital: '2,056,000,000.00',
+    totalExposure: '',
+    exposureToCapitalRatio: '',
+    relatedPartyInfo: 'N/R%',
+
+    lafNo: '',
+    branch: '',
+    date: new Date().toISOString().split('T')[0],
+    tradingLicense: '',
+    tin: '',
+    loanCode: '',
+    applicantName: '',
+    customerClassification: 'Retail',
+    creditRiskGrade: 'C',
+    typeOfBusiness: '',
+    currentRequest: '',
+    purpose: '',
+
+    presentLoans: [
+      { type: 'TL', limit: '8,500,000.00', balance: '4,316,005.56', grantedDate: '30/08/2022', dueDate: '30/08/2027', rate: '22.75%', repAmount: '663,731.00', arrears: '0', status: 'P' }
+    ],
+    collaterals: [
+      { type: '', titleDeed: '', prevEstValue: '', prevEstDate: '', recentValue: '', recentDate: '', valueAfterMargin: '', remark: '' }
+    ],
+
+    totalCollateralValue: '0.00',
+    lessExistingTL: '4,316,005.56',
+    lessRecommendTL: '12,000,000.00',
+    lessRecommendOD: '4,000,000.00',
+    excessDeficit: '0.00',
+
+    fulfillmentComments: '',
+    creditInformation: '',
+    taxClearance: '',
+    basisOfRecommendation: [
+      'The applicant has been in the business since 2008 E.C.',
+      'Applicant has good account turnover and relationship with our bank.',
+      'The business in which the applicant engaged in is viable and profitable.'
+    ],
+    analystRecommendation: '',
+    approvingTeamMembers: [
+      { name: '', role: 'Chairperson' },
+      { name: '', role: 'V. Member' },
+      { name: '', role: 'V. Member' },
+      { name: '', role: 'N.V. Secretary' }
+    ],
+    refrainingIdeas: ''
+  });
+
+  useEffect(() => {
+    async function fetchLoan() {
+      setIsLoading(true);
+      try {
+        const result = await getLoanRequestById(id as string);
+        if (result.error) {
+          toast({ title: "Error", description: result.error, variant: "destructive" });
+        } else {
+          setLoan(result.loan);
+          if (result.loan?.lafData) {
+            setLafData(result.loan.lafData);
+          } else {
+            setLafData(prev => ({
+              ...prev,
+              applicantName: result.loan?.customerName || '',
+              branch: result.loan?.customerBranch || '',
+              sector: result.loan?.sectorName || '',
+              typeOfBusiness: `Importing of ${result.loan?.sectorName || 'Goods'}`,
+              currentRequest: `Import term loan of Birr ${result.loan?.loanAmount.toLocaleString()}.00 payable within 5 years`,
+              purpose: result.loan?.loanPurpose || '',
+              lafNo: `NIB/SAAD/${new Date().getFullYear().toString().slice(-2)}/${result.loan?.loanNumber.split('-').pop() || Math.floor(Math.random() * 1000)}`,
+            }));
+          }
+        }
+      } catch (err: any) {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchLoan();
+  }, [id]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const result = await updateLAF(id as string, lafData);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "LAF saved successfully." });
+        setIsEditing(false);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    const element = document.getElementById('pdf-content');
+    if (!element) return;
+    setIsExporting(true);
+    try {
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`LAF-${loan?.loanNumber || 'Export'}.pdf`);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleSubmitToManager = async () => {
+    setIsSubmittingToManager(true);
+    try {
+      // First save the current data
+      await updateLAF(id as string, lafData);
+      
+      const result = await submitDistrictLafAndSummary(id as string);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case submitted to District Manager successfully." });
+        router.push(`/loan-requests/${id}`);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmittingToManager(false);
+    }
+  };
+
+  const handleApproveByManager = async () => {
+    setIsSubmittingToAnalyst(true);
+    try {
+      const result = await approveDistrictManagerCheck(id as string, lafData.managerComments);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case approved and sent to Analyst Review." });
+        router.push(`/loan-requests/${id}`);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmittingToAnalyst(false);
+    }
+  };
+  const handleApproveByAnalyst = async () => {
+    setIsSubmittingToFinalManager(true);
+    try {
+      const result = await approveDistrictAnalyst(id as string, lafData.analystRecommendation);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case analysis completed and sent to Final Manager Review." });
+        router.push(`/loan-requests/${id}`);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmittingToFinalManager(false);
+    }
+  };
+
+  const handleFinalApproveByManager = async () => {
+    setIsSubmittingToFinalManager(true);
+    try {
+      const result = await approveFinalDistrictManager(id as string, lafData.managerFinalComments);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Final approval completed. Case sent for Committee Distribution." });
+        router.push(`/loan-requests/${id}`);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmittingToFinalManager(false);
+    }
+  };
+
+  const addRow = (table: 'presentLoans' | 'collaterals') => {
+    const newRow = table === 'presentLoans' 
+      ? { type: '', limit: '', balance: '', grantedDate: '', dueDate: '', rate: '', repAmount: '', arrears: '', status: '' }
+      : { type: '', titleDeed: '', prevEstValue: '', prevEstDate: '', recentValue: '', recentDate: '', valueAfterMargin: '', remark: '' };
+    setLafData({ ...lafData, [table]: [...lafData[table], newRow] });
+  };
+
+  const removeRow = (table: 'presentLoans' | 'collaterals', index: number) => {
+    const newList = [...lafData[table]];
+    newList.splice(index, 1);
+    setLafData({ ...lafData, [table]: newList });
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
+
+  const isOrder4 = loan?.currentStageOrder === 4;
+  const isOrder5 = loan?.currentStageOrder === 5;
+  const isOrder6 = loan?.currentStageOrder === 6;
+  const isOrder7 = loan?.currentStageOrder === 7;
+  const isReadOnlyAtStage = ![4, 5, 6].includes(loan?.currentStageOrder || 0);
+  const isReadOnly = !isEditing || isReadOnlyAtStage;
+
+  return (
+    <div className="p-4 md:p-8 max-w-[1000px] mx-auto space-y-6 print:p-0 bg-slate-100 min-h-screen">
+      <div className="flex justify-between items-center print:hidden bg-white p-4 rounded-xl shadow-sm border sticky top-0 z-50">
+        <div className="flex items-center space-x-3">
+          <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" /></Button>
+          <div>
+            <h1 className="text-xl font-bold">Loan Approval Form (LAF)</h1>
+            <p className="text-xs text-muted-foreground">{loan?.customerName}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {(isOrder4 || isOrder5) && !isReadOnlyAtStage && (
+            <Button 
+              variant={isEditing ? "default" : "outline"} 
+              className={cn(isEditing && "bg-amber-600 hover:bg-amber-700")}
+              onClick={isEditing ? handleSave : () => setIsEditing(true)}
+              disabled={isSaving || isSubmittingToManager || isSubmittingToAnalyst}
+            >
+              {isSaving ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : (isEditing ? <Save className="h-4 w-4 mr-2" /> : <Edit className="h-4 w-4 mr-2" />)}
+              {isEditing ? "Save Draft" : "Edit Form"}
+            </Button>
+          )}
+
+          {isOrder4 && !isReadOnlyAtStage && (
+            <Button 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              onClick={handleSubmitToManager}
+              disabled={isSubmittingToManager || isSaving}
+            >
+              {isSubmittingToManager ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Finalize & Send to Manager
+            </Button>
+          )}
+
+          {isOrder5 && (
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+              onClick={handleApproveByManager}
+              disabled={isSubmittingToAnalyst}
+            >
+              {isSubmittingToAnalyst ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Approve & Send to Analyst
+            </Button>
+          )}
+
+          {isOrder6 && (
+            <Button 
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+              onClick={handleApproveByAnalyst}
+              disabled={isSubmittingToFinalManager}
+            >
+              {isSubmittingToFinalManager ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Complete & Send to Final Manager
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
+          <Button onClick={handleExportPDF} disabled={isExporting} className="bg-slate-900 text-white"><FileDown className="h-4 w-4 mr-2" />PDF</Button>
+        </div>
+      </div>
+
+      <div id="pdf-content" className="bg-white shadow-2xl p-[0.75in] mx-auto w-full text-[11px] font-serif leading-tight text-slate-900 border-t-[10px] border-amber-500">
+        
+        {/* Header */}
+        <div className="flex justify-between mb-6 border-b-2 border-slate-900 pb-2">
+          <div className="flex gap-4 items-center">
+            <Image 
+               src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg" 
+               alt="Bank Logo" 
+               width={50} height={50} 
+            />
+            <div>
+              <h2 className="text-lg font-bold">NIB INTERNATIONAL BANK</h2>
+              <h3 className="text-md font-bold">LOAN APPROVAL FORM (LAF)</h3>
+              <p className="italic text-[9px] font-bold text-red-600"># Highly Confidential</p>
+            </div>
+          </div>
+          <div className="text-[9px] space-y-0.5 w-[280px]">
+             {[
+               { l: 'Acknowledgment Letter Date Provide', k: 'acknowledgmentDate' },
+               { l: 'Customer Relationship Manager', k: 'crmName' },
+               { l: 'Loan Officer:', k: 'loanOfficer' },
+               { l: 'Date of Application Received By:', k: 'dateReceivedBy' },
+               { l: 'Credit Risk Analysis Team', k: 'creditRiskTeam' },
+               { l: 'Credit Approving Team', k: 'creditApprovingTeam' },
+               { l: 'Date communicated to customer', k: 'dateCommunicated' }
+             ].map((item, i) => (
+               <div key={i} className="flex justify-between gap-1 items-end border-b border-dotted border-slate-300 h-4">
+                 <span className="font-bold whitespace-nowrap">{item.l}</span>
+                 {isReadOnly ? <span className="font-medium underline">{lafData[item.k]}</span> : <Input className="h-4 p-0 text-[9px] text-right border-none shadow-none focus-visible:ring-0" value={lafData[item.k]} onChange={e => setLafData({...lafData, [item.k]: e.target.value})} />}
+               </div>
+             ))}
+          </div>
+        </div>
+
+        {/* Info Boxes */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+           <div className="border border-slate-900 p-1.5 space-y-0.5">
+              {[
+                { l: 'Sector:', k: 'sector' },
+                { l: 'Sub-Sector:', k: 'subSector' },
+                { l: 'Sub-sector code:', k: 'subSectorCode' },
+                { l: 'Bank\'s total capital Birr:', k: 'totalCapital' },
+                { l: 'Total exposure of a borrower:', k: 'totalExposure' },
+                { l: 'Total exposure vs Capital Ratio:', k: 'exposureToCapitalRatio' },
+                { l: 'Related Party Info:', k: 'relatedPartyInfo' }
+              ].map((item, i) => (
+                <div key={i} className="flex gap-1">
+                  <span className="font-bold min-w-[130px]">{item.l}</span>
+                  {isReadOnly ? <span className="underline">{lafData[item.k]}</span> : <Input className="h-3 p-0.5 text-[9px] border-none shadow-none focus-visible:ring-0" value={lafData[item.k]} onChange={e => setLafData({...lafData, [item.k]: e.target.value})} />}
+                </div>
+              ))}
+           </div>
+           <div className="border border-slate-900 border-dashed p-1.5 flex flex-col justify-center space-y-1">
+              {[
+                { l: 'Trading License Number:', k: 'tradingLicense' },
+                { l: 'Tax Identification Number:', k: 'tin' },
+                { l: 'Loan Code Number:', k: 'loanCode' }
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center h-5">
+                  <span className="font-bold">{item.l}</span>
+                  {isReadOnly ? <span className="underline font-bold text-right">{lafData[item.k]}</span> : <Input className="h-5 w-1/2 text-right p-1 text-[9px]" value={lafData[item.k]} onChange={e => setLafData({...lafData, [item.k]: e.target.value})} />}
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Primary Data (1-7) */}
+        <div className="space-y-0.5 mb-4">
+           {[
+             { n: '1.', l: 'LAF No.', k: 'lafNo', extra: 'Branch', ek: 'branch', date: true },
+             { n: '2.', l: 'Name of Applicant(s):', k: 'applicantName' },
+             { n: '3.', l: 'Customer Classification:', k: 'customerClassification' },
+             { n: '4.', l: 'Credit Risk Grade:', k: 'creditRiskGrade' },
+             { n: '5.', l: 'Type of Business:', k: 'typeOfBusiness' },
+             { n: '6.', l: 'Current Request:', k: 'currentRequest' },
+             { n: '7.', l: 'Purpose:', k: 'purpose' }
+           ].map((item, i) => (
+             <div key={i} className="flex items-center gap-1 h-5">
+               <span className="font-bold w-4">{item.n}</span>
+               <span className="font-bold min-w-[140px]">{item.l}</span>
+               <div className="flex-grow border-b border-slate-900 h-4">
+                  {isReadOnly ? <span className="font-bold italic">{lafData[item.k]}</span> : <Input className="h-4 p-0 border-none italic font-bold text-[10px] shadow-none focus-visible:ring-0" value={lafData[item.k]} onChange={e => setLafData({...lafData, [item.k]: e.target.value})} />}
+               </div>
+               {item.extra && (
+                 <>
+                   <span className="font-bold ml-2">{item.extra}</span>
+                   <div className="w-20 border-b border-slate-900 text-center h-4">
+                      {isReadOnly ? <span className="font-bold italic">{lafData[item.ek]}</span> : <Input className="h-4 p-0 border-none text-center shadow-none focus-visible:ring-0" value={lafData[item.ek]} onChange={e => setLafData({...lafData, [item.ek]: e.target.value})} />}
+                   </div>
+                 </>
+               )}
+               {item.date && (
+                 <>
+                   <span className="font-bold ml-2">Date</span>
+                   <div className="w-20 border-b border-slate-900 text-center h-4">
+                      {isReadOnly ? <span className="font-bold italic">{lafData.date}</span> : <Input type="date" className="h-4 p-0 border-none shadow-none focus-visible:ring-0" value={lafData.date} onChange={e => setLafData({...lafData, date: e.target.value})} />}
+                   </div>
+                 </>
+               )}
+             </div>
+           ))}
+        </div>
+
+        {/* Present Loans Table */}
+        <div className="mb-4">
+           <div className="flex justify-between items-center mb-0.5">
+              <h4 className="font-bold">8. Present Loans and Credit Facilities</h4>
+              {!isReadOnly && <Button size="sm" variant="ghost" className="h-4 text-[8px]" onClick={() => addRow('presentLoans')}><Plus className="h-2 w-2 mr-1"/>Add</Button>}
+           </div>
+           <Table className="border border-slate-900">
+              <TableHeader className="bg-slate-100">
+                <TableRow className="h-6 border-slate-900 border-b">
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">No</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Type of Facility</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Limit</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Balance</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Date Granted</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Due Date</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Rate</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-[9px] text-slate-900">Arrears</TableHead>
+                  <TableHead className="p-0.5 text-center font-bold text-[9px] text-slate-900">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                 {lafData.presentLoans.map((row: any, idx: number) => (
+                   <TableRow key={idx} className="h-6 border-b border-slate-300">
+                      <TableCell className="border-r border-slate-900 p-0.5 text-center">{idx + 1}</TableCell>
+                      {['type', 'limit', 'balance', 'grantedDate', 'dueDate', 'rate', 'arrears', 'status'].map((col) => (
+                        <TableCell key={col} className="border-r border-slate-900 p-0.5">
+                           {isReadOnly ? <div className="text-center font-medium">{row[col]}</div> : <Input className="h-4 p-0 text-[9px] border-none text-center shadow-none focus-visible:ring-0" value={row[col]} onChange={e => {
+                             const newList = [...lafData.presentLoans];
+                             newList[idx][col] = e.target.value;
+                             setLafData({...lafData, presentLoans: newList});
+                           }} />}
+                        </TableCell>
+                      ))}
+                      {!isReadOnly && <TableCell className="p-0.5 text-center"><Button variant="ghost" size="icon" className="h-3 w-3 text-red-500" onClick={() => removeRow('presentLoans', idx)}><Trash2 className="h-2 w-2"/></Button></TableCell>}
+                   </TableRow>
+                 ))}
+              </TableBody>
+           </Table>
+        </div>
+
+        {/* Collateral Table */}
+        <div className="mb-4">
+           <div className="flex justify-between items-center mb-0.5">
+              <h4 className="font-bold">9. Collateral</h4>
+              {!isReadOnly && <Button size="sm" variant="ghost" className="h-4 text-[8px]" onClick={() => addRow('collaterals')}><Plus className="h-2 w-2 mr-1"/>Add</Button>}
+           </div>
+           <Table className="border border-slate-900 text-[9px]">
+              <TableHeader className="bg-slate-100">
+                <TableRow className="border-slate-900 border-b">
+                  <TableHead rowSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">No</TableHead>
+                  <TableHead rowSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Collateral Type</TableHead>
+                  <TableHead rowSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Title Deed No</TableHead>
+                  <TableHead rowSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Prev Est</TableHead>
+                  <TableHead colSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Recent Estimation</TableHead>
+                  <TableHead rowSpan={2} className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Val after Margin</TableHead>
+                  <TableHead rowSpan={2} className="p-0.5 text-center font-bold text-slate-900">Remark</TableHead>
+                </TableRow>
+                <TableRow className="border-slate-900 border-b bg-slate-50">
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Value</TableHead>
+                  <TableHead className="border-r border-slate-900 p-0.5 text-center font-bold text-slate-900">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                 {lafData.collaterals.map((row: any, idx: number) => (
+                   <TableRow key={idx} className="border-b border-slate-300">
+                      <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">{idx + 1}</TableCell>
+                      {['type', 'titleDeed', 'prevEstValue', 'recentValue', 'recentDate', 'valueAfterMargin', 'remark'].map((col) => (
+                        <TableCell key={col} className="border-r border-slate-900 p-0.5">
+                           {isReadOnly ? <div className="text-center italic">{row[col]}</div> : <Textarea className="min-h-[24px] p-0.5 text-[8px] border-none shadow-none focus-visible:ring-0" value={row[col]} onChange={e => {
+                             const newList = [...lafData.collaterals];
+                             newList[idx][col] = e.target.value;
+                             setLafData({...lafData, collaterals: newList});
+                           }} />}
+                        </TableCell>
+                      ))}
+                      {!isReadOnly && <TableCell className="p-0.5 text-center"><Button variant="ghost" size="icon" className="h-3 w-3 text-red-500" onClick={() => removeRow('collaterals', idx)}><Trash2 className="h-2 w-2"/></Button></TableCell>}
+                   </TableRow>
+                 ))}
+                 {/* Summary Rows */}
+                 {[
+                   { l: 'Total Collateral Value', k: 'totalCollateralValue', bold: true },
+                   { l: 'Less Existing facility', k: 'lessExistingTL' },
+                   { l: 'Less Recommend TL', k: 'lessRecommendTL' },
+                   { l: 'Less Recommend OD', k: 'lessRecommendOD' },
+                   { l: 'Excess/Deficit (After Deductions)', k: 'excessDeficit', bold: true, bg: 'bg-slate-100' }
+                 ].map((row, i) => (
+                   <TableRow key={i} className={cn("h-5", row.bg)}>
+                      <TableCell colSpan={4} className="border-r border-slate-900 p-0.5 font-bold text-right italic">{row.l}</TableCell>
+                      <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">
+                        {isReadOnly ? <span>{lafData[row.k]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[row.k]} onChange={e => setLafData({...lafData, [row.k]: e.target.value})} />}
+                      </TableCell>
+                      <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold"></TableCell>
+                      <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">
+                         {isReadOnly ? <span>{lafData[row.k]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[row.k]} onChange={e => setLafData({...lafData, [row.k]: e.target.value})} />}
+                      </TableCell>
+                      <TableCell className="p-0.5"></TableCell>
+                   </TableRow>
+                 ))}
+              </TableBody>
+           </Table>
+        </div>
+
+        {/* Section 10 */}
+        <div className="mb-4 border border-slate-900 p-2 space-y-1">
+           <h4 className="font-bold text-xs uppercase">10. Fulfillment of relevant documents</h4>
+           <div className="space-y-1 text-[10px]">
+              <div>
+                <span className="font-bold underline">Credit Information:</span>
+                {isReadOnly ? <p className="italic ml-2">{lafData.creditInformation || "N/A"}</p> : <Textarea className="h-8 ml-2" value={lafData.creditInformation} onChange={e => setLafData({...lafData, creditInformation: e.target.value})} />}
+              </div>
+              <div>
+                <span className="font-bold underline">Tax clearance:</span>
+                {isReadOnly ? <p className="italic ml-2">{lafData.taxClearance || "N/A"}</p> : <Textarea className="h-8 ml-2" value={lafData.taxClearance} onChange={e => setLafData({...lafData, taxClearance: e.target.value})} />}
+              </div>
+           </div>
+        </div>
+
+        {/* Page Break Simulator */}
+        <div className="border-b border-slate-200 my-8"></div>
+
+        {/* Basis of Recommendation */}
+        <div className="mb-6">
+           <h4 className="font-bold text-xs underline uppercase mb-2">11. Basis of Recommendation</h4>
+           <ul className="space-y-1">
+              {lafData.basisOfRecommendation.map((item: string, i: number) => (
+                <li key={i} className="flex gap-2 items-start italic text-[10px]">
+                   <span className="font-bold">➤</span>
+                   <div className="flex-grow">
+                      {isReadOnly ? <p>{item}</p> : <Input className="h-5 p-1" value={item} onChange={e => {
+                        const newList = [...lafData.basisOfRecommendation];
+                        newList[i] = e.target.value;
+                        setLafData({...lafData, basisOfRecommendation: newList});
+                      }} />}
+                   </div>
+                </li>
+              ))}
+              {!isReadOnly && <Button size="sm" variant="ghost" className="h-4 text-[8px]" onClick={() => setLafData({...lafData, basisOfRecommendation: [...lafData.basisOfRecommendation, '']})}>+ Add Point</Button>}
+           </ul>
+        </div>
+
+        {/* Analysts Recommendation */}
+        <div className="mb-6 space-y-4">
+           <div>
+              <h4 className="font-bold text-xs uppercase underline">12. CRM Confirmation</h4>
+              <p className="italic text-[10px] mt-1">I confirm that all the information filled-out are in line with the checklist.</p>
+              <div className="mt-8 pt-1 text-center w-[150px] border-t border-slate-900 font-bold italic text-[10px]">
+                {lafData.crmName || 'CRM NAME'}
+              </div>
+           </div>
+
+            <div className={cn("p-4 border-2 rounded-lg", isOrder6 && !isReadOnlyAtStage ? "border-indigo-500 bg-indigo-50/50" : "border-slate-200 bg-slate-50")}>
+               <h4 className="font-bold text-xs uppercase underline mb-2">13. Credit and Risk Analyst Recommendation</h4>
+               {isOrder6 && !isReadOnly ? (
+                 <Textarea 
+                   className="min-h-[120px] text-[10px] bg-white border-indigo-300" 
+                   placeholder="Analyst: Enter your detailed analysis and recommendation here..."
+                   value={lafData.analystRecommendation || ''}
+                   onChange={e => setLafData({...lafData, analystRecommendation: e.target.value})}
+                 />
+               ) : (
+                 <div className="mt-2 p-2 bg-white/50 border rounded text-[10px] italic min-h-[60px]">
+                   {lafData.analystRecommendation || (isOrder6 ? "Click 'Edit' to enter analysis recommendation." : "No analyst recommendation yet.")}
+                 </div>
+               )}
+            </div>
+
+           {/* District Manager Review */}
+           <div className={cn("p-4 border-2 rounded-lg mt-4", isOrder5 && !isReadOnlyAtStage ? "border-amber-500 bg-amber-50/50" : "border-slate-200 bg-slate-50")}>
+               <h4 className="font-bold text-xs uppercase underline mb-2">14. District Operation Manager Review/Comments</h4>
+               {isOrder5 && !isReadOnly ? (
+                 <Textarea 
+                   className="min-h-[80px] text-[10px] bg-white border-amber-300" 
+                   placeholder="District Manager: Enter review comments here..."
+                   value={lafData.managerComments || ''}
+                   onChange={e => setLafData({...lafData, managerComments: e.target.value})}
+                 />
+               ) : (
+                 <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
+                   {lafData.managerComments || (isOrder5 ? "Click 'Edit' to enter review comments." : "No comments from district manager yet.")}
+                 </div>
+               )}
+            </div>
+
+            <div className={cn("p-4 border-2 rounded-lg mt-4", isOrder7 && !isReadOnlyAtStage ? "border-green-500 bg-green-50/50" : "border-slate-200 bg-slate-50")}>
+                <h4 className="font-bold text-xs uppercase underline mb-2">15. Final District Operation Manager Review/Comments</h4>
+                {isOrder7 && !isReadOnly ? (
+                  <Textarea 
+                    className="min-h-[80px] text-[10px] bg-white border-green-300" 
+                    placeholder="Final Manager: Enter final review comments here..."
+                    value={lafData.managerFinalComments || ''}
+                    onChange={e => setLafData({...lafData, managerFinalComments: e.target.value})}
+                  />
+                ) : (
+                  <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
+                    {lafData.managerFinalComments || (isOrder7 ? "Click 'Edit' to enter final comments." : "No final comments yet.")}
+                  </div>
+                )}
+            </div>
+        </div>
+
+        {/* Approving Team Members */}
+        <div>
+           <h4 className="font-bold text-xs uppercase underline mb-6">17. Approving Team members</h4>
+           <div className="grid grid-cols-4 gap-4 text-center">
+              {lafData.approvingTeamMembers.map((member: any, i: number) => (
+                <div key={i} className="space-y-1">
+                   <div className="font-bold italic underline mb-1 h-6 flex items-end justify-center">
+                      {isReadOnly ? member.name : <Input className="h-5 text-center text-[9px]" placeholder="Name" value={member.name} onChange={e => {
+                        const newList = [...lafData.approvingTeamMembers];
+                        newList[i].name = e.target.value;
+                        setLafData({...lafData, approvingTeamMembers: newList});
+                      }} />}
+                   </div>
+                   <div className="text-[9px] font-bold">({member.role})</div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-12 flex justify-between text-[8px] text-muted-foreground border-t pt-1 italic uppercase font-sans">
+           <span>{lafData.lafNo}</span>
+           <span>NIB INTERNATIONAL BANK - Internal Document</span>
+           <span>Page 1 of 2</span>
+        </div>
+
+      </div>
+
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+        #pdf-content {
+          font-family: 'Libre Baskerville', serif;
+        }
+        @media print {
+          .print\:hidden { display: none !important; }
+          body { background: white !important; padding: 0 !important; }
+          #pdf-content { box-shadow: none !important; padding: 0.5in !important; border: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}

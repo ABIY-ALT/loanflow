@@ -11,8 +11,8 @@ import { LoanDocumentStatus, DocumentRequirementType, LoanDocumentStatus as AppL
 import { PERMISSIONS } from '@/lib/permissions';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview } from '@/services/loan-service-prisma';
-import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft } from 'lucide-react';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, distributeToCommittee } from '@/services/loan-service-prisma';
+import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,9 @@ import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDispla
 import { LoanInfoDisplay } from '@/components/loan/detail/LoanInfoDisplay';
 import { LoanDocumentsManager } from '@/components/loan/detail/LoanDocumentsManager';
 import { LoanAuditTrail } from '@/components/loan/detail/LoanAuditTrail';
+import { LoanAnalysisWork } from '@/components/loan/detail/LoanAnalysisWork';
+import { ValuationRequisitionForm } from '@/components/loan/forms/ValuationRequisitionForm';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 import { EditLoanDetailsDialog } from '@/components/loan/dialogs/EditLoanDetailsDialog';
 import { AddNoteToLoanDialog } from '@/components/loan/dialogs/AddNoteToLoanDialog';
@@ -32,6 +35,8 @@ import { UploadLoanDocumentDialog } from '@/components/loan/dialogs/UploadLoanDo
 import { TerminateLoanDialog } from '@/components/loan/dialogs/TerminateLoanDialog';
 import { ManualTransitionDialog } from '@/components/loan/dialogs/ManualTransitionDialog';
 import { RespondToInfoRequestDialog } from '@/components/loan/dialogs/RespondToInfoRequestDialog';
+import { AnalystRemarkDialog } from '@/components/loan/dialogs/AnalystRemarkDialog';
+import { DistributeToCommitteeDialog } from '@/components/loan/dialogs/DistributeToCommitteeDialog';
 
 export default function LoanDetailPage() {
   const router = useRouter();
@@ -58,6 +63,8 @@ export default function LoanDetailPage() {
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
   const [isApproveReassignDialogOpen, setIsApproveReassignDialogOpen] = useState(false);
   const [isRespondToInfoDialogOpen, setIsRespondToInfoDialogOpen] = useState(false);
+  const [isAnalystRemarkDialogOpen, setIsAnalystRemarkDialogOpen] = useState(false);
+  const [isDistributeDialogOpen, setIsDistributeDialogOpen] = useState(false);
   const [selectedEntryForResponse, setSelectedEntryForResponse] = useState<LoanHistoryEntry | null>(null);
   
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
@@ -69,19 +76,23 @@ export default function LoanDetailPage() {
     if (!loan || !currentUser) return false;
     return (loan.history || []).some(h => h.userId === currentUser.id);
   }, [loan, currentUser]);
-  const isInActiveDept = useMemo(() => currentUser?.department === loan?.assignedDepartment, [currentUser, loan]);
-  const isManagerInDept = useMemo(() => isInActiveDept && (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)), [isInActiveDept, userPermissions]);
-  const hasDirectApprovePermission = useMemo(() => userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE), [userPermissions]);
+  const isInActiveDept = useMemo(() => {
+    const userDept = currentUser?.department?.trim().toLowerCase();
+    const loanDept = loan?.assignedDepartment?.trim().toLowerCase();
+    return !!userDept && !!loanDept && userDept === loanDept;
+  }, [currentUser, loan]);
 
-  const canViewFullDetails = useMemo(() => {
-    if (!currentUser || !loan) return false;
-    if (isAdmin) return true;
-    if (isCreator) return true;
-    if (isAssigned) return true;
-    if (isManagerInDept) return true;
-    return false;
-  }, [currentUser, loan, isAdmin, isCreator, isAssigned, isManagerInDept]);
-  
+  const isManagerInDept = useMemo(
+    () =>
+      isInActiveDept &&
+      (userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE) || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)),
+    [isInActiveDept, userPermissions]
+  );
+  const hasDirectApprovePermission = useMemo(
+    () => userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE),
+    [userPermissions]
+  );
+
   const isActionableInUserDepartment = useMemo(() => !loan?.isTerminalStage && isInActiveDept, [loan, isInActiveDept]);
 
   const currentWorkflowVersion = useMemo(() => {
@@ -106,6 +117,68 @@ export default function LoanDetailPage() {
     return match ? Number(match[1]) : null;
   }, []);
 
+  const canCurrentUserAct = useMemo(() => {
+    if (!currentUser || !currentStageDef || !isActionableInUserDepartment || !loan) return false;
+    if (isAdmin) return true;
+
+    const allowedRoles = currentStageDef.allowedRoles || [];
+    const normalizedUserRole = currentUser.customRoleName?.toLowerCase().trim() || '';
+    const hasAllowedRole =
+      allowedRoles.length === 0 ||
+      allowedRoles.some((allowedRole) => {
+        const normalizedAllowed = allowedRole.toLowerCase().trim();
+        if (normalizedAllowed === normalizedUserRole) return true;
+        if (normalizedAllowed.includes(normalizedUserRole) || normalizedUserRole.includes(normalizedAllowed)) return true;
+        if (
+          (normalizedAllowed.includes('appraisal') || normalizedAllowed.includes('credit')) &&
+          normalizedUserRole.includes('analyst')
+        ) {
+          return true;
+        }
+        if (
+          normalizedAllowed.includes('analyst') &&
+          (normalizedUserRole.includes('appraisal') || normalizedUserRole.includes('officer'))
+        ) {
+          return true;
+        }
+        if (
+          normalizedAllowed.includes('committee') &&
+          normalizedUserRole.includes('committee')
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+    const isReturnedAnalystStage =
+      loan.currentStageOrder === 6 &&
+      (loan.currentStageStatus === 'RETURNED_FOR_COMMENT' || loan.currentStageStatus === 'RETURNED_FOR_REWORK');
+
+    const looksLikeAnalystRole =
+      normalizedUserRole.includes('analyst') ||
+      normalizedUserRole.includes('appraisal') ||
+      normalizedUserRole.includes('credit');
+
+    if (isReturnedAnalystStage && (hasAllowedRole || (isInActiveDept && looksLikeAnalystRole))) {
+      return true;
+    }
+
+    if (isAssigned || isManagerInDept) {
+      return hasAllowedRole;
+    }
+
+    return false;
+  }, [currentUser, currentStageDef, isActionableInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
+
+  const canViewFullDetails = useMemo(() => {
+    if (!currentUser || !loan) return false;
+    if (isAdmin) return true;
+    if (isCreator) return true;
+    if (isAssigned) return true;
+    if (isManagerInDept) return true;
+    return false;
+  }, [currentUser, loan, isAdmin, isCreator, isAssigned, isManagerInDept]);
+
   const getSectorWorkflowSequence = useCallback((sectorId?: string | null) => {
     if (!sectorId) return [] as WorkflowDefinition[];
     const scoped = workflowDefinitions.filter(def => def.sectorId === sectorId && def.versions.some(v => v.isActive && v.stages.length > 0));
@@ -125,17 +198,6 @@ export default function LoanDetailPage() {
       .map(([, def]) => def);
   }, [workflowDefinitions, getWorkflowCode]);
   
-  const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef || !isActionableInUserDepartment || !loan) return false;
-    if (isAdmin) return true;
-    if (isAssigned || isManagerInDept) {
-        const allowedRoles = currentStageDef.allowedRoles || [];
-        if (allowedRoles.length === 0) return true; 
-        return currentUser.customRoleName && allowedRoles.includes(currentUser.customRoleName);
-    }
-    return false;
-  }, [currentUser, currentStageDef, isActionableInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
-
   const departmentApprovers = useMemo(() => {
     if (!loan?.assignedDepartment) return [];
 
@@ -371,8 +433,40 @@ export default function LoanDetailPage() {
     }
   };
 
+  const handleDistributeToCommittee = async (distributionNotes: string) => {
+    if (!loan) return;
+    setIsSaving(true);
+    try {
+      const result = await distributeToCommittee(loan.id, distributionNotes);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case distributed to Committee successfully." });
+        setIsDistributeDialogOpen(false);
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAssignLoan = async (assignedUserIds: string[]) => {
     const selectedUsers = users.filter(u => assignedUserIds.includes(u.id));
+    
+    // For District Workflow: If we are at the Manager Assignment stage, 
+    // assigning a staff member should also promote the case to the next stage (CRM PVR Preparation).
+    const isDistrictAssignmentStage = loan?.submissionType === 'TYPE2' && 
+                                     currentStageDef?.name.toLowerCase().includes('assignment');
+
+    if (isDistrictAssignmentStage) {
+      // Use the promote logic which also handles department transitions and stage movement
+      await handleManagerPromoteLoan(false, selectedUsers);
+      setIsEditLoanDialogOpen(false);
+      return;
+    }
+
     const result = await handleLocalAndUpdateService(
       {
         assignedToUsers: selectedUsers,
@@ -442,6 +536,24 @@ export default function LoanDetailPage() {
     );
   };
 
+  const handleSaveAnalysis = async (notes: string) => {
+    if (!loan || !currentUser) return;
+    
+    const h: LoanHistoryEntry = { 
+      id: `analyst-${Date.now()}`, 
+      stageName: currentStageDef?.name || 'Analyst Review', 
+      timestamp: formatISO(new Date()), 
+      userId: currentUser.id, 
+      userName: currentUser.fullName, 
+      notes: `Analysis completed: ${notes}` 
+    };
+
+    await handleLocalAndUpdateService({ 
+      currentStageStatus: "READY_FOR_COMMITTEE",
+      history: [...loan.history, h] 
+    }, "Analysis submitted to Committee.");
+  };
+
   if (authLoading || isLoading) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   if (error || !loan) return <div className="p-8 text-center"><AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" /><h1 className="text-xl font-bold">{error || 'Loan not found.'}</h1><Button className="mt-4" onClick={() => router.push('/')}>Dashboard</Button></div>;
 
@@ -466,7 +578,7 @@ export default function LoanDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="px-6 py-8 border-b bg-background"><LoanProgressDisplay loan={loan} progressPercentage={0} currentStageName={currentStageDef?.name || 'Current Stage'}/></div>
+            <div className="px-6 py-8 border-b bg-background"><LoanProgressDisplay loan={loan} progressPercentage={loan.progressPercentage || 0} currentStageName={loan.currentStageName || 'N/A'}/></div>
             <div className="p-6">
               <Tabs defaultValue="history" className="w-full">
                 <TabsList className="bg-muted/50 p-1"><TabsTrigger value="history" className="gap-2"><ClipboardList className="h-4 w-4"/> Chronological History</TabsTrigger></TabsList>
@@ -484,15 +596,56 @@ export default function LoanDetailPage() {
 
   return (
     <div className="space-y-6">
-      <LoanDetailHeader loan={loan} currentStageName={currentStageDef?.name || 'N/A'} onBack={() => router.back()} onOpenEditDialog={() => setIsEditLoanDialogOpen(true)} onOpenAddNoteDialog={() => setIsAddNoteDialogOpen(true)} onOpenLogInfoDialog={() => setIsLogInfoDialogOpen(true)} onMarkStageComplete={handleMarkStageComplete} onManagerPromoteLoan={() => handleManagerPromoteLoan(false)} onOpenApproveReassignDialog={() => setIsApproveReassignDialogOpen(true)} onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)} onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)} onOpenManualTransitionDialog={() => setIsManualTransitionDialogOpen(true)} isSaving={isSaving} isActionableStage={!loan.isTerminalStage && canCurrentUserAct} canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)} requiresApproval={currentStageDef?.requiresApproval ?? true} />
+      {loan.submissionType === 'TYPE2' && Number(loan.loanAmount) > 20000000 && (
+        <Alert variant="destructive" className="border-orange-500 bg-orange-50 text-orange-900 shadow-sm">
+          <AlertCircle className="h-5 w-5 text-orange-600" />
+          <AlertTitle className="font-bold text-orange-800">District Processing Limit Reminder</AlertTitle>
+          <AlertDescription className="text-orange-700 font-medium">
+            The standard District Loan Process is for amounts up to 20 million ETB. 
+            This case exceeds that limit and may require Head Office escalation if not specifically exempted.
+          </AlertDescription>
+        </Alert>
+      )}
+      <LoanDetailHeader 
+        loan={loan} 
+        currentStageName={currentStageDef?.name || 'N/A'} 
+        onBack={() => router.back()} 
+        onOpenEditDialog={() => setIsEditLoanDialogOpen(true)} 
+        onOpenAddNoteDialog={() => setIsAddNoteDialogOpen(true)} 
+        onOpenLogInfoDialog={() => setIsLogInfoDialogOpen(true)} 
+        onMarkStageComplete={handleMarkStageComplete} 
+        onManagerPromoteLoan={() => handleManagerPromoteLoan(false)} 
+        onOpenApproveReassignDialog={() => setIsApproveReassignDialogOpen(true)} 
+        onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)} 
+        onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)} 
+        onOpenManualTransitionDialog={() => setIsManualTransitionDialogOpen(true)} 
+        onOpenDistributeDialog={() => setIsDistributeDialogOpen(true)}
+        isSaving={isSaving} 
+        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)} 
+        canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)} 
+        requiresApproval={currentStageDef?.requiresApproval ?? true} 
+      />
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
             <div><CardTitle className="text-2xl font-bold text-primary">{loan.customerName}</CardTitle><CardDescription>ID: {loan.loanNumber}</CardDescription></div>
             <div className="flex flex-col items-end gap-2 text-right">
-                <Badge className="px-3 py-1.5 font-medium">{currentStageDef?.name || 'Stage'}</Badge>
+                <div className="flex items-center gap-2">
+                  {loan.submissionType === 'TYPE2' && loan.currentStageOrder === 6 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 h-8"
+                      onClick={() => setIsAddNoteDialogOpen(true)}
+                    >
+                      <StickyNote className="mr-1.5 h-3.5 w-3.5" />
+                      Add Remark
+                    </Button>
+                  )}
+                  <Badge className="px-3 py-1.5 font-medium">{currentStageDef?.name || 'Stage'}</Badge>
+                </div>
                 {availableStatuses.length > 0 && !loan.isTerminalStage && canCurrentUserAct ? (
-                  <Select value={loan.currentStageStatus || ''} onValueChange={s => handleLocalAndUpdateService({ currentStageStatus: s }, "Status updated.")} disabled={isSaving}><SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Set Status" /></SelectTrigger><SelectContent>{availableStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+                  <Select value={loan.currentStageStatus || ''} onValueChange={async s => { await handleLocalAndUpdateService({ currentStageStatus: s }, "Status updated."); }} disabled={isSaving}><SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Set Status" /></SelectTrigger><SelectContent>{availableStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
                 ) : ( loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge> )}
                 {loan.isUrgent && <Badge variant="destructive" className="animate-pulse">URGENT</Badge>}
                 {loan.isReadyForManagerReview && !loan.isTerminalStage && <Badge variant="outline" className="border-orange-500 bg-orange-50 text-orange-700">Awaiting Manager Review</Badge>}
@@ -500,17 +653,79 @@ export default function LoanDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="px-6 pt-6"><LoanProgressDisplay loan={loan} progressPercentage={0} currentStageName={currentStageDef?.name || 'N/A'}/></div>
-          <Tabs defaultValue="overview" className="w-full">
+          <div className="px-6 pt-6"><LoanProgressDisplay loan={loan} progressPercentage={loan.progressPercentage || 0} currentStageName={loan.currentStageName || 'N/A'}/></div>
+          
+          {/* Geographic Hardening: Hide distraction forms during CRM PVR Preparation */}
+          {(() => {
+            const isCrmPvrStage = loan.currentStageId === 'stage-district-crm-pvr' && loan.submissionType === 'TYPE2';
+            
+            return (
+          <Tabs defaultValue={isCrmPvrStage ? "pvr" : "overview"} className="w-full">
             <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-6 h-12">
-              <TabsTrigger value="overview" className="gap-2"><InfoIcon className="h-4 w-4"/> Info</TabsTrigger>
-              <TabsTrigger value="documents" className="gap-2"><FileText className="h-4 w-4"/> Docs</TabsTrigger>
+              {!isCrmPvrStage && (
+                <TabsTrigger value="overview" className="gap-2"><InfoIcon className="h-4 w-4"/> Info</TabsTrigger>
+              )}
+              {!isCrmPvrStage && (
+                <div className="flex items-center">
+                  <TabsTrigger value="documents" className="gap-2"><FileText className="h-4 w-4"/> Docs</TabsTrigger>
+                  {loan.submissionType === 'TYPE2' && loan.currentStageOrder === 6 && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 ml-1"
+                      onClick={() => setIsAnalystRemarkDialogOpen(true)}
+                      title="Add Analyst Remark"
+                    >
+                      <StickyNote className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              )}
+              {isCrmPvrStage && (
+                <TabsTrigger value="pvr" className="gap-2"><FileText className="h-4 w-4"/> PVR Form</TabsTrigger>
+              )}
+              {loan.currentStageStatus === 'UNDER_ANALYSIS' && (
+                <TabsTrigger value="analysis" className="gap-2"><SearchCheck className="h-4 w-4"/> Analysis</TabsTrigger>
+              )}
               <TabsTrigger value="history" className="gap-2"><ClipboardList className="h-4 w-4"/> Case History</TabsTrigger>
             </TabsList>
-            <TabsContent value="overview" className="p-6"><LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loan.assignedDepartment} /></TabsContent>
-            <TabsContent value="documents" className="p-6"><LoanDocumentsManager loan={loan} currentStageDef={currentStageDef} isSavingGlobal={isSaving} onVerifyDocument={d => handleLocalAndUpdateService({ documents: loan.documents.map(x => x.id === d ? { ...x, status: AppLoanDocumentStatus.VERIFIED } : x) }, "Verified.")} onCheckboxChange={canCurrentUserAct ? handleDocumentCheckboxChange : undefined} onOpenUploadDialog={r => { setCurrentDocumentRequirementToUpload(r); setIsUploadDocDialogOpen(true); }}/></TabsContent>
+            
+            {!isCrmPvrStage && (
+              <TabsContent value="overview" className="p-6">
+                <LoanInfoDisplay loan={loan} assignedUsers={loan.assignedToUsers} assignedDepartment={loan.assignedDepartment} />
+              </TabsContent>
+            )}
+            
+            {!isCrmPvrStage && (
+              <TabsContent value="documents" className="p-6">
+                <LoanDocumentsManager loan={loan} currentStageDef={currentStageDef} isSavingGlobal={isSaving} onVerifyDocument={async d => { await handleLocalAndUpdateService({ documents: loan.documents.map(x => x.id === d ? { ...x, status: AppLoanDocumentStatus.VERIFIED } : x) }, "Verified."); }} onCheckboxChange={canCurrentUserAct ? handleDocumentCheckboxChange : undefined} onOpenUploadDialog={r => { setCurrentDocumentRequirementToUpload(r); setIsUploadDocDialogOpen(true); }}/>
+              </TabsContent>
+            )}
+
+            {isCrmPvrStage && (
+              <TabsContent value="pvr" className="p-6">
+                <ValuationRequisitionForm 
+                  loan={loan} 
+                  isSaving={isSaving} 
+                  onSave={async (data) => {
+                    await handleLocalAndUpdateService(data, "PVR details finalized.");
+                  }} 
+                />
+              </TabsContent>
+            )}
+            {loan.currentStageStatus === 'UNDER_ANALYSIS' && (
+              <TabsContent value="analysis" className="p-6">
+                <LoanAnalysisWork 
+                  loan={loan} 
+                  isSaving={isSaving} 
+                  onSaveAnalysis={handleSaveAnalysis} 
+                />
+              </TabsContent>
+            )}
             <TabsContent value="history" className="p-6"><LoanAuditTrail loan={loan} isSavingGlobal={isSaving} onRespondToRequest={e => { setSelectedEntryForResponse(e); setIsRespondToInfoDialogOpen(true); }}/></TabsContent>
           </Tabs>
+            );
+          })()}
         </CardContent>
       </Card>
       <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} onSubmit={async d => { await handleAssignLoan(d.assignedTo || []); }} isSaving={isSaving} />
@@ -519,7 +734,92 @@ export default function LoanDetailPage() {
       <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={async r => { const h: LoanHistoryEntry = { id: `ir-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', requiredFulfilment: r, isFulfilled: false }; await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Request logged."); setIsLogInfoDialogOpen(false); }} isSaving={isSaving} />
       <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={setIsUploadDocDialogOpen} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={async (r, p, f) => { const nd: LoanDocument = { id: `doc-${Date.now()}`, name: r.name, requirementId: r.id, status: AppLoanDocumentStatus.SUBMITTED, filePath: p, uploadedAt: formatISO(new Date()) }; await handleLocalAndUpdateService({ documents: [...loan.documents, nd] }, "Uploaded."); setIsUploadDocDialogOpen(false); }} isParentSaving={isSaving} />
       <RespondToInfoRequestDialog isOpen={isRespondToInfoDialogOpen} onOpenChange={setIsRespondToInfoDialogOpen} entry={selectedEntryForResponse} onSubmit={async (id, res, fulfilled) => { await handleLocalAndUpdateService({ respondToInfoRequest: { entryId: id, response: res, markFulfilled: fulfilled } }, "Response saved."); setIsRespondToInfoDialogOpen(false); }} isSaving={isSaving} />
-      <ReturnLoanForReworkDialog isOpen={isReturnForReworkDialogOpen} onOpenChange={setIsReturnForReworkDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} onSubmit={async (note, assigneeIds) => { const h: LoanHistoryEntry = { id: `rw-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', notes: `Returned for rework: ${note}` }; await recordCaseReview({ loanRequestId: loan.id, action: 'REWORKED', comment: note }); await handleLocalAndUpdateService({ assignedToUsers: users.filter(u => assigneeIds.includes(u.id)), stageCompletedBy: [], isReadyForManagerReview: false, history: [...loan.history, h] }, "Returned for rework."); setIsReturnForReworkDialogOpen(false); }} isSaving={isSaving} />
+      <ReturnLoanForReworkDialog 
+        isOpen={isReturnForReworkDialogOpen} 
+        onOpenChange={setIsReturnForReworkDialogOpen} 
+        loan={loan} 
+        forceCommentOnly={loan.submissionType === 'TYPE2' && loan.currentStageOrder === 7}
+        users={
+          loan.submissionType === 'TYPE2' && loan.currentStageOrder === 7
+            ? users.filter(u => u.department === 'District' || u.department === 'Service Sector Department')
+            : users.filter(u => u.department === loan.assignedDepartment)
+        } 
+        currentDepartment={
+          loan.submissionType === 'TYPE2' && loan.currentStageOrder === 7
+            ? 'District'
+            : loan.assignedDepartment
+        } 
+        onSubmit={async (note, assigneeIds, isCommentOnly) => { 
+          if (loan.submissionType === 'TYPE2' && loan.currentStageOrder === 7) {
+            const result = await returnToDistrictAnalyst(loan.id, note, assigneeIds, true);
+            if ('error' in result) {
+               toast({ title: "Error", description: result.error, variant: "destructive" });
+               return;
+            }
+          } else {
+            const h: LoanHistoryEntry = { 
+              id: `rw-${Date.now()}`, 
+              stageName: currentStageDef?.name || 'N/A', 
+              timestamp: formatISO(new Date()), 
+              userId: currentUser?.id || 'sys', 
+              userName: currentUser?.fullName || 'sys', 
+              notes: `Returned for rework: ${note}` 
+            }; 
+            await recordCaseReview({ loanRequestId: loan.id, action: 'REWORKED', comment: note }); 
+            await handleLocalAndUpdateService({ 
+              assignedToUsers: users.filter(u => assigneeIds.includes(u.id)), 
+              stageCompletedBy: [], 
+              isReadyForManagerReview: false, 
+              history: [...loan.history, h] 
+            }, "Returned for rework."); 
+          }
+          setIsReturnForReworkDialogOpen(false); 
+          router.refresh();
+        }} 
+        isSaving={isSaving} 
+      />
+
+      <DistributeToCommitteeDialog
+        isOpen={isDistributeDialogOpen}
+        onOpenChange={setIsDistributeDialogOpen}
+        loan={loan}
+        onSubmit={handleDistributeToCommittee}
+        isSaving={isSaving}
+      />
+      
+      {loan && (
+        <AnalystRemarkDialog 
+          isOpen={isAnalystRemarkDialogOpen} 
+          onOpenChange={setIsAnalystRemarkDialogOpen} 
+          onSubmit={async (note, promote) => { 
+            const h: LoanHistoryEntry = { 
+              id: `remark-${Date.now()}`, 
+              stageName: currentStageDef?.name || 'Analyst Review', 
+              timestamp: formatISO(new Date()), 
+              userId: currentUser?.id || '', 
+              userName: currentUser?.fullName || '', 
+              notes: `Analyst Remark: ${note}` 
+            };
+            
+            if (promote) {
+              const result = await approveDistrictAnalyst(loan.id, note);
+              if ('error' in result) {
+                toast({ title: "Error", description: result.error, variant: "destructive" });
+                return;
+              }
+              toast({ title: "Success", description: "Remark saved and case promoted to Final Manager Review." });
+              router.refresh();
+            } else {
+              await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Remark added successfully.");
+            }
+          }} 
+          isSaving={isSaving}
+          loanAmount={loan.loanAmount}
+          currentStage={currentStageDef?.name || 'N/A'}
+          loanNumber={loan.loanNumber}
+          managerComments={loan.lafData?.managerComments}
+        />
+      )}
     </div>
   );
 }

@@ -20,6 +20,10 @@ interface LoanInfoDisplayProps {
 }
 
 export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }: LoanInfoDisplayProps) {
+  const valuationData = loan.valuationReportData as
+    | { estimatedValue?: string; valuationMethod?: string; finalRecommendation?: string }
+    | undefined;
+
   const getInitials = (name: string) => {
     const parts = name.split(' ');
     if (parts.length > 1) {
@@ -38,6 +42,12 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
       <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />
       <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
       <InfoItem icon={Building} label="Responsible Department" value={assignedDepartment || 'N/A'} />
+      {loan.isValuationCompleted && (
+        <InfoItem icon={Landmark} label="Valuation Estimate" value={valuationData?.estimatedValue ? `${valuationData.estimatedValue} ETB` : 'N/A'} />
+      )}
+      {loan.isValuationCompleted && (
+        <InfoItem icon={Info} label="Valuation Recommendation" value={valuationData?.finalRecommendation || 'N/A'} />
+      )}
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0 text-primary pt-1">
           <UsersIcon className="h-5 w-5" />

@@ -24,6 +24,7 @@ import {
   FileOutput,
   BellRing,
   History,
+  Network,
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -48,9 +49,9 @@ interface NavItemConfig {
 }
 
 const navItemsConfig: NavItemConfig[] = [
-  { 
-    href: '/', 
-    label: 'Dashboard', 
+  {
+    href: '/',
+    label: 'Dashboard',
     icon: LayoutGrid,
     requiredPermissions: [PERMISSIONS.VIEW_DASHBOARD]
   },
@@ -60,9 +61,9 @@ const navItemsConfig: NavItemConfig[] = [
     icon: BarChartBig,
     requiredPermissions: [PERMISSIONS.VIEW_EXECUTIVE_OVERVIEW]
   },
-  { 
-    href: '/loan-process', 
-    label: 'Loan Pipeline', 
+  {
+    href: '/loan-process',
+    label: 'Loan Pipeline',
     icon: KanbanSquare,
     requiredPermissions: [PERMISSIONS.VIEW_LOAN_PIPELINE]
   },
@@ -85,37 +86,119 @@ const navItemsConfig: NavItemConfig[] = [
     requiredPermissions: [PERMISSIONS.VIEW_INCOMING_CASES]
   },
   {
-    href: '/my-assigned-cases',
-    label: 'My Assigned Cases',
-    icon: ClipboardList,
-    requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
-  },
-  {
-    href: '/my-submitted-cases',
-    label: 'My Submitted Cases',
-    icon: FileOutput,
-    requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
-  },
-  {
     href: '/manager-review',
     label: 'Manager Review Queue',
     icon: UserCheck,
     requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
   },
-
   {
     href: '/department-queue',
     label: 'Unassigned Cases',
     icon: FolderKanban,
     requiredPermissions: [PERMISSIONS.VIEW_UNASSIGNED_CASES_QUEUE]
   },
-  { 
-    href: '/loan-status', 
-    label: 'Internal Status Lookup', 
+  {
+    href: '/loan-requests/district',
+    label: 'District Workflow',
+    icon: Network,
+    requiredPermissions: [
+      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
+      PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE,
+      PERMISSIONS.VIEW_OWN_SUBMITTED_CASES
+    ],
+    subItems: [
+      {
+        href: '/district/dashboard',
+        label: 'District Dashboard',
+        icon: BarChartBig,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
+      },
+      {
+        href: '/analyst/review',
+        label: 'Analyst Review',
+        icon: FileSearch,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+      },
+      {
+        href: '/committee/approval',
+        label: 'Committee Approval',
+        icon: Users,
+        requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
+      },
+      {
+        href: '/manager-review',
+        label: 'Manager Review',
+        icon: UserCheck,
+        requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
+      },
+      {
+        href: '/district/submitted-cases',
+        label: 'District Submissions',
+        icon: FileOutput,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
+      },
+    ]
+  },
+  {
+    href: '/valuation/incoming',
+    label: 'District Valuation',
+    icon: Building,
+    requiredPermissions: [
+      PERMISSIONS.VIEW_INCOMING_CASES, 
+      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, 
+      PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE
+    ],
+    subItems: [
+      {
+        href: '/valuation/incoming',
+        label: 'Valuation Queue',
+        icon: Building,
+        requiredPermissions: [PERMISSIONS.VIEW_INCOMING_CASES]
+      },
+      {
+        href: '/valuation/review',
+        label: 'Valuation Review',
+        icon: UserCheck,
+        requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
+      },
+      {
+        href: '/valuation/my-cases',
+        label: 'My Valuation',
+        icon: ClipboardList,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+      },
+    ]
+  },
+  {
+    href: '/my-assigned-cases',
+    label: 'My Workspace',
+    icon: ClipboardList,
+    requiredPermissions: [
+      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
+      PERMISSIONS.VIEW_OWN_SUBMITTED_CASES
+    ],
+    subItems: [
+      {
+        href: '/my-assigned-cases',
+        label: 'My Assigned Cases',
+        icon: ClipboardList,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_ASSIGNED_CASES]
+      },
+      {
+        href: '/my-submitted-cases',
+        label: 'My Submitted Cases',
+        icon: FileOutput,
+        requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
+      },
+    ]
+  },
+  {
+    href: '/loan-status',
+    label: 'Internal Status Lookup',
     icon: SearchCheck,
     requiredPermissions: [PERMISSIONS.VIEW_LOAN_STATUS_LOOKUP]
   },
-   {
+  {
     href: '/track-loan',
     label: 'Public Loan Tracker',
     icon: FileSearch,
@@ -138,12 +221,12 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'Settings',
     icon: SettingsIcon,
     requiredPermissions: [
-        PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS, 
-        PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS,
-        PERMISSIONS.MANAGE_SETTINGS_BRANCHES,
-        PERMISSIONS.MANAGE_SETTINGS_ROLES,
-        PERMISSIONS.MANAGE_USERS,
-    ], 
+      PERMISSIONS.MANAGE_SETTINGS_WORKFLOWS,
+      PERMISSIONS.MANAGE_SETTINGS_DEPARTMENTS,
+      PERMISSIONS.MANAGE_SETTINGS_BRANCHES,
+      PERMISSIONS.MANAGE_SETTINGS_ROLES,
+      PERMISSIONS.MANAGE_USERS,
+    ],
     subItems: [
       {
         href: '/settings/departments',
@@ -185,7 +268,7 @@ export default function SidebarNav() {
   const { user, isLoading: authLoading } = useAuth();
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set());
   const { toast } = useToast();
-  
+
   // Badge counts state
   const [counts, setCounts] = useState({
     incoming: 0,
@@ -193,41 +276,41 @@ export default function SidebarNav() {
     assigned: 0,
     submitted: 0,
   });
-  
+
   const prevIncomingCountRef = useRef<number>(0);
 
   const fetchCounts = useCallback(async (isInitial = false) => {
     if (!user) return;
     try {
       const result = await getLoanRequests();
-      if (result.loans) {
-        const loans = result.loans;
-        
+      if (result && 'loans' in result && result.loans) {
+        const loans = result.loans as LoanRequest[];
+
         // 1. Incoming (Unassigned cases in user's dept)
-        const incoming = loans.filter(l => 
-          l.assignedDepartment === user.department && 
-          l.assignedToUsers.length === 0 && 
+        const incoming = loans.filter((l: LoanRequest) =>
+          l.assignedDepartment === user.department &&
+          (l.assignedToUsers?.length || 0) === 0 &&
           !l.isReadyForManagerReview &&
           !l.isTerminalStage
         ).length;
 
         // 2. Manager Review (Ready for review in manager's dept)
-        const review = loans.filter(l => 
-          l.assignedDepartment === user.department && 
+        const review = loans.filter((l: LoanRequest) =>
+          l.assignedDepartment === user.department &&
           l.isReadyForManagerReview === true &&
           !l.isTerminalStage
         ).length;
 
         // 3. My Assigned Cases (Specifically assigned to user AND not yet for review)
-        const assigned = loans.filter(l => 
-          l.assignedToUsers.some(u => u.id === user.id) && 
+        const assigned = loans.filter((l: LoanRequest) =>
+          l.assignedToUsers?.some((u: User) => u.id === user.id) &&
           !l.isReadyForManagerReview &&
           !l.isTerminalStage
         ).length;
 
         // 4. My Submitted Cases (Created by user and active)
-        const submitted = loans.filter(l => 
-          l.createdById === user.id && 
+        const submitted = loans.filter((l: LoanRequest) =>
+          l.createdById === user.id &&
           !l.isTerminalStage
         ).length;
 
@@ -240,7 +323,7 @@ export default function SidebarNav() {
             variant: "default",
           });
         }
-        
+
         prevIncomingCountRef.current = incoming;
         setCounts({ incoming, review, assigned, submitted });
       }
@@ -251,27 +334,27 @@ export default function SidebarNav() {
 
   useEffect(() => {
     setIsClient(true);
-    const parentMenu = navItemsConfig.find(item => 
-        item.subItems?.some(sub => currentPathname.startsWith(sub.href))
+    const parentMenu = navItemsConfig.find(item =>
+      item.subItems?.some(sub => currentPathname.startsWith(sub.href))
     );
     if (parentMenu) {
-        setOpenMenus(prev => new Set(prev).add(parentMenu.href));
+      setOpenMenus(prev => new Set(prev).add(parentMenu.href));
     }
-    
+
     fetchCounts(true);
-    const interval = setInterval(() => fetchCounts(false), 30000); 
+    const interval = setInterval(() => fetchCounts(false), 30000);
     return () => clearInterval(interval);
   }, [currentPathname, fetchCounts]);
 
   if (!isClient || authLoading) {
     return (
-        <SidebarMenu>
-            {[...Array(6)].map((_, i) => (
-                <SidebarMenuItem key={`skel-${i}`} className="p-2">
-                    <div className="h-8 w-full bg-muted/50 animate-pulse rounded-md" />
-                </SidebarMenuItem>
-            ))}
-        </SidebarMenu>
+      <SidebarMenu>
+        {[...Array(6)].map((_, i) => (
+          <SidebarMenuItem key={`skel-${i}`} className="p-2">
+            <div className="h-8 w-full bg-muted/50 animate-pulse rounded-md" />
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
     );
   }
 
@@ -282,23 +365,23 @@ export default function SidebarNav() {
     if (!user) return false;
     return itemRequiredPermissions.some(permission => userPermissions.has(permission));
   };
-  
-  const visibleNavItems = navItemsConfig.filter(item => 
+
+  const visibleNavItems = navItemsConfig.filter(item =>
     canView(item.requiredPermissions)
   ).map(item => ({
-      ...item,
-      subItems: item.subItems?.filter(sub => canView(sub.requiredPermissions))
+    ...item,
+    subItems: item.subItems?.filter(sub => canView(sub.requiredPermissions))
   }));
 
   const toggleMenu = (href: string) => {
     setOpenMenus(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(href)) {
-            newSet.delete(href);
-        } else {
-            newSet.add(href);
-        }
-        return newSet;
+      const newSet = new Set(prev);
+      if (newSet.has(href)) {
+        newSet.delete(href);
+      } else {
+        newSet.add(href);
+      }
+      return newSet;
     });
   };
 
@@ -319,11 +402,11 @@ export default function SidebarNav() {
         const isActiveViaSubItem = item.subItems?.some(sub => currentPathname.startsWith(sub.href)) ?? false;
         const mainButtonIsActive = isActiveDirectly || isActiveViaSubItem;
         const isMenuOpen = openMenus.has(item.href);
-        
+
         const count = getBadgeCount(item.href);
 
         return (
-          <SidebarMenuItem key={item.href}>
+          <SidebarMenuItem key={`${item.href}-${item.label}`}>
             <SidebarMenuButton
               asChild
               isActive={mainButtonIsActive}
@@ -334,8 +417,8 @@ export default function SidebarNav() {
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
                 {count > 0 && (
-                  <Badge 
-                    variant={item.href === '/incoming-cases' ? "destructive" : "secondary"} 
+                  <Badge
+                    variant={item.href === '/incoming-cases' ? "destructive" : "secondary"}
                     className={cn(
                       "ml-auto h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full",
                       item.href === '/incoming-cases' && "bg-red-600 animate-pulse"
@@ -361,18 +444,18 @@ export default function SidebarNav() {
                   const SubIcon = subItem.icon;
                   const subItemIsActive = currentPathname.startsWith(subItem.href);
                   return (
-                    <SidebarMenuItem key={subItem.href} className="list-none">
-                       <SidebarMenuButton
-                          asChild
-                          isActive={subItemIsActive}
-                          className="justify-start text-sm h-8"
-                          tooltip={subItem.label}
-                       >
-                          <Link href={subItem.href}>
-                            <SubIcon className="h-4 w-4 mr-2.5" />
-                            <span>{subItem.label}</span>
-                          </Link>
-                       </SidebarMenuButton>
+                    <SidebarMenuItem key={`${item.href}-${subItem.href}-${subItem.label}`} className="list-none">
+                      <SidebarMenuButton
+                        asChild
+                        isActive={subItemIsActive}
+                        className="justify-start text-sm h-8"
+                        tooltip={subItem.label}
+                      >
+                        <Link href={subItem.href}>
+                          <SubIcon className="h-4 w-4 mr-2.5" />
+                          <span>{subItem.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
                 })}

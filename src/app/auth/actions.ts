@@ -32,8 +32,10 @@ function mapPrismaUserToAppUser(
   prismaUser: PrismaUser & {
     department?: PrismaDepartment | null;
     customRole?: PrismaRole | null;
+    crmMappings?: { branch: { districtId: string; district: { name: string } } }[];
   }
 ): User {
+  const primaryDistrict = prismaUser.crmMappings?.[0]?.branch;
   return {
     id: prismaUser.id,
     email: prismaUser.email,
@@ -43,6 +45,8 @@ function mapPrismaUserToAppUser(
     phoneNumber: prismaUser.phoneNumber || undefined,
     departmentId: prismaUser.departmentId || undefined,
     department: prismaUser.department?.name as DepartmentType | undefined,
+    districtId: primaryDistrict?.districtId || undefined,
+    districtName: primaryDistrict?.district?.name || undefined,
     customRoleId: prismaUser.customRoleId || undefined,
     customRoleName: prismaUser.customRole?.name || undefined,
     permissions: safeJsonParse<AppPermission[]>(prismaUser.customRole?.permissions, []),
@@ -63,12 +67,22 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
       where: { phoneNumber: normalizedPhoneNumber },
       include: {
         department: true,
+        district: true,
         customRole: true,
+        crmMappings: {
+          include: {
+            branch: {
+              include: { district: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
     if (!user) {
-      return { success: false, error: genericError };
+      return { success: false, error: `No user found with phone number ${normalizedPhoneNumber}` };
     }
 
     if (!user.isActive) {
@@ -81,7 +95,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
     }
 
     if (!user.passwordHash) {
-       return { success: false, error: genericError };
+       return { success: false, error: "Account has no password set." };
     }
 
     const passwordMatch = await bcrypt.compare(passwordInput, user.passwordHash);
@@ -104,7 +118,7 @@ export async function loginUser(phoneNumberInput: string, passwordInput: string)
           return { success: false, error: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minute.` };
       }
 
-      return { success: false, error: genericError };
+      return { success: false, error: "Incorrect password." };
     }
     
     if (user.failedLoginAttempts > 0 || user.lockoutUntil) {
@@ -160,7 +174,17 @@ export async function getCurrentUser(): Promise<{ user: User | null }> {
       where: { id: session.userId },
       include: {
         department: true,
+        district: true,
         customRole: true,
+        crmMappings: {
+          include: {
+            branch: {
+              include: { district: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
       },
     });
 

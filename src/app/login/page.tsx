@@ -1,8 +1,6 @@
-
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +13,6 @@ import Image from 'next/image'; // Import next/image
 import { normalizeEthiopianPhone } from '@/lib/utils';
 
 export default function LoginPage() {
-  const router = useRouter();
   const { toast } = useToast();
   const authContext = useAuth();
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -33,7 +30,7 @@ export default function LoginPage() {
 
     if (result.success) {
       toast({ title: "Login Successful", description: "Welcome back!" });
-      // Navigation is handled by AuthContext's useEffect after user state updates
+      // Navigation is handled by AuthContext after user state is refreshed from session.
     } else {
       const friendlyMessage = result.error || "Login failed. Please check your credentials and try again.";
       setError(friendlyMessage);
