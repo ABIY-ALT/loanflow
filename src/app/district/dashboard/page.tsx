@@ -74,7 +74,9 @@ export default function DistrictDashboardPage() {
   const [amountMax, setAmountMax] = useState('');
 
   const canViewDashboard = useMemo(
-    () => user?.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES),
+    () =>
+      user?.permissions.includes(PERMISSIONS.VIEW_DISTRICT_DASHBOARD) ||
+      user?.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES),
     [user]
   );
 
@@ -237,7 +239,9 @@ export default function DistrictDashboardPage() {
       <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertCircle className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-semibold mb-2">Unauthorized</h1>
-        <p className="text-muted-foreground mb-6">District Director access is required for this view.</p>
+        <p className="text-muted-foreground mb-6">
+          You need the District Dashboard permission to view this page.
+        </p>
         <Button onClick={() => router.push('/')}>Return to Base</Button>
       </div>
     );

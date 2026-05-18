@@ -32,7 +32,10 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
     // Check if user is in Valuation Department and has VIEW_INCOMING_CASES permission
     // Or if they are admin
     const isValuationDept = user.department === VALUATION_DEPT_NAME;
-    const canView = user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES) || user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+    const canView =
+      user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES) ||
+      user.permissions.includes(PERMISSIONS.VIEW_DISTRICT_VALUATION) ||
+      user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
     if (!canView) return createErrorResult("Unauthorized", "getIncomingValuationCases");
 

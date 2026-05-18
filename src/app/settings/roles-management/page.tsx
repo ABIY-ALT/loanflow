@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getRoles, addRole, deleteRole, updateRole, type AppRole } from '@/services/role-service';
-import { ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS, PERMISSION_CATEGORIES, type AppPermission, PERMISSIONS } from '@/lib/permissions';
+import { PERMISSION_DESCRIPTIONS, PERMISSION_CATEGORIES, resolvePermissionEntry, resolvePermissionLabel, type AppPermission, PERMISSIONS } from '@/lib/permissions';
 import { Loader2, PlusCircle, Trash2, AlertTriangle, ShieldAlert, ArrowLeft, Drama, Edit, Save, BadgeCheck } from 'lucide-react';
 import {
   AlertDialog,
@@ -336,8 +336,11 @@ export default function ManageRolesPage() {
                     <div key={category.name} className="space-y-2 p-3 border rounded-md bg-muted/30">
                       <h5 className="text-sm font-medium text-primary">{category.name}</h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                        {category.permissions.map(permissionKey => (
-                           <div key={permissionKey} className="flex items-center space-x-2">
+                        {category.permissions.map((entry, index) => {
+                          const permissionKey = resolvePermissionEntry(entry);
+                          const label = resolvePermissionLabel(entry);
+                          return (
+                           <div key={`${permissionKey}-${category.name}-${index}`} className="flex items-center space-x-2">
                              <Checkbox
                                id={`perm-${permissionKey}`}
                                checked={selectedPermissions.has(permissionKey)}
@@ -345,10 +348,11 @@ export default function ManageRolesPage() {
                                disabled={isSubmitting}
                              />
                              <Label htmlFor={`perm-${permissionKey}`} className="text-sm font-normal cursor-pointer leading-tight">
-                               {PERMISSION_DESCRIPTIONS[permissionKey] || permissionKey}
+                               {label}
                              </Label>
                            </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}

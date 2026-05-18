@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
+import { ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -21,6 +24,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
 
 export default function AnalystReview() {
+  const { user: currentUser, isLoading: authLoading } = useAuth();
+  const canViewPage = useMemo(
+    () => currentUser?.permissions.includes(PERMISSIONS.VIEW_OWN_ASSIGNED_CASES),
+    [currentUser]
+  );
   const [loans, setLoans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
@@ -46,13 +54,27 @@ export default function AnalystReview() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!authLoading && canViewPage) {
+      fetchData();
+    } else if (!authLoading) {
+      setIsLoading(false);
+    }
+  }, [authLoading, canViewPage]);
 
-
-
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  if (!canViewPage) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-10rem)] text-center p-4">
+        <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Access Denied</h1>
+        <p className="text-muted-foreground mb-6">
+          You need the Analyst Review permission (My Assigned Cases) to access this page.
+        </p>
+      </div>
+    );
   }
 
   return (

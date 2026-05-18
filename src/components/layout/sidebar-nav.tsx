@@ -102,16 +102,19 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'District Workflow',
     icon: Network,
     requiredPermissions: [
+      PERMISSIONS.VIEW_DISTRICT_DASHBOARD,
       PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
       PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE,
-      PERMISSIONS.VIEW_OWN_SUBMITTED_CASES
+      PERMISSIONS.VIEW_OWN_SUBMITTED_CASES,
+      PERMISSIONS.APPROVE_COMMITTEE_CASES,
+      PERMISSIONS.CREATE_LOAN_REQUEST,
     ],
     subItems: [
       {
         href: '/district/dashboard',
         label: 'District Dashboard',
         icon: BarChartBig,
-        requiredPermissions: [PERMISSIONS.VIEW_OWN_SUBMITTED_CASES]
+        requiredPermissions: [PERMISSIONS.VIEW_DISTRICT_DASHBOARD],
       },
       {
         href: '/analyst/review',
@@ -123,7 +126,7 @@ const navItemsConfig: NavItemConfig[] = [
         href: '/committee/approval',
         label: 'Committee Approval',
         icon: Users,
-        requiredPermissions: [PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE]
+        requiredPermissions: [PERMISSIONS.APPROVE_COMMITTEE_CASES]
       },
       {
         href: '/manager-review',
@@ -144,16 +147,17 @@ const navItemsConfig: NavItemConfig[] = [
     label: 'District Valuation',
     icon: Building,
     requiredPermissions: [
-      PERMISSIONS.VIEW_INCOMING_CASES, 
-      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES, 
-      PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE
+      PERMISSIONS.VIEW_DISTRICT_VALUATION,
+      PERMISSIONS.VIEW_INCOMING_CASES,
+      PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
+      PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE,
     ],
     subItems: [
       {
         href: '/valuation/incoming',
         label: 'Valuation Queue',
         icon: Building,
-        requiredPermissions: [PERMISSIONS.VIEW_INCOMING_CASES]
+        requiredPermissions: [PERMISSIONS.VIEW_DISTRICT_VALUATION, PERMISSIONS.VIEW_INCOMING_CASES]
       },
       {
         href: '/valuation/review',

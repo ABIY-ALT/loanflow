@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   APPROVE_COMMITTEE_CASES: "APPROVE_COMMITTEE_CASES", // Committee review and vote authority
   VIEW_OVERDUE_TASKS_REPORT: "VIEW_OVERDUE_TASKS_REPORT", // Overdue tasks page
   VIEW_REPORTS: "VIEW_REPORTS", // Can view the main reports page
+  VIEW_DISTRICT_DASHBOARD: "VIEW_DISTRICT_DASHBOARD", // District command center analytics
+  VIEW_DISTRICT_VALUATION: "VIEW_DISTRICT_VALUATION", // District valuation queue access
   
   // High-Level / Administrative Actions
   TERMINATE_LOAN_PROCESS: "TERMINATE_LOAN_PROCESS", // Can permanently stop a loan process
@@ -82,9 +84,10 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_INCOMING_CASES: "Can view new incoming cases promoted to their department that need staff assignment.",
   PROMOTE_LOAN_STAGE: "Can approve a loan stage and promote it to the next sequential stage in the workflow.",
   APPROVE_COMMITTEE_CASES: "Can view and vote on committee approval cases.",
-  RETURN_LOAN_FOR_REWORK: "Can return a loan to a previous assignee or state for rework (manager action).",
   VIEW_OVERDUE_TASKS_REPORT: "Can view the page listing all overdue loan tasks.",
   VIEW_REPORTS: "Can view the main reports page and its sub-reports.",
+  VIEW_DISTRICT_DASHBOARD: "Can view the District Dashboard with analytics, CRM performance, and loan summaries.",
+  VIEW_DISTRICT_VALUATION: "Can access the District Valuation queue and valuation review.",
   TERMINATE_LOAN_PROCESS: "Can terminate a loan process at any stage, ending all activities.",
   MANUAL_STAGE_TRANSITION: "Can manually move a loan to any stage of any workflow, overriding the standard sequence.",
   MANAGE_SETTINGS_WORKFLOWS: "Can access settings to define and manage loan workflow definitions and versions.",
@@ -95,32 +98,86 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_SYSTEM_AUDIT_LOGS: "Future: Can view system-wide audit logs for important actions.",
 };
 
-// Helper to group permissions for easier display in UI
-export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[] }[] = [
+/** Role UI: permission with optional sidebar-aligned label (same permission may appear in multiple groups). */
+export type PermissionCategoryEntry =
+  | AppPermission
+  | { permission: AppPermission; label: string };
+
+export function resolvePermissionEntry(entry: PermissionCategoryEntry): AppPermission {
+  return typeof entry === "string" ? entry : entry.permission;
+}
+
+export function resolvePermissionLabel(entry: PermissionCategoryEntry): string {
+  if (typeof entry === "string") {
+    return PERMISSION_DESCRIPTIONS[entry] || entry;
+  }
+  return entry.label;
+}
+
+// Grouped for role management — mirrors sidebar navigation where applicable
+export const PERMISSION_CATEGORIES: { name: string; permissions: PermissionCategoryEntry[] }[] = [
   {
-    name: "General Access & Viewing",
+    name: "Main Navigation (Sidebar)",
     permissions: [
-      "VIEW_DASHBOARD",
-      "VIEW_EXECUTIVE_OVERVIEW",
-      "VIEW_LOAN_PIPELINE",
-      "VIEW_LOAN_DETAILS",
-      "VIEW_LOAN_STATUS_LOOKUP",
-      "VIEW_CUSTOMERS",
+      { permission: "VIEW_DASHBOARD", label: "Dashboard — main application dashboard" },
+      { permission: "VIEW_EXECUTIVE_OVERVIEW", label: "Executive Overview — senior management loan dashboard" },
+      { permission: "VIEW_LOAN_PIPELINE", label: "Loan Pipeline — Kanban board and loan cards" },
+      { permission: "CREATE_LOAN_REQUEST", label: "New Loan Request — submit new loan requests" },
+      { permission: "VIEW_CUSTOMERS", label: "Customers — list and profiles" },
+      { permission: "VIEW_INCOMING_CASES", label: "Incoming Cases — new cases for department heads" },
+      { permission: "VIEW_MANAGER_REVIEW_QUEUE", label: "Manager Review Queue — loans awaiting manager review" },
+      { permission: "VIEW_UNASSIGNED_CASES_QUEUE", label: "Unassigned Cases — department queue" },
     ],
   },
   {
-    name: "Reporting",
+    name: "District Workflow (Sidebar)",
     permissions: [
-      "VIEW_REPORTS",
-      "VIEW_OVERDUE_TASKS_REPORT",
-    ]
+      { permission: "VIEW_DISTRICT_DASHBOARD", label: "District Dashboard — analytics, CRM performance, loan summaries" },
+      { permission: "VIEW_OWN_ASSIGNED_CASES", label: "Analyst Review — review assigned district cases" },
+      { permission: "APPROVE_COMMITTEE_CASES", label: "Committee Approval — view and vote on committee cases" },
+      { permission: "VIEW_MANAGER_REVIEW_QUEUE", label: "Manager Review (District) — district manager review queue" },
+      { permission: "VIEW_OWN_SUBMITTED_CASES", label: "District Submissions — cases submitted by the user" },
+      { permission: "CREATE_LOAN_REQUEST", label: "District Loan Submission — create Type-2 district loan requests" },
+    ],
+  },
+  {
+    name: "District Valuation (Sidebar)",
+    permissions: [
+      { permission: "VIEW_DISTRICT_VALUATION", label: "District Valuation — access valuation queues and review" },
+      { permission: "VIEW_INCOMING_CASES", label: "Valuation Queue — incoming valuation cases" },
+      { permission: "VIEW_MANAGER_REVIEW_QUEUE", label: "Valuation Review — manager valuation review" },
+      { permission: "VIEW_OWN_ASSIGNED_CASES", label: "My Valuation — assigned valuation cases" },
+    ],
+  },
+  {
+    name: "My Workspace (Sidebar)",
+    permissions: [
+      { permission: "VIEW_OWN_ASSIGNED_CASES", label: "My Assigned Cases" },
+      { permission: "VIEW_OWN_SUBMITTED_CASES", label: "My Submitted Cases" },
+    ],
+  },
+  {
+    name: "Tools & Reports (Sidebar)",
+    permissions: [
+      { permission: "VIEW_LOAN_STATUS_LOOKUP", label: "Internal Status Lookup — AI loan status tool" },
+      { permission: "VIEW_REPORTS", label: "Reports — main reports and sub-reports" },
+      { permission: "VIEW_OVERDUE_TASKS_REPORT", label: "Overdue Tasks — overdue loan tasks list" },
+    ],
+  },
+  {
+    name: "Settings (Sidebar)",
+    permissions: [
+      { permission: "MANAGE_SETTINGS_DEPARTMENTS", label: "Manage Departments" },
+      { permission: "MANAGE_SETTINGS_BRANCHES", label: "Manage Branches & Districts" },
+      { permission: "MANAGE_SETTINGS_ROLES", label: "Manage Roles" },
+      { permission: "MANAGE_USERS", label: "Manage User Assignments & Register Users" },
+      { permission: "MANAGE_SETTINGS_WORKFLOWS", label: "Workflow Settings (via Settings page)" },
+    ],
   },
   {
     name: "Loan Processing & Officer Actions",
     permissions: [
-      "CREATE_LOAN_REQUEST",
-      "VIEW_OWN_ASSIGNED_CASES",
-      "VIEW_OWN_SUBMITTED_CASES",
+      "VIEW_LOAN_DETAILS",
       "EDIT_LOAN_DETAILS",
       "ASSIGN_LOAN_TO_STAFF",
       "ADD_LOAN_NOTES",
@@ -135,12 +192,8 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
   {
     name: "Managerial & Supervisory Actions",
     permissions: [
-      "VIEW_MANAGER_REVIEW_QUEUE",
       "VIEW_MANAGER_REVIEW_HISTORY",
-      "VIEW_UNASSIGNED_CASES_QUEUE",
-      "VIEW_INCOMING_CASES",
       "PROMOTE_LOAN_STAGE",
-      "APPROVE_COMMITTEE_CASES",
       "RETURN_LOAN_FOR_REWORK",
     ],
   },
@@ -149,11 +202,6 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: AppPermission[]
     permissions: [
       "TERMINATE_LOAN_PROCESS",
       "MANUAL_STAGE_TRANSITION",
-      "MANAGE_SETTINGS_WORKFLOWS",
-      "MANAGE_SETTINGS_DEPARTMENTS",
-      "MANAGE_SETTINGS_BRANCHES",
-      "MANAGE_SETTINGS_ROLES",
-      "MANAGE_USERS",
       "VIEW_SYSTEM_AUDIT_LOGS",
     ],
   },
