@@ -282,7 +282,7 @@ export default function DistrictDashboardPage() {
              </Badge>
           </div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {user?.districtName || 'District'} Command Dashboard
+            {user?.districtName || 'District'} District Dashboard
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">Advanced monitoring for portfolio performance and branch activity.</p>
         </div>

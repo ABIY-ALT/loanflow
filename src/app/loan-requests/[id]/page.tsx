@@ -9,10 +9,11 @@ import { format, parseISO, formatISO, addDays } from 'date-fns';
 import type { LoanRequest, LoanDocument, LoanHistoryEntry, User as UserType, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, DocumentRequirement } from '@/types/loan';
 import { LoanDocumentStatus, DocumentRequirementType, LoanDocumentStatus as AppLoanDocumentStatus } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
+import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from '@/lib/district-workflow';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, distributeToCommittee } from '@/services/loan-service-prisma';
-import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote } from 'lucide-react';
+import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -154,6 +155,13 @@ export default function LoanDetailPage() {
       loan.currentStageOrder === 6 &&
       (loan.currentStageStatus === 'RETURNED_FOR_COMMENT' || loan.currentStageStatus === 'RETURNED_FOR_REWORK');
 
+    if (
+      userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) &&
+      canDistributeToDistrictApproval(loan)
+    ) {
+      return true;
+    }
+
     const looksLikeAnalystRole =
       normalizedUserRole.includes('analyst') ||
       normalizedUserRole.includes('appraisal') ||
@@ -168,7 +176,7 @@ export default function LoanDetailPage() {
     }
 
     return false;
-  }, [currentUser, currentStageDef, isActionableInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept]);
+  }, [currentUser, currentStageDef, isActionableInUserDepartment, loan, isAdmin, isAssigned, isManagerInDept, userPermissions]);
 
   const canViewFullDetails = useMemo(() => {
     if (!currentUser || !loan) return false;
@@ -593,6 +601,9 @@ export default function LoanDetailPage() {
   }
 
   const availableStatuses = (currentStageDef?.availableStatuses && loan.assignedDepartment && currentStageDef.availableStatuses[loan.assignedDepartment]) || [];
+  const showDistributeToApproval =
+    userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) &&
+    canDistributeToDistrictApproval(loan);
 
   return (
     <div className="space-y-6">
@@ -619,7 +630,11 @@ export default function LoanDetailPage() {
         onOpenReturnForReworkDialog={() => setIsReturnForReworkDialogOpen(true)} 
         onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)} 
         onOpenManualTransitionDialog={() => setIsManualTransitionDialogOpen(true)} 
-        onOpenDistributeDialog={() => setIsDistributeDialogOpen(true)}
+        onOpenDistributeDialog={
+          userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL)
+            ? () => setIsDistributeDialogOpen(true)
+            : undefined
+        }
         isSaving={isSaving} 
         isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)} 
         canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)} 
@@ -818,6 +833,7 @@ export default function LoanDetailPage() {
           currentStage={currentStageDef?.name || 'N/A'}
           loanNumber={loan.loanNumber}
           managerComments={loan.lafData?.managerComments}
+          canPromoteToManager={canAnalystSubmitToFinalManager(loan)}
         />
       )}
     </div>

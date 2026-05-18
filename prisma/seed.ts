@@ -192,7 +192,12 @@ async function main() {
 
   // ==================== SEED DEPARTMENTS ====================
   console.log('Seeding Departments...');
-  const uniqueDepts = Array.from(new Set(appMockUsers.map((u) => u.department).filter(Boolean)));
+  const uniqueDepts = Array.from(
+    new Set([
+      ...appMockUsers.map((u) => u.department).filter(Boolean),
+      'District', // Required for District Specialized (TYPE-2) workflow stages
+    ])
+  );
   for (const deptName of uniqueDepts) {
     await prisma.department.upsert({
       where: { nameLowercase: deptName.toLowerCase() },
@@ -251,6 +256,7 @@ async function main() {
       PERMISSIONS.VIEW_DISTRICT_ANALYST_REVIEW, PERMISSIONS.VIEW_OWN_ASSIGNED_CASES,
       PERMISSIONS.EDIT_LOAN_DETAILS, PERMISSIONS.UPLOAD_LOAN_DOCUMENTS,
       PERMISSIONS.ADD_LOAN_NOTES, PERMISSIONS.MARK_STAGE_COMPLETE,
+      PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL,
       PERMISSIONS.APPROVE_COMMITTEE_CASES,
     ] },
     { name: "District Crm", permissions: [
@@ -810,6 +816,155 @@ async function main() {
         childSectorName,
         config.departmentName
       );
+    }
+  }
+
+  // ==================== DISTRICT SPECIALIZED WORKFLOW (TYPE-2) ====================
+  console.log('Seeding District Specialized Loan Workflow...');
+  const districtSector = await prisma.sector.upsert({
+    where: { name: 'District Operations' },
+    update: {},
+    create: { name: 'District Operations' },
+  });
+
+  const districtDept = await prisma.department.findUnique({
+    where: { nameLowercase: 'district' },
+  });
+  const valuationDept = await prisma.department.findUnique({
+    where: { nameLowercase: 'property valuation department' },
+  });
+
+  if (!districtDept || !valuationDept) {
+    console.error(
+      'Skipping District Specialized Workflow: missing District or Property Valuation department.'
+    );
+  } else {
+    const districtWorkflow = await prisma.workflowDefinition.upsert({
+      where: { id: 'wf-district-specialized' },
+      update: {
+        name: 'District Specialized Loan Workflow',
+        description:
+          'Multi-step workflow involving District Managers, CRMs, and HO Valuation.',
+        departmentId: districtDept.id,
+        sectorId: districtSector.id,
+      },
+      create: {
+        id: 'wf-district-specialized',
+        name: 'District Specialized Loan Workflow',
+        description:
+          'Multi-step workflow involving District Managers, CRMs, and HO Valuation.',
+        order: 10,
+        departmentId: districtDept.id,
+        sectorId: districtSector.id,
+      },
+    });
+
+    let districtVersion = await prisma.workflowVersion.findFirst({
+      where: { workflowDefinitionId: districtWorkflow.id, isActive: true },
+      include: { stages: true },
+    });
+
+    if (!districtVersion) {
+      await prisma.workflowVersion.updateMany({
+        where: { workflowDefinitionId: districtWorkflow.id },
+        data: { isActive: false },
+      });
+      districtVersion = await prisma.workflowVersion.create({
+        data: {
+          workflowDefinitionId: districtWorkflow.id,
+          versionNumber: 1,
+          isActive: true,
+        },
+        include: { stages: true },
+      });
+    }
+
+    if (districtVersion.stages.length === 0) {
+      const districtStages = [
+        {
+          name: 'District Director Secretary Submission',
+          order: 0,
+          deptId: districtDept.id,
+          roles: ['District secretary', 'Secretary'],
+        },
+        {
+          name: 'District Business Manager Assignment',
+          order: 1,
+          deptId: districtDept.id,
+          roles: ['District Manager', 'Manager'],
+        },
+        {
+          name: 'CRM PVR Preparation',
+          order: 2,
+          deptId: districtDept.id,
+          roles: ['District Crm', 'CRM'],
+        },
+        {
+          name: 'HO Valuation Review',
+          order: 3,
+          deptId: valuationDept.id,
+          roles: ['Property Valuation Officer'],
+        },
+        {
+          name: 'CRM LAF & Summary Preparation',
+          order: 4,
+          deptId: districtDept.id,
+          roles: ['District Crm', 'CRM'],
+        },
+        {
+          name: 'District Operation Manager Check',
+          order: 5,
+          deptId: districtDept.id,
+          roles: ['District Manager', 'Manager'],
+        },
+        {
+          name: 'District Analyst Review',
+          order: 6,
+          deptId: districtDept.id,
+          roles: ['District Analyst', 'Credit Appraisal Officer'],
+        },
+        {
+          name: 'Final Operation Manager Review',
+          order: 7,
+          deptId: districtDept.id,
+          roles: ['District Manager', 'Manager'],
+        },
+        {
+          name: 'Committee Distribution',
+          order: 8,
+          deptId: districtDept.id,
+          roles: ['District Analyst', 'Credit Appraisal Officer'],
+        },
+        {
+          name: 'Committee Approval',
+          order: 9,
+          deptId: districtDept.id,
+          roles: ['District Analyst', 'Credit Appraisal Officer'],
+        },
+      ];
+
+      const defaultStatuses = ['Initiated', 'In Progress', 'Completed', 'Pending', 'Returned'];
+      for (const stage of districtStages) {
+        const stageDept =
+          stage.deptId === valuationDept.id ? valuationDept : districtDept;
+        await prisma.workflowStageDefinition.create({
+          data: {
+            workflowVersionId: districtVersion.id,
+            name: stage.name,
+            order: stage.order,
+            defaultTimelineDays: 3,
+            percentageWeight: 10,
+            responsibleDepartmentId: stage.deptId,
+            allowedRoles: JSON.stringify(stage.roles),
+            availableStatuses: JSON.stringify({
+              [stageDept.name]: defaultStatuses,
+            }),
+          },
+        });
+      }
+      console.log('  District Specialized Workflow stages created.');
+    } else {
+      console.log('  District Specialized Workflow already has stages.');
     }
   }
 

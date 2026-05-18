@@ -15,7 +15,8 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
-import Image from 'next/image';
+import { canAnalystSubmitToFinalManager, isAnalystReturnedFromManager } from '@/lib/district-workflow';
+import { NIB_LOGO_SRC } from '@/lib/brand';
 
 export default function LAFPage() {
   const { id } = useParams();
@@ -105,7 +106,7 @@ export default function LAFPage() {
           if (result.loan?.lafData) {
             setLafData(result.loan.lafData);
           } else {
-            setLafData(prev => ({
+            setLafData((prev: any) => ({
               ...prev,
               applicantName: result.loan?.customerName || '',
               branch: result.loan?.customerBranch || '',
@@ -144,17 +145,40 @@ export default function LAFPage() {
   };
 
   const handleExportPDF = async () => {
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
+    const sections = document.querySelectorAll<HTMLElement>('#pdf-content .pdf-section');
+    if (!sections.length) return;
+
     setIsExporting(true);
+    toast({ title: "Generating PDF", description: "Preparing LAF document..." });
+
     try {
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      let isFirstPage = true;
+
+      for (const section of Array.from(sections)) {
+        const canvas = await html2canvas(section, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        while (heightLeft > 0) {
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          heightLeft -= pdfHeight;
+          position = heightLeft - imgHeight;
+        }
+      }
+
       pdf.save(`LAF-${loan?.loanNumber || 'Export'}.pdf`);
+      toast({ title: "Success", description: "LAF exported successfully." });
     } catch (err) {
       toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
     } finally {
@@ -251,12 +275,14 @@ export default function LAFPage() {
   const isOrder5 = loan?.currentStageOrder === 5;
   const isOrder6 = loan?.currentStageOrder === 6;
   const isOrder7 = loan?.currentStageOrder === 7;
+  const isReturnedFromManager = isAnalystReturnedFromManager(loan ?? {});
+  const canSendToFinalManager = canAnalystSubmitToFinalManager(loan ?? {});
   const isReadOnlyAtStage = ![4, 5, 6].includes(loan?.currentStageOrder || 0);
   const isReadOnly = !isEditing || isReadOnlyAtStage;
 
   return (
-    <div className="p-4 md:p-8 max-w-[1000px] mx-auto space-y-6 print:p-0 bg-slate-100 min-h-screen">
-      <div className="flex justify-between items-center print:hidden bg-white p-4 rounded-xl shadow-sm border sticky top-0 z-50">
+    <div className="print:p-0 print:bg-white print:m-0">
+      <div className="flex justify-between items-center print:hidden bg-white p-4 rounded-xl shadow-sm border sticky top-0 z-50 p-4 md:p-8 max-w-[1000px] mx-auto space-y-6 bg-slate-100">
         <div className="flex items-center space-x-3">
           <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" /></Button>
           <div>
@@ -299,7 +325,7 @@ export default function LAFPage() {
             </Button>
           )}
 
-          {isOrder6 && (
+          {isOrder6 && canSendToFinalManager && (
             <Button 
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
               onClick={handleApproveByAnalyst}
@@ -314,15 +340,30 @@ export default function LAFPage() {
         </div>
       </div>
 
-      <div id="pdf-content" className="bg-white shadow-2xl p-[0.75in] mx-auto w-full text-[11px] font-serif leading-tight text-slate-900 border-t-[10px] border-amber-500">
-        
+      {isReturnedFromManager && (
+        <Alert className="max-w-[1000px] mx-auto mb-4 print:hidden border-indigo-200 bg-indigo-50">
+          <AlertCircle className="h-4 w-4 text-indigo-700" />
+          <AlertTitle className="text-indigo-900">Returned for comment</AlertTitle>
+          <AlertDescription className="text-indigo-800">
+            The Operation Manager returned this case. You cannot send it back to the manager. Open the loan detail page and use{' '}
+            <strong>Distribute for District Approval</strong> when your response is ready.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div id="pdf-content" className="bg-white shadow-2xl p-[0.75in] mx-auto w-full text-[11px] font-serif leading-tight text-slate-900 border-t-[10px] border-amber-500 print:shadow-none print:border-none print:p-5 print:m-0 print:rounded-none max-w-[1000px]">
+
+        <div className="pdf-section space-y-4">
         {/* Header */}
-        <div className="flex justify-between mb-6 border-b-2 border-slate-900 pb-2">
+        <div className="flex justify-between mb-6 border-b-2 border-slate-900 pb-2 avoid-page-break">
           <div className="flex gap-4 items-center">
-            <Image 
-               src="https://play-lh.googleusercontent.com/HR87m6M2_7ZmPGrSp_MSlmfG5uyx94iYthItSzrmWVgFWkJ3FPTOYCLPw0F_ul4mYg" 
-               alt="Bank Logo" 
-               width={50} height={50} 
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={NIB_LOGO_SRC}
+              alt="NIB International Bank"
+              width={50}
+              height={50}
+              className="h-[50px] w-[50px] flex-shrink-0 object-contain"
             />
             <div>
               <h2 className="text-lg font-bold">NIB INTERNATIONAL BANK</h2>
@@ -349,7 +390,7 @@ export default function LAFPage() {
         </div>
 
         {/* Info Boxes */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-2 gap-4 mb-4 avoid-page-break">
            <div className="border border-slate-900 p-1.5 space-y-0.5">
               {[
                 { l: 'Sector:', k: 'sector' },
@@ -418,7 +459,7 @@ export default function LAFPage() {
         </div>
 
         {/* Present Loans Table */}
-        <div className="mb-4">
+        <div className="mb-4 avoid-page-break">
            <div className="flex justify-between items-center mb-0.5">
               <h4 className="font-bold">8. Present Loans and Credit Facilities</h4>
               {!isReadOnly && <Button size="sm" variant="ghost" className="h-4 text-[8px]" onClick={() => addRow('presentLoans')}><Plus className="h-2 w-2 mr-1"/>Add</Button>}
@@ -458,7 +499,7 @@ export default function LAFPage() {
         </div>
 
         {/* Collateral Table */}
-        <div className="mb-4">
+        <div className="mb-4 avoid-page-break">
            <div className="flex justify-between items-center mb-0.5">
               <h4 className="font-bold">9. Collateral</h4>
               {!isReadOnly && <Button size="sm" variant="ghost" className="h-4 text-[8px]" onClick={() => addRow('collaterals')}><Plus className="h-2 w-2 mr-1"/>Add</Button>}
@@ -520,7 +561,7 @@ export default function LAFPage() {
         </div>
 
         {/* Section 10 */}
-        <div className="mb-4 border border-slate-900 p-2 space-y-1">
+        <div className="mb-4 border border-slate-900 p-2 space-y-1 avoid-page-break">
            <h4 className="font-bold text-xs uppercase">10. Fulfillment of relevant documents</h4>
            <div className="space-y-1 text-[10px]">
               <div>
@@ -534,11 +575,16 @@ export default function LAFPage() {
            </div>
         </div>
 
-        {/* Page Break Simulator */}
-        <div className="border-b border-slate-200 my-8"></div>
+        <div className="mt-8 flex justify-between text-[8px] text-muted-foreground border-t pt-1 italic uppercase font-sans print:hidden">
+           <span>{lafData.lafNo}</span>
+           <span>NIB INTERNATIONAL BANK - Internal Document</span>
+           <span>Page 1 of 2</span>
+        </div>
+        </div>
 
+        <div className="pdf-section space-y-4">
         {/* Basis of Recommendation */}
-        <div className="mb-6">
+        <div className="mb-6 avoid-page-break">
            <h4 className="font-bold text-xs underline uppercase mb-2">11. Basis of Recommendation</h4>
            <ul className="space-y-1">
               {lafData.basisOfRecommendation.map((item: string, i: number) => (
@@ -558,7 +604,7 @@ export default function LAFPage() {
         </div>
 
         {/* Analysts Recommendation */}
-        <div className="mb-6 space-y-4">
+        <div className="mb-6 space-y-4 avoid-page-break">
            <div>
               <h4 className="font-bold text-xs uppercase underline">12. CRM Confirmation</h4>
               <p className="italic text-[10px] mt-1">I confirm that all the information filled-out are in line with the checklist.</p>
@@ -618,7 +664,7 @@ export default function LAFPage() {
         </div>
 
         {/* Approving Team Members */}
-        <div>
+        <div className="avoid-page-break">
            <h4 className="font-bold text-xs uppercase underline mb-6">17. Approving Team members</h4>
            <div className="grid grid-cols-4 gap-4 text-center">
               {lafData.approvingTeamMembers.map((member: any, i: number) => (
@@ -637,23 +683,65 @@ export default function LAFPage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-12 flex justify-between text-[8px] text-muted-foreground border-t pt-1 italic uppercase font-sans">
+        <div className="mt-12 flex justify-between text-[8px] text-muted-foreground border-t pt-1 italic uppercase font-sans avoid-page-break">
            <span>{lafData.lafNo}</span>
            <span>NIB INTERNATIONAL BANK - Internal Document</span>
-           <span>Page 1 of 2</span>
+           <span>Page 2 of 2</span>
+        </div>
         </div>
 
       </div>
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+        .avoid-page-break {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         #pdf-content {
           font-family: 'Libre Baskerville', serif;
         }
         @media print {
           .print\:hidden { display: none !important; }
-          body { background: white !important; padding: 0 !important; }
-          #pdf-content { box-shadow: none !important; padding: 0.5in !important; border: none !important; }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          html, body {
+            width: 210mm;
+            height: 297mm;
+            background: white !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            color: black !important;
+            font-family: Arial, sans-serif;
+          }
+          @page {
+            margin: 15mm;
+            size: A4;
+            padding: 0;
+          }
+          #pdf-content {
+            box-shadow: none !important;
+            padding: 0 !important;
+            border: none !important;
+            margin: 0 !important;
+            width: 100%;
+            max-width: 100%;
+          }
+          .avoid-page-break,
+          .pdf-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          table, tr, thead, tbody {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          header, footer {
+            display: none !important;
+          }
         }
       `}</style>
     </div>

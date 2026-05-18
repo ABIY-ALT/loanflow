@@ -13,6 +13,27 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { NIB_LOGO_SRC } from '@/lib/brand';
+
+const ADDRESS_FIELDS: { key: string; label: string }[][] = [
+  [
+    { key: 'region', label: 'Region' },
+    { key: 'town', label: 'Town' },
+    { key: 'subCity', label: 'SubCity' },
+    { key: 'kebele', label: 'Kebele' },
+  ],
+  [
+    { key: 'hNo', label: 'HNo' },
+    { key: 'tel', label: 'Tel' },
+    { key: 'mobile', label: 'Mobile' },
+    { key: 'poBox', label: 'PoBox' },
+  ],
+  [
+    { key: 'fax', label: 'Fax' },
+    { key: 'email', label: 'Email' },
+    { key: 'website', label: 'Website' },
+  ],
+];
 
 export default function CustomerSummaryPage() {
   const { id } = useParams();
@@ -88,7 +109,7 @@ export default function CustomerSummaryPage() {
     setIsSaving(true);
     try {
       const result = await updateCustomerSummary(id as string, summaryData);
-      if (result.error) {
+      if ('error' in result) {
         toast({ title: "Error", description: result.error, variant: "destructive" });
       } else {
         toast({ title: "Success", description: "Customer Summary updated successfully." });
@@ -102,24 +123,38 @@ export default function CustomerSummaryPage() {
   };
 
   const handleExportPDF = async () => {
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
-    
+    const sections = document.querySelectorAll<HTMLElement>('#pdf-content .pdf-section');
+    if (!sections.length) return;
+
     setIsExporting(true);
     toast({ title: "Generating PDF", description: "Preparing Customer Summary document..." });
-    
+
     try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      let isFirstPage = true;
+
+      for (const section of Array.from(sections)) {
+        const canvas = await html2canvas(section, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        while (heightLeft > 0) {
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          heightLeft -= pdfHeight;
+          position = heightLeft - imgHeight;
+        }
+      }
+
       pdf.save(`CAFC-${loan.loanNumber || 'Export'}.pdf`);
       
       toast({ title: "Success", description: "Customer Summary exported successfully." });
@@ -149,8 +184,8 @@ export default function CustomerSummaryPage() {
   const isReadOnly = !isEditing || isReadOnlyAtStage;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto print:p-0">
-      <div className="flex justify-between items-center mb-8 print:hidden">
+    <div className="print:p-0">
+      <div className="flex justify-between items-center mb-8 print:hidden p-8">
         <div className="flex items-center space-x-4">
           <Button variant="outline" size="icon" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" /></Button>
           <div>
@@ -192,12 +227,20 @@ export default function CustomerSummaryPage() {
         </Alert>
       )}
 
-      <Card id="pdf-content" className="print:shadow-none print:border-none">
-        <CardContent className="p-12 space-y-8">
+      <Card id="pdf-content" className="print:shadow-none print:border-none print:m-0 print:rounded-none max-w-5xl mx-auto">
+        <CardContent className="p-12 space-y-8 print:p-5">
+          <div className="pdf-section space-y-8">
           {/* Header Section */}
-          <div className="flex justify-between items-start border-b-2 border-black pb-6">
+          <div className="flex justify-between items-start border-b-2 border-black pb-6 avoid-page-break">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center text-white font-bold text-2xl">N</div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={NIB_LOGO_SRC}
+                alt="NIB International Bank"
+                width={64}
+                height={64}
+                className="h-16 w-16 flex-shrink-0 object-contain"
+              />
               <div className="space-y-1">
                 <h2 className="text-xl font-bold">NIB INTERNATIONAL BANK S.C.</h2>
                 <h3 className="text-lg font-bold border-b border-black">CREDIT APPLICATION FORM FOR COMPANIES (CAFC)</h3>
@@ -297,21 +340,32 @@ export default function CustomerSummaryPage() {
               <Input className="border-0 border-b border-black rounded-none h-8 w-64" value={summaryData.tin} disabled={isReadOnly} />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 avoid-page-break">
                <span className="font-bold">10. Address:</span>
-               <div className="grid grid-cols-4 gap-4 pl-6 text-xs">
-                  {Object.entries(summaryData.address).map(([key, val]: [string, any]) => (
-                    <div key={key} className="flex flex-col gap-1">
-                      <label className="capitalize text-[10px] font-bold">{key}</label>
-                      <Input className="border-0 border-b border-black rounded-none h-6 p-0" value={val} onChange={e => setSummaryData({...summaryData, address: {...summaryData.address, [key]: e.target.value}})} disabled={isReadOnly} />
+               <div className="space-y-4 pl-6 text-xs">
+                  {ADDRESS_FIELDS.map((row, rowIndex) => (
+                    <div key={rowIndex} className="grid grid-cols-4 gap-4 avoid-page-break">
+                      {row.map(({ key, label }) => (
+                        <div key={key} className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold">{label}</label>
+                          <Input
+                            className="border-0 border-b border-black rounded-none h-6 p-0"
+                            value={summaryData.address[key] ?? ''}
+                            onChange={e => setSummaryData({...summaryData, address: {...summaryData.address, [key]: e.target.value}})}
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                      ))}
                     </div>
                   ))}
                </div>
             </div>
           </div>
+          </div>
 
+          <div className="pdf-section">
           {/* Signatures */}
-          <div className="mt-12 space-y-8">
+          <div className="mt-12 space-y-8 avoid-page-break">
             <div className="flex flex-col items-center">
                <div className="w-64 border-b border-black h-8"></div>
                <span className="text-sm font-bold mt-2">Name of General Manager of the Company</span>
@@ -321,22 +375,63 @@ export default function CustomerSummaryPage() {
                <span className="text-sm font-bold mt-2">Signature</span>
             </div>
           </div>
+          </div>
         </CardContent>
       </Card>
       
       <style jsx global>{`
+        .avoid-page-break {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         @media print {
           .print\:hidden {
             display: none !important;
           }
-          body {
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          html, body {
+            width: 210mm;
+            height: 297mm;
             background-color: white !important;
             padding: 0 !important;
             margin: 0 !important;
+            color: black !important;
+            font-family: Arial, sans-serif;
+          }
+          @page {
+            margin: 15mm;
+            size: A4;
+            padding: 0;
+          }
+          #pdf-content {
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100%;
+            max-width: 100%;
+          }
+          .avoid-page-break,
+          .pdf-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          table, tr, thead, tbody {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
           .Card {
             border: none !important;
             box-shadow: none !important;
+            margin: 0 !important;
+          }
+          /* Hide browser headers/footers */
+          header, footer {
+            display: none !important;
           }
         }
       `}</style>

@@ -26,6 +26,7 @@ import { getCommitteeSettings, getDistrictSettings } from './settings-service';
 import { createCaseAssignedNotifications } from './notification-service';
 import { getCurrentUser } from '@/app/auth/actions';
 import { normalizeEthiopianPhone } from '@/lib/utils';
+import { canDistributeToDistrictApproval } from '@/lib/district-workflow';
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 import { safeJsonParse, mapPrismaUserToAppUser, mapPrismaLoanToAppLoan } from './utils/mappers';
@@ -588,10 +589,27 @@ export async function approveDistrictAnalyst(loanRequestId: string, analystRecom
     await prisma.$transaction(async (tx) => {
       const loan = await tx.loanRequest.findUnique({
         where: { id: loanRequestId },
-        include: { workflowVersion: { include: { stages: true } } }
+        include: {
+          workflowVersion: { include: { stages: true } },
+          assignedToUsers: { select: { id: true } },
+        },
       });
 
       if (!loan) throw new Error("Loan not found");
+
+      const currentStage = loan.workflowVersion?.stages.find((s) => s.id === loan.currentStageId);
+      if (currentStage?.order !== 6) {
+        throw new Error("Case must be at District Analyst Review to send to the Operation Manager.");
+      }
+
+      if (
+        loan.currentStageStatus === 'RETURNED_FOR_COMMENT' ||
+        loan.currentStageStatus === 'RETURNED_FOR_REWORK'
+      ) {
+        throw new Error(
+          "This case was returned by the Operation Manager. Add your response and use Distribute for District Approval instead of sending back to the manager."
+        );
+      }
 
       // Find stage with order 7 (Final Operation Manager Review)
       const nextStage = loan.workflowVersion?.stages.find(s => s.order === 7);
@@ -604,9 +622,10 @@ export async function approveDistrictAnalyst(loanRequestId: string, analystRecom
       if (analystRecommendation) {
         lafData.analystRecommendation = analystRecommendation;
       }
+      lafData.sentToFinalManagerAt = now.toISOString();
       
       // Store current assignees so we can "Reback" to them later
-      const currentAssigneeIds = (loan as any).assignedToUsers?.map((u: any) => u.id) || [];
+      const currentAssigneeIds = loan.assignedToUsers.map((u) => u.id);
       lafData.previousAnalystIds = currentAssigneeIds;
 
       await tx.loanRequest.update({
@@ -783,6 +802,16 @@ export async function distributeToCommittee(loanRequestId: string, distributionN
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "distributeToCommittee");
 
+    const canDistribute =
+      user.permissions.includes(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) ||
+      user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+    if (!canDistribute) {
+      return createErrorResult(
+        "You do not have permission to distribute cases for district approval.",
+        "distributeToCommittee"
+      );
+    }
+
     await prisma.$transaction(async (tx) => {
       const loan = await tx.loanRequest.findUnique({
         where: { id: loanRequestId },
@@ -790,6 +819,21 @@ export async function distributeToCommittee(loanRequestId: string, distributionN
       });
 
       if (!loan) throw new Error("Loan not found");
+
+      const currentStage = loan.workflowVersion?.stages.find((s) => s.id === loan.currentStageId);
+      if (!currentStage) throw new Error("Current workflow stage not found.");
+
+      if (
+        !canDistributeToDistrictApproval({
+          submissionType: loan.submissionType,
+          currentStageOrder: currentStage.order,
+          currentStageStatus: loan.currentStageStatus,
+        })
+      ) {
+        throw new Error(
+          "This case is not ready for district approval distribution. It must be returned to the analyst for comment/rework, or be at the Committee Distribution stage."
+        );
+      }
 
       const nextStage = loan.workflowVersion?.stages.find(s => s.order === 9);
       if (!nextStage) throw new Error("Next stage (Committee Approval) not found.");
@@ -806,7 +850,7 @@ export async function distributeToCommittee(loanRequestId: string, distributionN
           currentWorkflowStage: { connect: { id: nextStage.id } },
           assignedDepartment: { connect: { id: nextStage.responsibleDepartmentId } },
           stageEntryDate: now,
-          currentStageStatus: 'UNDER_COMMITTEE_REVIEW',
+          currentStageStatus: 'READY_FOR_COMMITTEE',
           assignedToUsers: { set: [] }, 
           isReadyForManagerReview: false,
           lastUpdatedDate: now,

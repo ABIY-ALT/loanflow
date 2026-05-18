@@ -19,9 +19,11 @@ import {
 } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
+import { canDistributeToDistrictApproval } from '@/lib/district-workflow';
 import { useAuth } from '@/contexts/auth-context';
 import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 interface LoanDetailHeaderProps {
   loan: LoanRequest | null;
@@ -63,6 +65,7 @@ export function LoanDetailHeader({
   requiresApproval,
 }: LoanDetailHeaderProps) {
   const { user: currentUser } = useAuth();
+  const router = useRouter();
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
 
   if (!loan || !currentUser) return null;
@@ -75,6 +78,9 @@ export function LoanDetailHeader({
     loan.stageCompletedBy?.some((u) => u.id === currentUser.id) || false;
 
   const canApprove = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
+  const canDistributeToApproval =
+    userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) &&
+    canDistributeToDistrictApproval(loan);
 
   const stageGuidance = useMemo(() => {
     if (loan.currentStageOrder === 6 && loan.currentStageStatus === 'RETURNED_FOR_COMMENT') {
@@ -249,20 +255,16 @@ export function LoanDetailHeader({
               </Button>
             )}
 
-            {/* Stage 6 → Analyst distributes to District Approval */}
-            {isActionableStage &&
-              loan.currentStageOrder === 6 &&
-              (loan.currentStageStatus === 'RETURNED_FOR_COMMENT' ||
-                loan.currentStageStatus === 'RETURNED_FOR_REWORK') &&
-              onOpenDistributeDialog && (
-                <Button
-                  onClick={onOpenDistributeDialog}
-                  disabled={isSaving}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold animate-pulse"
-                >
-                  <ArrowRight className="mr-2 h-4 w-4" /> Distribute for District Approval
-                </Button>
-              )}
+            {/* Analyst distributes to District Approval (returned stage 6 or committee distribution stage 8) */}
+            {canDistributeToApproval && onOpenDistributeDialog && (
+              <Button
+                onClick={onOpenDistributeDialog}
+                disabled={isSaving}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold animate-pulse"
+              >
+                <ArrowRight className="mr-2 h-4 w-4" /> Distribute for District Approval
+              </Button>
+            )}
           </div>
 
           {/* RIGHT: district document tools + admin */}
@@ -275,7 +277,7 @@ export function LoanDetailHeader({
                     variant="secondary"
                     className="bg-purple-600 hover:bg-purple-700 text-white"
                     onClick={() =>
-                      window.open(`/loan-requests/district/pvr/${loan.id}`, '_blank')
+                      router.push(`/loan-requests/district/pvr/${loan.id}`)
                     }
                   >
                     <FileText className="mr-2 h-4 w-4" />
@@ -288,7 +290,7 @@ export function LoanDetailHeader({
                       variant="secondary"
                       className="bg-indigo-600 hover:bg-indigo-700 text-white"
                       onClick={() =>
-                        window.open(`/loan-requests/district/laf/${loan.id}`, '_blank')
+                        router.push(`/loan-requests/district/laf/${loan.id}`)
                       }
                     >
                       <FileText className="mr-2 h-4 w-4" /> Prepare LAF
@@ -297,9 +299,8 @@ export function LoanDetailHeader({
                       variant="secondary"
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() =>
-                        window.open(
-                          `/loan-requests/district/customer-summary/${loan.id}`,
-                          '_blank'
+                        router.push(
+                          `/loan-requests/district/customer-summary/${loan.id}`
                         )
                       }
                     >
@@ -313,7 +314,7 @@ export function LoanDetailHeader({
                     <Button
                       variant="outline"
                       onClick={() =>
-                        window.open(`/loan-requests/district/laf/${loan.id}`, '_blank')
+                        router.push(`/loan-requests/district/laf/${loan.id}`)
                       }
                     >
                       <SearchCheck className="mr-2 h-4 w-4" /> Review LAF
@@ -321,9 +322,8 @@ export function LoanDetailHeader({
                     <Button
                       variant="outline"
                       onClick={() =>
-                        window.open(
-                          `/loan-requests/district/customer-summary/${loan.id}`,
-                          '_blank'
+                        router.push(
+                          `/loan-requests/district/customer-summary/${loan.id}`
                         )
                       }
                     >

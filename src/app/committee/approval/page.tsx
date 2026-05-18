@@ -33,6 +33,17 @@ export default function CommitteeApproval() {
   const { toast } = useToast();
   const canViewPage = currentUser?.permissions.includes(PERMISSIONS.APPROVE_COMMITTEE_CASES);
 
+  const userVote = selectedCase?.committeeDecisions?.find((d: any) => d.member?.id === currentUser?.id);
+  const userAlreadyVoted = !!userVote;
+
+  useEffect(() => {
+    if (selectedCase) {
+      setComment(userVote?.comment || '');
+    } else {
+      setComment('');
+    }
+  }, [selectedCase?.id, userVote?.comment]);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -194,16 +205,23 @@ export default function CommitteeApproval() {
                </div>
 
                <div className="space-y-2">
-                  <label className="text-sm font-medium">Committee Member Comments</label>
+                  <label className="text-sm font-medium">
+                    {userAlreadyVoted ? 'Your Submitted Comment' : 'Committee Member Comments'}
+                  </label>
                   <Textarea
-                    placeholder="Add your notes or justification for the decision..."
+                    placeholder={userAlreadyVoted ? 'Your submitted comment appears here.' : 'Add your notes or justification for the decision...'}
                     value={comment}
                     onChange={e => setComment(e.target.value)}
-                    disabled={selectedCase.committeeDecisions?.some((d: any) => d.member?.id === currentUser?.id)}
+                    disabled={userAlreadyVoted}
                   />
+                  {userAlreadyVoted && (
+                    <p className="text-sm text-muted-foreground">
+                      This is the comment you previously submitted with your vote.
+                    </p>
+                  )}
                </div>
 
-               {selectedCase.committeeDecisions?.some((d: any) => d.member?.id === currentUser?.id) && (
+               {userAlreadyVoted && (
                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                    You have already submitted your vote for this case. Committee decisions cannot be changed once recorded.
                  </div>

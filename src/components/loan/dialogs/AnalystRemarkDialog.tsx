@@ -26,6 +26,8 @@ interface AnalystRemarkDialogProps {
   currentStage: string;
   loanNumber: string;
   managerComments?: string;
+  /** When false, analyst can only save remarks (e.g. after OM return-for-comment) */
+  canPromoteToManager?: boolean;
 }
 
 export function AnalystRemarkDialog({
@@ -37,6 +39,7 @@ export function AnalystRemarkDialog({
   currentStage,
   loanNumber,
   managerComments,
+  canPromoteToManager = true,
 }: AnalystRemarkDialogProps) {
   const [noteContent, setNoteContent] = useState('');
 
@@ -58,7 +61,9 @@ export function AnalystRemarkDialog({
             Analyst Review & Remark
           </DialogTitle>
           <DialogDescription>
-            Provide your final findings and remarks. You can also promote this case to the Final Manager Review stage.
+            {canPromoteToManager
+              ? 'Provide your final findings and remarks. You can also promote this case to the Final Manager Review stage.'
+              : 'This case was returned by the Operation Manager. Save your response here, then use Distribute for District Approval on the loan page.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,15 +124,17 @@ export function AnalystRemarkDialog({
                 Save Remark Only
               </Button>
               
-              <Button 
-                type="button" 
-                onClick={() => handleSubmit(true)} 
-                disabled={isSaving || !noteContent.trim()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-              >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save & Send to Manager
-              </Button>
+              {canPromoteToManager && (
+                <Button 
+                  type="button" 
+                  onClick={() => handleSubmit(true)} 
+                  disabled={isSaving || !noteContent.trim()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                >
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save & Send to Manager
+                </Button>
+              )}
             </div>
           </div>
         </DialogFooter>
