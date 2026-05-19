@@ -1761,13 +1761,21 @@ export async function getDepartmentUsers(departmentName?: string): Promise<{ use
       whereClause.department = { name: departmentName };
     }
 
-    // Geographic Hardening: If current user is tied to a district, only show users in the same district
+    // Geographic Hardening: If current user is tied to a district, only show users in the same district.
+    // Include users who either have `districtId` set OR have CRM mappings pointing to a branch in the district.
+    let finalWhere: any = whereClause;
     if (currentUser.districtId) {
-      whereClause.districtId = currentUser.districtId;
+      const geoFilter = {
+        OR: [
+          { districtId: currentUser.districtId },
+          { crmMappings: { some: { branch: { districtId: currentUser.districtId } } } }
+        ]
+      };
+      finalWhere = { AND: [whereClause, geoFilter] };
     }
 
     const prismaUsers = await prisma.user.findMany({
-      where: whereClause,
+      where: finalWhere,
       include: {
         department: true,
         district: true,
