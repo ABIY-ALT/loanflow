@@ -13,6 +13,7 @@ interface SeedUser {
   lastName?: string;
   phoneNumber?: string;
   department: string;
+  districtName?: string;
   jobTitle?: string;
 }
 
@@ -97,6 +98,25 @@ const appMockUsers: SeedUser[] = [
   { id: '00000078-aaaa-4b0b-a81f-000000000078', userId: '1111115e-bbbb-49f0-b7c2-000000000078', name: 'FEVEN BEYENE YIMENU', email: 'Feven.Beyene@nibbank.com.et', firstName: 'Feven', lastName: 'Beyene', phoneNumber: '0922578765', department: 'Institutional Banking and Hospitality, Green Financing Department', jobTitle: 'Senior Insti Banking& hospi Green Financing Officer' },
   { id: '00000079-aaaa-4b0b-a81f-000000000079', userId: '1111115f-bbbb-49f0-b7c2-000000000079', name: 'Ato Henok Kebede Tades', email: 'Henok.Kebede@nibbank.com.et', firstName: 'Henok', lastName: 'Kebede', phoneNumber: '0115503304', department: 'CEO Office', jobTitle: 'CEO' },
   { id: '00000080-aaaa-4b0b-a81f-000000000080', userId: '11111160-bbbb-49f0-b7c2-000000000080', name: 'W/ro Kassanesh Abrham', email: 'Kassanesh.Abrham@nibbank.com.et', firstName: 'Kassanesh', lastName: 'Abrham', phoneNumber: '0995043493', department: 'CEO Office', jobTitle: 'Senior Executive Secretary' },
+  { id: '00000081-aaaa-4b0b-a81f-000000000081', userId: '11111161-bbbb-49f0-b7c2-000000000061', name: 'Abel Atlabachew', email: 'Abel.Atlabachew@nibbank.com.et', firstName: 'Abel', lastName: 'Atlabachew', phoneNumber: '0965054347', department: 'District', districtName: 'WAAD', jobTitle: 'District Director' },
+  { id: '00000082-aaaa-4b0b-a81f-000000000082', userId: '11111162-bbbb-49f0-b7c2-000000000062', name: 'Endalamahu Sileshi', email: 'Endalamahu.Sileshi@nibbank.com.et', firstName: 'Endalamahu', lastName: 'Sileshi', phoneNumber: '0911647993', department: 'District', districtName: 'WAAD', jobTitle: 'District Business Manager' },
+  { id: '00000083-aaaa-4b0b-a81f-000000000083', userId: '11111163-bbbb-49f0-b7c2-000000000063', name: 'Amare Feleke', email: 'Amare.Feleke@nibbank.com.et', firstName: 'Amare', lastName: 'Feleke', phoneNumber: '0911697645', department: 'District', districtName: 'WAAD', jobTitle: 'District Operation Manager' },
+  { id: '00000084-aaaa-4b0b-a81f-000000000084', userId: '11111164-bbbb-49f0-b7c2-000000000064', name: 'Aster Asfaw', email: 'Aster.Asfaw@nibbank.com.et', firstName: 'Aster', lastName: 'Asfaw', phoneNumber: '0921824996', department: 'District', districtName: 'WAAD', jobTitle: 'District Secretary' },
+  { id: '00000085-aaaa-4b0b-a81f-000000000085', userId: '11111165-bbbb-49f0-b7c2-000000000065', name: 'Kalkidan Atnafu', email: 'Kalkidan.Atnafu@nibbank.com.et', firstName: 'Kalkidan', lastName: 'Atnafu', phoneNumber: '0911626315', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000086-aaaa-4b0b-a81f-000000000086', userId: '11111166-bbbb-49f0-b7c2-000000000066', name: 'Dereje Ejersa', email: 'Dereje.Ejersa@nibbank.com.et', firstName: 'Dereje', lastName: 'Ejersa', phoneNumber: '0938019437', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000087-aaaa-4b0b-a81f-000000000087', userId: '11111167-bbbb-49f0-b7c2-000000000067', name: 'H/Michael Ejigu', email: 'HMichael.Ejigu@nibbank.com.et', firstName: 'HMichael', lastName: 'Ejigu', phoneNumber: '0912902037', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000088-aaaa-4b0b-a81f-000000000088', userId: '11111168-bbbb-49f0-b7c2-000000000068', name: 'Hiwot Bogale', email: 'Hiwot.Bogale@nibbank.com.et', firstName: 'Hiwot', lastName: 'Bogale', phoneNumber: '0912457252', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000089-aaaa-4b0b-a81f-000000000089', userId: '11111169-bbbb-49f0-b7c2-000000000069', name: 'Zinash Yewaydemam', email: 'Zinash.Yewaydemam@nibbank.com.et', firstName: 'Zinash', lastName: 'Yewaydemam', phoneNumber: '0911568002', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000090-aaaa-4b0b-a81f-000000000090', userId: '1111116a-bbbb-49f0-b7c2-000000000070', name: 'Misrak Asayehegn', email: 'Misrak.Asayehegn@nibbank.com.et', firstName: 'Misrak', lastName: 'Asayehegn', phoneNumber: '0911880255', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000091-aaaa-4b0b-a81f-000000000091', userId: '1111116b-bbbb-49f0-b7c2-000000000071', name: 'Yeshibebet Yimer', email: 'Yeshibebet.Yimer@nibbank.com.et', firstName: 'Yeshibebet', lastName: 'Yimer', phoneNumber: '0973916609', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000092-aaaa-4b0b-a81f-000000000092', userId: '1111116c-bbbb-49f0-b7c2-000000000072', name: 'Demeke Alemu', email: 'Demeke.Alemu@nibbank.com.et', firstName: 'Demeke', lastName: 'Alemu', phoneNumber: '0922995718', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000093-aaaa-4b0b-a81f-000000000093', userId: '1111116d-bbbb-49f0-b7c2-000000000073', name: 'Woinishet Nekatibeb', email: 'Woinishet.Nekatibeb@nibbank.com.et', firstName: 'Woinishet', lastName: 'Nekatibeb', phoneNumber: '0911676882', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000094-aaaa-4b0b-a81f-000000000094', userId: '1111116e-bbbb-49f0-b7c2-000000000074', name: 'Obsa Terefe', email: 'Obsa.Terefe@nibbank.com.et', firstName: 'Obsa', lastName: 'Terefe', phoneNumber: '0925475442', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000095-aaaa-4b0b-a81f-000000000095', userId: '1111116f-bbbb-49f0-b7c2-000000000075', name: 'Nardos Dibisa', email: 'Nardos.Dibisa@nibbank.com.et', firstName: 'Nardos', lastName: 'Dibisa', phoneNumber: '0920025393', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000096-aaaa-4b0b-a81f-000000000096', userId: '11111170-bbbb-49f0-b7c2-000000000076', name: 'Habtam Tadesse', email: 'Habtam.Tadesse@nibbank.com.et', firstName: 'Habtam', lastName: 'Tadesse', phoneNumber: '0941245029', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000097-aaaa-4b0b-a81f-000000000097', userId: '11111171-bbbb-49f0-b7c2-000000000077', name: 'Desta G/Hanna', email: 'Desta.GHanna@nibbank.com.et', firstName: 'Desta', lastName: 'GHanna', phoneNumber: '0923349434', department: 'District', districtName: 'WAAD', jobTitle: 'District CRM' },
+  { id: '00000098-aaaa-4b0b-a81f-000000000098', userId: '11111172-bbbb-49f0-b7c2-000000000078', name: 'Cheramlak Mare', email: 'Cheramlak.Mare@nibbank.com.et', firstName: 'Cheramlak', lastName: 'Mare', phoneNumber: '0922358514', department: 'District', districtName: 'WAAD', jobTitle: 'District Analyst' },
+  { id: '00000099-aaaa-4b0b-a81f-000000000099', userId: '11111173-bbbb-49f0-b7c2-000000000079', name: 'Woinishet Terefe', email: 'Woinishet.Terefe@nibbank.com.et', firstName: 'Woinishet', lastName: 'Terefe', phoneNumber: '0967670318', department: 'District', districtName: 'WAAD', jobTitle: 'District Analyst' },
 ];
 
 const districtsToSeed: Record<string, string[]> = {
@@ -308,6 +328,9 @@ async function main() {
   console.log('Seeding Users...');
   for (const userData of appMockUsers) {
     const dept = await prisma.department.findUnique({ where: { nameLowercase: userData.department.toLowerCase() } });
+    const district = userData.districtName
+      ? await prisma.district.findUnique({ where: { name: userData.districtName } })
+      : null;
 
     // Map job title to role
     const jobTitle = (userData.jobTitle || '').toLowerCase();
@@ -350,6 +373,7 @@ async function main() {
         lastName: userData.lastName,
         phoneNumber: normalizedPhoneNumber || userData.phoneNumber,
         departmentId: dept?.id,
+        districtId: district?.id,
         customRoleId: role?.id,
         isActive: true,
       },
@@ -364,6 +388,7 @@ async function main() {
         isPasswordChanged: false,
         isActive: true,
         departmentId: dept?.id,
+        districtId: district?.id,
         customRoleId: role?.id,
       },
     });
