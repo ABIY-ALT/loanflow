@@ -35,8 +35,10 @@ import {
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
+import type { LoanRequest, User } from '@/types/loan';
 import { cn } from '@/lib/utils';
 import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getIncomingValuationCases } from '@/services/valuation-service';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 
@@ -279,6 +281,7 @@ export default function SidebarNav() {
     review: 0,
     assigned: 0,
     submitted: 0,
+    valuation: 0,
   });
 
   const prevIncomingCountRef = useRef<number>(0);
@@ -286,9 +289,18 @@ export default function SidebarNav() {
   const fetchCounts = useCallback(async (isInitial = false) => {
     if (!user) return;
     try {
-      const result = await getLoanRequests();
-      if (result && 'loans' in result && result.loans) {
-        const loans = result.loans as LoanRequest[];
+      const [loansResult, valuationResult] = await Promise.all([
+        getLoanRequests(),
+        getIncomingValuationCases()
+      ]);
+
+      let valuation = 0;
+      if (valuationResult && 'cases' in valuationResult && valuationResult.cases) {
+        valuation = valuationResult.cases.length;
+      }
+
+      if (loansResult && 'loans' in loansResult && loansResult.loans) {
+        const loans = loansResult.loans as LoanRequest[];
 
         // 1. Incoming (Unassigned cases in user's dept)
         const incoming = loans.filter((l: LoanRequest) =>
@@ -329,7 +341,7 @@ export default function SidebarNav() {
         }
 
         prevIncomingCountRef.current = incoming;
-        setCounts({ incoming, review, assigned, submitted });
+        setCounts({ incoming, review, assigned, submitted, valuation });
       }
     } catch (e) {
       console.error("Error fetching counts for sidebar", e);
@@ -394,6 +406,7 @@ export default function SidebarNav() {
     if (href === '/manager-review') return counts.review;
     if (href === '/my-assigned-cases') return counts.assigned;
     if (href === '/my-submitted-cases') return counts.submitted;
+    if (href === '/valuation/incoming') return counts.valuation;
     return 0;
   };
 

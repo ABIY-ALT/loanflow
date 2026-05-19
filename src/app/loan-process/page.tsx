@@ -281,8 +281,13 @@ export default function LoanProcessPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center">
             <KanbanSquare className="mr-3 h-8 w-8 text-primary" />
-            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ` : ''}{getActiveFilterLabel()})
+            Loan Pipeline ({searchTerm ? `${filteredLoansCount} of ${loanStats.totalCount}` : `${getActiveFilterLabel()} — ${loanStats.totalCount} Total`})
           </h1>
+          <p className="text-muted-foreground text-sm mt-2">
+            {searchTerm
+              ? `Showing ${filteredLoansCount} of ${loanStats.totalCount} loans that match your search.`
+              : `Total pipeline loans: ${loanStats.totalCount}. Active: ${loanStats.activeCount}, Overdue: ${loanStats.overdueCount}, Terminated: ${loanStats.terminatedCount}.`}
+          </p>
           <div className="text-muted-foreground flex items-center gap-4 text-sm mt-1">
              <span>Click to filter by status:</span>
              <Button variant={statusFilter === 'all' ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusFilter('all')} className={cn("h-auto px-2 py-1 flex items-center gap-1.5", statusFilter === 'all' && 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200')}>

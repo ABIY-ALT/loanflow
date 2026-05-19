@@ -143,6 +143,17 @@ export async function routeValuationCase(
       data: updateData
     });
 
+    // **FIX**: Also update the loanRequest's assignedToUsers so the case is removed from incoming queue
+    // This syncs the assignment from valuationQueue to loanRequest
+    await prisma.loanRequest.update({
+      where: { id: queueEntry.loanRequestId },
+      data: {
+        assignedToUsers: {
+          connect: { id: assigneeId }
+        }
+      }
+    });
+
     await prisma.loanHistoryEntry.create({
       data: {
         loanRequestId: queueEntry.loanRequestId,
