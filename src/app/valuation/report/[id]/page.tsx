@@ -28,7 +28,8 @@ export default function ValuationReportPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   
-  const isValuationStaff = currentUser?.department === 'Property Valuation' || currentUser?.department === 'Valuation';
+  const userDepartment = currentUser?.department?.toLowerCase() || '';
+  const isValuationStaff = userDepartment.includes('valuation');
   const isAdmin = currentUser?.permissions.includes(PERMISSIONS.MANAGE_USERS);
   const canEditValuation = isValuationStaff || isAdmin;
 
@@ -73,7 +74,7 @@ export default function ValuationReportPage() {
     setIsSaving(true);
     try {
       const result = await updateValuationReport(id as string, reportData);
-      if (result.error) {
+      if ('error' in result) {
         toast({ title: "Error", description: result.error, variant: "destructive" });
       } else {
         toast({ title: "Success", description: "Valuation Report saved successfully." });
@@ -125,7 +126,7 @@ export default function ValuationReportPage() {
       await updateValuationReport(id as string, reportData);
       
       const result = await completeValuationWork(id as string);
-      if (result.error) {
+      if ('error' in result) {
         toast({ title: "Error", description: result.error, variant: "destructive" });
       } else {
         toast({ title: "Success", description: "Valuation work completed successfully." });
