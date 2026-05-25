@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   FileText,
   SearchCheck,
+  SkipForward,
 } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -39,6 +40,8 @@ interface LoanDetailHeaderProps {
   onOpenTerminateLoanDialog: () => void;
   onOpenManualTransitionDialog: () => void;
   onOpenDistributeDialog?: () => void;
+  onSkipPvr?: () => void;
+  isSkippingPvr?: boolean;
   isSaving: boolean;
   isActionableStage: boolean;
   canPromote: boolean;
@@ -102,6 +105,14 @@ export function LoanDetailHeader({
   }, [loan.currentStageOrder, loan.currentStageStatus]);
   const canReturn = userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
   const canMarkStageComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
+  const canSkipPvr =
+    userPermissions.has(PERMISSIONS.SKIP_PVR_AND_VALUATION) &&
+    isDistrict &&
+    (
+      [2, 3].includes(loan.currentStageOrder) ||
+      (currentStageName || '').toLowerCase().includes('pvr') ||
+      (currentStageName || '').toLowerCase().includes('valuation')
+    );
   const canDirectPromote = canPromote;
   const isDirectPromotion = !requiresApproval;
 
@@ -282,6 +293,17 @@ export function LoanDetailHeader({
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     {currentStageName.includes('Valuation') ? 'View PVR Form' : 'Prepare PVR Form'}
+                  </Button>
+                )}
+                {canSkipPvr && onSkipPvr && (
+                  <Button
+                    variant="outline"
+                    className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                    onClick={onSkipPvr}
+                    disabled={isSaving || isSkippingPvr}
+                  >
+                    {isSkippingPvr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SkipForward className="mr-2 h-4 w-4" />}
+                    Skip PVR
                   </Button>
                 )}
                 {currentStageName.includes('LAF & Summary Preparation') && (

@@ -294,8 +294,15 @@ export default function HeadOfficeSubmissionPage() {
       });
 
       if (result.error) {
-        setSubmissionError(result.error);
-        toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
+        // Improve clarity for missing/expired user session
+        if (/unauthoriz/i.test(String(result.error))) {
+          const friendly = 'Your session has expired or you are not signed in. Please sign in and try again.';
+          setSubmissionError(friendly);
+          toast({ title: "Session Required", description: friendly, variant: "destructive", duration: 9000 });
+        } else {
+          setSubmissionError(result.error);
+          toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
+        }
       } else if (result.id) {
         setValidationErrors([]);
         setSubmissionError(null);

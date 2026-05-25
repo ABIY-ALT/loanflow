@@ -12,12 +12,22 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from '@/lib/district-workflow';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, distributeToCommittee } from '@/services/loan-service-prisma';
-import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight } from 'lucide-react';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
+import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from '@/components/ui/dialog';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
@@ -63,6 +73,9 @@ export default function LoanDetailPage() {
   const [isTerminateLoanDialogOpen, setIsTerminateLoanDialogOpen] = useState(false);
   const [isManualTransitionDialogOpen, setIsManualTransitionDialogOpen] = useState(false);
   const [isApproveReassignDialogOpen, setIsApproveReassignDialogOpen] = useState(false);
+  const [isSkippingPvr, setIsSkippingPvr] = useState(false);
+  const [isSkipPvrDialogOpen, setIsSkipPvrDialogOpen] = useState(false);
+  const [skipPvrReason, setSkipPvrReason] = useState('');
   const [isRespondToInfoDialogOpen, setIsRespondToInfoDialogOpen] = useState(false);
   const [isAnalystRemarkDialogOpen, setIsAnalystRemarkDialogOpen] = useState(false);
   const [isDistributeDialogOpen, setIsDistributeDialogOpen] = useState(false);
@@ -261,6 +274,34 @@ export default function LoanDetailPage() {
     setIsSaving(false);
     return {success: true};
   }, [loan, toast, fetchLoanData]);
+
+  const handleSkipPvr = () => {
+    if (!loan || !currentUser) return;
+    if (!currentUser.permissions.includes(PERMISSIONS.SKIP_PVR_AND_VALUATION)) return;
+    if (![2, 3].includes(loan.currentStageOrder || 0)) return;
+
+    setSkipPvrReason('');
+    setIsSkipPvrDialogOpen(true);
+  };
+
+  const handleConfirmSkipPvr = async () => {
+    if (!loan) return;
+    setIsSkipPvrDialogOpen(false);
+    setIsSkippingPvr(true);
+    try {
+      const result = await skipPVRAndValuation(loan.id, skipPvrReason.trim() || undefined);
+      if ('error' in result) {
+        toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'PVR skipped successfully', description: 'The case has been moved directly to LAF & Summary Preparation.' });
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsSkippingPvr(false);
+    }
+  };
 
   const handleMarkStageComplete = async () => {
     if (!loan || !currentStageDef || !currentUser) return;
@@ -635,6 +676,8 @@ export default function LoanDetailPage() {
             ? () => setIsDistributeDialogOpen(true)
             : undefined
         }
+        onSkipPvr={handleSkipPvr}
+        isSkippingPvr={isSkippingPvr}
         isSaving={isSaving} 
         isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)} 
         canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)} 
@@ -659,6 +702,23 @@ export default function LoanDetailPage() {
                   )}
                   <Badge className="px-3 py-1.5 font-medium">{currentStageDef?.name || 'Stage'}</Badge>
                 </div>
+                {/* Skip PVR button: visible in main loan header for permitted users when at PVR/Valuation stages */}
+                {currentUser?.permissions?.includes(PERMISSIONS.SKIP_PVR_AND_VALUATION) && loan.submissionType === 'TYPE2' && (
+                  [2,3].includes(loan.currentStageOrder) || (currentStageDef?.name || '').toLowerCase().includes('pvr') || (currentStageDef?.name || '').toLowerCase().includes('valuation')
+                ) && (
+                  <div className="mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                      onClick={handleSkipPvr}
+                      disabled={isSaving || isSkippingPvr}
+                    >
+                      {isSkippingPvr ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <SkipForward className="mr-2 h-4 w-4" />}
+                      Skip PVR
+                    </Button>
+                  </div>
+                )}
                 {availableStatuses.length > 0 && !loan.isTerminalStage && canCurrentUserAct ? (
                   <Select value={loan.currentStageStatus || ''} onValueChange={async s => { await handleLocalAndUpdateService({ currentStageStatus: s }, "Status updated."); }} disabled={isSaving}><SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Set Status" /></SelectTrigger><SelectContent>{availableStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
                 ) : ( loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge> )}
@@ -801,6 +861,36 @@ export default function LoanDetailPage() {
         onSubmit={handleDistributeToCommittee}
         isSaving={isSaving}
       />
+
+      <Dialog open={isSkipPvrDialogOpen} onOpenChange={setIsSkipPvrDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SkipForward className="h-5 w-5 text-primary" /> Skip PVR and Valuation
+            </DialogTitle>
+            <DialogDescription>
+              This will move the case directly to CRM LAF & Summary Preparation. You can add an optional reason below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <Textarea
+              value={skipPvrReason}
+              onChange={e => setSkipPvrReason(e.target.value)}
+              placeholder="Optional reason for skipping PVR and Valuation"
+              rows={4}
+            />
+          </div>
+          <DialogFooter className="justify-between">
+            <DialogClose asChild>
+              <Button variant="outline" disabled={isSkippingPvr}>Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleConfirmSkipPvr} disabled={isSkippingPvr}>
+              {isSkippingPvr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SkipForward className="mr-2 h-4 w-4" />}
+              Confirm Skip
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {loan && (
         <AnalystRemarkDialog 

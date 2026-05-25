@@ -103,12 +103,12 @@ function numberToWords(num: number): string {
 
 const districtLoanSchema = z.object({
   customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
-  customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
-  customerPhone: z.string()
+  customerEmail: z.string().min(1, { message: 'Customer email is required.' }).email({ message: 'Please enter a valid email address.' }),
+  customerPhone: z.string().min(1, { message: 'Customer phone is required.' })
     .transform(normalizeEthiopianPhone)
     .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678.' }),
   customerBranch: z.string().min(1, { message: 'A branch must be selected.' }),
-  loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
+  loanAmount: z.coerce.number({ required_error: 'Loan amount is required.', invalid_type_error: 'Loan amount must be a number.' }).positive({ message: 'Loan amount must be a positive number.' }),
   sectorId: z.string().min(1, { message: 'A sector must be selected.' }),
   requestTypeId: z.string().min(1, { message: 'A request type must be selected.' }),
   loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
@@ -215,6 +215,12 @@ export default function DistrictLoanSubmissionPage() {
 
     setSubmissionError(null);
     setValidationErrors(messages);
+    const firstField = Object.keys(errors)[0] as keyof DistrictFormValues | undefined;
+    if (firstField) {
+      form.setFocus(firstField);
+    }
+    // scroll to the error alert for visibility
+    setTimeout(() => document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
 
   const handleConfirmSubmit = async () => {
@@ -224,8 +230,14 @@ export default function DistrictLoanSubmissionPage() {
     try {
       const result = await addType2LoanRequest(formDataToSubmit);
       if (result.error) {
-        setSubmissionError(result.error);
-        toast({ title: "Error", description: result.error, variant: "destructive" });
+        if (/unauthoriz/i.test(String(result.error))) {
+          const friendly = 'Your session has expired or you are not signed in. Please sign in and try again.';
+          setSubmissionError(friendly);
+          toast({ title: "Session Required", description: friendly, variant: "destructive" });
+        } else {
+          setSubmissionError(result.error);
+          toast({ title: "Error", description: result.error, variant: "destructive" });
+        }
       } else {
         toast({ title: "Success", description: "District Loan Request submitted successfully." });
         router.push(`/district/submitted-cases`);

@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowLeft, Printer, FileDown } from 'lucide-react';
 import { getLoanRequestById, updateLoanRequest, submitType2ToValuation } from '@/services/loan-service-prisma';
+import { useAuth } from '@/contexts/auth-context';
+import { PERMISSIONS } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { ValuationRequisitionForm } from '@/components/loan/forms/ValuationRequisitionForm';
 import jsPDF from 'jspdf';
@@ -14,6 +16,7 @@ export default function PVRPage() {
   const { id } = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [loan, setLoan] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -38,6 +41,7 @@ export default function PVRPage() {
     fetchLoan();
   }, [id]);
 
+
   const handleSave = async (data: any) => {
     setIsSaving(true);
     try {
@@ -51,7 +55,7 @@ export default function PVRPage() {
 
       if (_isFinalizeAction) {
         const submitResult = await submitType2ToValuation(id as string);
-        if (submitResult.error) {
+        if ('error' in submitResult) {
           toast({ title: "Error", description: submitResult.error, variant: "destructive" });
         } else {
           router.push(`/loan-requests/${id}`); // Go back to detail
@@ -65,6 +69,8 @@ export default function PVRPage() {
       setIsSaving(false);
     }
   };
+
+  // Skip is available via the main loan header; not shown on the PVR page.
 
   const handleExportPDF = async () => {
     const element = document.getElementById('pvr-content');
@@ -107,7 +113,7 @@ export default function PVRPage() {
             <p className="text-xs text-muted-foreground">{loan.customerName} | {loan.loanNumber}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-slate-900 text-white hover:bg-slate-800">
             {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}

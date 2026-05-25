@@ -422,6 +422,87 @@ export async function submitType2ToValuation(loanRequestId: string) {
   }
 }
 
+export async function skipPVRAndValuation(loanRequestId: string, reason?: string) {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.SKIP_PVR_AND_VALUATION)) {
+      return createErrorResult("Unauthorized", "skipPVRAndValuation");
+    }
+
+    const updatedLoan = await prisma.$transaction(async (tx) => {
+      const existingLoan = await tx.loanRequest.findUnique({
+        where: { id: loanRequestId },
+        include: { workflowVersion: { include: { stages: true } } },
+      });
+
+      if (!existingLoan) throw new Error("Loan not found");
+      if (existingLoan.submissionType !== 'TYPE2') {
+        throw new Error("Skip PVR is only available for TYPE2 district workflow cases.");
+      }
+
+      const currentStage = existingLoan.workflowVersion?.stages.find(
+        (s) => s.id === existingLoan.currentStageId
+      );
+      if (!currentStage) throw new Error("Current workflow stage not found.");
+      if (![2, 3].includes(currentStage.order)) {
+        throw new Error(
+          "Skip PVR and Valuation can only be performed from the CRM PVR Preparation or HO Valuation Review stage."
+        );
+      }
+
+      const nextStage = existingLoan.workflowVersion?.stages.find((s) => s.order === 4);
+      if (!nextStage) throw new Error("Next stage (CRM LAF & Summary Preparation) not found in current workflow version.");
+
+      const initialStageStatus = 'Initiated';
+      const now = new Date();
+
+      await tx.valuationQueue.deleteMany({ where: { loanRequestId } });
+
+      const updated = await tx.loanRequest.update({
+        where: { id: loanRequestId },
+        data: {
+          currentWorkflowStage: { connect: { id: nextStage.id } },
+          assignedDepartment: { connect: { id: nextStage.responsibleDepartmentId } },
+          stageEntryDate: now,
+          stageDeadline: addDays(now, nextStage.defaultTimelineDays),
+          currentStageStatus: initialStageStatus,
+          isReadyForManagerReview: false,
+          assignedToUsers: { set: [{ id: user.id }] },
+          lafStatus: 'PENDING',
+          stageCompletedBy: { set: [] },
+          isReadyForValuation: false,
+          isValuationCompleted: false,
+          lastUpdatedDate: now,
+          history: {
+            create: {
+              userId: user.id,
+              stageName: nextStage.name,
+              notes: `PVR and Valuation skipped by ${user.fullName}. Case moved directly to ${nextStage.name}.${reason ? ` Reason: ${reason}` : ''}`,
+            },
+          },
+        },
+      });
+
+      // record in case review history with optional comment
+      await tx.caseReviewHistory.create({
+        data: {
+          loanRequest: { connect: { id: loanRequestId } },
+          performedBy: { connect: { id: user.id } },
+          action: 'SKIPPED',
+          comment: reason || null,
+          createdAt: now,
+        },
+      });
+
+      return updated;
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult(`Failed to skip PVR and valuation. ${e.message}`, "skipPVRAndValuation", e);
+  }
+}
+
 export async function updateLAF(loanRequestId: string, lafData: any, status: 'COMPLETED' | 'EXPORTED' = 'COMPLETED') {
   try {
     const { user } = await getCurrentUser();
