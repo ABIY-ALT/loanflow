@@ -36,6 +36,19 @@ export default function LAFPage() {
   const [lafData, setLafData] = useState<any>({
     acknowledgmentDate: '',
     crmName: '',
+    crmSignature: '',
+    analystName: '',
+    analystSignature: '',
+    divisionManagerName: '',
+    divisionManagerSignature: '',
+    recommendationByCrmName: '',
+    recommendationByCrmSignature: '',
+    recommendationByLoanOfficerName: '',
+    recommendationByLoanOfficerSignature: '',
+    managerComments: '',
+    managerFinalComments: '',
+    creditDecisionWaad: '',
+    creditDecisionDistrictName: '',
     loanOfficer: '',
     dateReceivedBy: '',
     creditRiskTeam: '',
@@ -91,7 +104,10 @@ export default function LAFPage() {
       { name: '', role: 'V. Member' },
       { name: '', role: 'N.V. Secretary' }
     ],
-    refrainingIdeas: ''
+    creditDecisionWaad: '',
+    refrainingIdeas: '',
+    refrainingIdeasName: '',
+    refrainingIdeasSignature: ''
   });
 
   useEffect(() => {
@@ -608,56 +624,228 @@ export default function LAFPage() {
            <div>
               <h4 className="font-bold text-xs uppercase underline">12. CRM Confirmation</h4>
               <p className="italic text-[10px] mt-1">I confirm that all the information filled-out are in line with the checklist.</p>
-              <div className="mt-8 pt-1 text-center w-[150px] border-t border-slate-900 font-bold italic text-[10px]">
-                {lafData.crmName || 'CRM NAME'}
-              </div>
+              <div className="grid grid-cols-1 gap-2 mt-6 text-[10px]">
+             <div>
+               <label className="block font-semibold text-[9px] uppercase">CRM Name</label>
+               {isReadOnly ? (
+                 <div className="mt-1 font-bold">{lafData.crmName || 'CRM NAME'}</div>
+               ) : (
+                 <Input
+                   className="mt-1 text-[10px]"
+                   value={lafData.crmName}
+                   placeholder="Enter CRM name"
+                   onChange={e => setLafData({...lafData, crmName: e.target.value})}
+                 />
+               )}
+             </div>
+             <div>
+               <label className="block font-semibold text-[9px] uppercase">CRM Signature</label>
+               {isReadOnly ? (
+                 <div className="mt-1 border-b border-slate-900 h-6" />
+               ) : (
+                 <Input
+                   className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                   value={lafData.crmSignature}
+                   placeholder=" "
+                   onChange={e => setLafData({...lafData, crmSignature: e.target.value})}
+                 />
+               )}
+             </div>
+           </div>
            </div>
 
-            <div className={cn("p-4 border-2 rounded-lg", isOrder6 && !isReadOnlyAtStage ? "border-indigo-500 bg-indigo-50/50" : "border-slate-200 bg-slate-50")}>
-               <h4 className="font-bold text-xs uppercase underline mb-2">13. Credit and Risk Analyst Recommendation</h4>
-               {isOrder6 && !isReadOnly ? (
-                 <Textarea 
-                   className="min-h-[120px] text-[10px] bg-white border-indigo-300" 
-                   placeholder="Analyst: Enter your detailed analysis and recommendation here..."
-                   value={lafData.analystRecommendation || ''}
-                   onChange={e => setLafData({...lafData, analystRecommendation: e.target.value})}
-                 />
+            <div className="p-4 border border-slate-200 bg-slate-50 rounded-lg">
+               <h4 className="font-bold text-xs uppercase underline mb-2">13. Recommendation of the Credit and Risk Analyst(s)</h4>
+               {!isReadOnly ? (
+                 <>
+                   <Textarea 
+                     className="min-h-[120px] text-[10px] bg-white border-indigo-300" 
+                     placeholder="Analyst: Enter your detailed analysis and recommendation here..."
+                     value={lafData.analystRecommendation || ''}
+                     onChange={e => setLafData({...lafData, analystRecommendation: e.target.value})}
+                   />
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-[10px]">
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Analyst Name</label>
+                       <Input
+                         className="mt-1 text-[10px]"
+                         value={lafData.analystName}
+                         placeholder="Enter analyst name"
+                         onChange={e => setLafData({...lafData, analystName: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Analyst Signature</label>
+                       <Input
+                         className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                         value={lafData.analystSignature}
+                         placeholder=" "
+                         onChange={e => setLafData({...lafData, analystSignature: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Division Manager Name</label>
+                       <Input
+                         className="mt-1 text-[10px]"
+                         value={lafData.divisionManagerName}
+                         placeholder="Enter division manager name"
+                         onChange={e => setLafData({...lafData, divisionManagerName: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Division Manager Signature</label>
+                       <Input
+                         className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                         value={lafData.divisionManagerSignature}
+                         placeholder=" "
+                         onChange={e => setLafData({...lafData, divisionManagerSignature: e.target.value})}
+                       />
+                     </div>
+                   </div>
+                 </>
                ) : (
-                 <div className="mt-2 p-2 bg-white/50 border rounded text-[10px] italic min-h-[60px]">
-                   {lafData.analystRecommendation || (isOrder6 ? "Click 'Edit' to enter analysis recommendation." : "No analyst recommendation yet.")}
-                 </div>
+                 <>
+                   <div className="mt-2 p-2 bg-white/50 border rounded text-[10px] italic min-h-[60px]">
+                     {lafData.analystRecommendation || (isOrder6 ? "Click 'Edit' to enter analysis recommendation." : "No analyst recommendation yet.")}
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-[10px]">
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Analyst Name</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.analystName || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Analyst Signature</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.analystSignature || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Division Manager Name</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.divisionManagerName || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Division Manager Signature</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.divisionManagerSignature || '\u00A0'}</div>
+                     </div>
+                   </div>
+                 </>
                )}
             </div>
 
            {/* District Manager Review */}
-           <div className={cn("p-4 border-2 rounded-lg mt-4", isOrder5 && !isReadOnlyAtStage ? "border-amber-500 bg-amber-50/50" : "border-slate-200 bg-slate-50")}>
-               <h4 className="font-bold text-xs uppercase underline mb-2">14. District Operation Manager Review/Comments</h4>
-               {isOrder5 && !isReadOnly ? (
-                 <Textarea 
-                   className="min-h-[80px] text-[10px] bg-white border-amber-300" 
-                   placeholder="District Manager: Enter review comments here..."
-                   value={lafData.managerComments || ''}
-                   onChange={e => setLafData({...lafData, managerComments: e.target.value})}
-                 />
+           <div className="p-4 border border-slate-200 bg-slate-50 rounded-lg mt-4">
+               <h4 className="font-bold text-xs uppercase underline mb-2">14. Recommendation of the Customer Relationship Manager/Consumer Loan Officer</h4>
+               {!isReadOnly ? (
+                 <>
+                   <Textarea 
+                     className="min-h-[80px] text-[10px] bg-white border-amber-300" 
+                     placeholder="Enter recommendation by CRM or Consumer Loan Officer here..."
+                     value={lafData.managerComments || ''}
+                     onChange={e => setLafData({...lafData, managerComments: e.target.value})}
+                   />
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-[10px]">
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">CRM Name</label>
+                       <Input
+                         className="mt-1 text-[10px]"
+                         value={lafData.recommendationByCrmName}
+                         placeholder="Enter CRM name"
+                         onChange={e => setLafData({...lafData, recommendationByCrmName: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">CRM Signature</label>
+                       <Input
+                         className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                         value={lafData.recommendationByCrmSignature}
+                         placeholder=" "
+                         onChange={e => setLafData({...lafData, recommendationByCrmSignature: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Loan Officer Name</label>
+                       <Input
+                         className="mt-1 text-[10px]"
+                         value={lafData.recommendationByLoanOfficerName}
+                         placeholder="Enter loan officer name"
+                         onChange={e => setLafData({...lafData, recommendationByLoanOfficerName: e.target.value})}
+                       />
+                     </div>
+                     <div>
+                       <label className="block font-semibold text-[9px] uppercase">Loan Officer Signature</label>
+                       <Input
+                         className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                         value={lafData.recommendationByLoanOfficerSignature}
+                         placeholder=" "
+                         onChange={e => setLafData({...lafData, recommendationByLoanOfficerSignature: e.target.value})}
+                       />
+                     </div>
+                   </div>
+                 </>
                ) : (
-                 <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
-                   {lafData.managerComments || (isOrder5 ? "Click 'Edit' to enter review comments." : "No comments from district manager yet.")}
-                 </div>
+                 <>
+                   <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
+                     {lafData.managerComments || (isOrder5 ? "Click 'Edit' to enter recommendation." : "No recommendation yet.")}
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-[10px]">
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">CRM Name</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.recommendationByCrmName || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">CRM Signature</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.recommendationByCrmSignature || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Loan Officer Name</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.recommendationByLoanOfficerName || '\u00A0'}</div>
+                     </div>
+                     <div>
+                       <div className="font-semibold text-[9px] uppercase">Loan Officer Signature</div>
+                       <div className="mt-1 min-h-[24px] border-b border-slate-900">{lafData.recommendationByLoanOfficerSignature || '\u00A0'}</div>
+                     </div>
+                   </div>
+                 </>
                )}
             </div>
 
-            <div className={cn("p-4 border-2 rounded-lg mt-4", isOrder7 && !isReadOnlyAtStage ? "border-green-500 bg-green-50/50" : "border-slate-200 bg-slate-50")}>
-                <h4 className="font-bold text-xs uppercase underline mb-2">15. Final District Operation Manager Review/Comments</h4>
-                {isOrder7 && !isReadOnly ? (
+            <div className="p-4 border border-slate-200 bg-slate-50 rounded-lg mt-4">
+                <h4 className="font-bold text-xs uppercase underline mb-2">15. Name of Credit Approving Team</h4>
+                {!isReadOnly ? (
                   <Textarea 
                     className="min-h-[80px] text-[10px] bg-white border-green-300" 
-                    placeholder="Final Manager: Enter final review comments here..."
-                    value={lafData.managerFinalComments || ''}
-                    onChange={e => setLafData({...lafData, managerFinalComments: e.target.value})}
+                    placeholder="Enter name(s) of credit approving team here..."
+                    value={lafData.creditApprovingTeam || ''}
+                    onChange={e => setLafData({...lafData, creditApprovingTeam: e.target.value})}
                   />
                 ) : (
                   <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
-                    {lafData.managerFinalComments || (isOrder7 ? "Click 'Edit' to enter final comments." : "No final comments yet.")}
+                    {lafData.creditApprovingTeam || (isOrder7 ? "Click 'Edit' to enter credit approving team." : "No credit approving team name yet.")}
+                  </div>
+                )}
+            </div>
+
+            <div className="p-4 border border-slate-200 bg-slate-50 rounded-lg mt-4">
+                <h4 className="font-bold text-xs uppercase underline mb-2">16. Credit Decision of {lafData.creditDecisionDistrictName || 'WAAD'} (Give reason for declining or deviation)</h4>
+                {!isReadOnly ? (
+                  <>
+                    <div className="mb-3">
+                      <label className="block text-[9px] uppercase font-semibold mb-1">District Name</label>
+                      <Input
+                        className="w-full text-[10px]"
+                        placeholder="Enter district name (e.g. WAAD)"
+                        value={lafData.creditDecisionDistrictName || ''}
+                        onChange={e => setLafData({...lafData, creditDecisionDistrictName: e.target.value})}
+                      />
+                    </div>
+                    <Textarea
+                      className="min-h-[80px] text-[10px] bg-white border-green-300"
+                      placeholder="Enter credit decision here..."
+                      value={lafData.creditDecisionWaad || ''}
+                      onChange={e => setLafData({...lafData, creditDecisionWaad: e.target.value})}
+                    />
+                  </>
+                ) : (
+                  <div className="min-h-[40px] text-[10px] italic p-2 bg-white/50 border rounded">
+                    {lafData.creditDecisionWaad || (isOrder7 ? "Click 'Edit' to enter credit decision." : "No credit decision yet.")}
                   </div>
                 )}
             </div>
@@ -682,11 +870,56 @@ export default function LAFPage() {
            </div>
         </div>
 
+        {/* 18. Refraining Ideas */}
+        <div className="mt-6 avoid-page-break">
+           <h4 className="font-bold text-xs uppercase underline mb-2">18. Refraining Ideas of an Approving Team Member, if any (attach a separate paper if necessary)</h4>
+           {isReadOnly ? (
+             <div className="rounded border border-slate-300 bg-slate-50 p-3 text-[10px] italic">
+               <div className="min-h-[50px]">{lafData.refrainingIdeas || 'No refraining ideas provided.'}</div>
+             </div>
+           ) : (
+             <Textarea
+               className="min-h-[80px] text-[10px] bg-white border-slate-300"
+               placeholder="Enter any refraining ideas here..."
+               value={lafData.refrainingIdeas}
+               onChange={e => setLafData({...lafData, refrainingIdeas: e.target.value})}
+             />
+           )}
+           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px]">
+             <div>
+               <div className="font-semibold uppercase text-[9px]">Name</div>
+               {!isReadOnly ? (
+                 <Input
+                   className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                   value={lafData.refrainingIdeasName}
+                   placeholder=" "
+                   onChange={e => setLafData({...lafData, refrainingIdeasName: e.target.value})}
+                 />
+               ) : (
+                 <div className="mt-1 h-6 border-b border-slate-900" />
+               )}
+             </div>
+             <div>
+               <div className="font-semibold uppercase text-[9px]">Signature</div>
+               {!isReadOnly ? (
+                 <Input
+                   className="mt-1 text-[10px] border-b border-slate-900 bg-transparent focus-visible:ring-0"
+                   value={lafData.refrainingIdeasSignature}
+                   placeholder=" "
+                   onChange={e => setLafData({...lafData, refrainingIdeasSignature: e.target.value})}
+                 />
+               ) : (
+                 <div className="mt-1 h-6 border-b border-slate-900" />
+               )}
+             </div>
+           </div>
+        </div>
+
         {/* Footer */}
         <div className="mt-12 flex justify-between text-[8px] text-muted-foreground border-t pt-1 italic uppercase font-sans avoid-page-break">
            <span>{lafData.lafNo}</span>
            <span>NIB INTERNATIONAL BANK - Internal Document</span>
-           <span>Page 2 of 2</span>
+           <span className="print-page-number">Page</span>
         </div>
         </div>
 
@@ -710,12 +943,12 @@ export default function LAFPage() {
           }
           html, body {
             width: 210mm;
-            height: 297mm;
             background: white !important;
             padding: 0 !important;
             margin: 0 !important;
             color: black !important;
             font-family: Arial, sans-serif;
+            counter-reset: page;
           }
           @page {
             margin: 15mm;
@@ -741,6 +974,9 @@ export default function LAFPage() {
           }
           header, footer {
             display: none !important;
+          }
+          .print-page-number::after {
+            content: " " counter(page);
           }
         }
       `}</style>

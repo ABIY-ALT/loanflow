@@ -102,16 +102,16 @@ function numberToWords(num: number): string {
 // --- End of Utility ---
 
 const loanRequestFormSchema = z.object({
-  customerName: z.string().min(2, { message: 'Customer name must be at least 2 characters.' }),
-  customerEmail: z.string().email({ message: 'Please enter a valid email address.' }),
-  customerPhone: z.string()
+  customerName: z.string().trim().min(2, { message: 'Customer name must be at least 2 characters.' }),
+  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).email({ message: 'Please enter a valid email address.' }),
+  customerPhone: z.string().trim().min(1, { message: 'Customer phone is required.' })
     .transform(normalizeEthiopianPhone)
     .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678 or 0712345678.' }),
-  customerBranch: z.string().min(1, { message: 'A branch must be selected.' }),
-  loanAmount: z.coerce.number().positive({ message: 'Loan amount must be a positive number.' }),
-  sectorId: z.string().min(1, { message: 'A sector must be selected.' }),
-  requestTypeId: z.string().min(1, { message: 'A request type must be selected.' }),
-  loanPurpose: z.string().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
+  customerBranch: z.string().trim().min(1, { message: 'A branch must be selected.' }),
+  loanAmount: z.coerce.number({ required_error: 'Loan amount is required.', invalid_type_error: 'Loan amount must be a number.' }).positive({ message: 'Loan amount must be a positive number.' }),
+  sectorId: z.string().trim().min(1, { message: 'A sector must be selected.' }),
+  requestTypeId: z.string().trim().min(1, { message: 'A request type must be selected.' }),
+  loanPurpose: z.string().trim().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
 });
 
 type LoanRequestFormValues = z.infer<typeof loanRequestFormSchema>;
@@ -274,6 +274,11 @@ export default function HeadOfficeSubmissionPage() {
 
     setSubmissionError(null);
     setValidationErrors(messages);
+    toast({
+      title: 'Please fix the errors',
+      description: 'One or more required fields are missing or invalid.',
+      variant: 'destructive',
+    });
 
     const firstField = Object.keys(errors)[0] as keyof LoanRequestFormValues | undefined;
     if (firstField) {
@@ -306,7 +311,7 @@ export default function HeadOfficeSubmissionPage() {
       } else if (result.id) {
         setValidationErrors([]);
         setSubmissionError(null);
-        toast({ title: "Loan Request Submitted", description: `Request for ${formDataToSubmit.customerName} submitted successfully.` });
+        toast({ title: "Loan Request Submitted", description: "Loan request submitted successfully." });
         form.reset();
         setFormDataToSubmit(null);
         router.push('/loan-process');
@@ -444,7 +449,7 @@ export default function HeadOfficeSubmissionPage() {
                 <FormField
                   control={form.control}
                   name="customerBranch"
-                  render={({ field }) => (
+                  render={({ field, fieldState }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Customer Branch</FormLabel>
                       <Combobox
@@ -454,11 +459,15 @@ export default function HeadOfficeSubmissionPage() {
                         placeholder={isLoading ? "Loading branches..." : "Select a branch"}
                         searchPlaceholder="Search branch..."
                         notFoundText={error?.includes('Branches') ? "Error loading branches" : "No branch found."}
-                        className="w-full"
+                        className={cn("w-full", fieldState.invalid && "border-destructive")}
                         disabled={isSubmitting}
                       />
                       {error?.includes('Branches') && <p className="text-sm text-destructive mt-2">Could not load branches. Please ensure they are configured in settings.</p>}
-                      <FormMessage />
+                      {fieldState.error?.message ? (
+                        <p className="text-[0.8rem] font-medium text-destructive">{fieldState.error.message}</p>
+                      ) : (
+                        <FormMessage />
+                      )}
                     </FormItem>
                   )}
                 />
