@@ -62,6 +62,8 @@ export function LoanDetailHeader({
   onOpenTerminateLoanDialog,
   onOpenManualTransitionDialog,
   onOpenDistributeDialog,
+  onSkipPvr,
+  isSkippingPvr,
   isSaving,
   isActionableStage,
   canPromote,
