@@ -307,7 +307,7 @@ export default function LAFPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(isOrder4 || isOrder5) && !isReadOnlyAtStage && (
+          {(isOrder4 || isOrder5 || isOrder6) && !isReadOnlyAtStage && (
             <Button 
               variant={isEditing ? "default" : "outline"} 
               className={cn(isEditing && "bg-amber-600 hover:bg-amber-700")}
@@ -622,7 +622,7 @@ export default function LAFPage() {
         {/* Analysts Recommendation */}
         <div className="mb-6 space-y-4 avoid-page-break">
            <div>
-              <h4 className="font-bold text-xs uppercase underline">12. CRM Confirmation</h4>
+              <h4 className="font-bold text-xs uppercase underline">12. CRM OR CRO Confirmation</h4>
               <p className="italic text-[10px] mt-1">I confirm that all the information filled-out are in line with the checklist.</p>
               <div className="grid grid-cols-1 gap-2 mt-6 text-[10px]">
              <div>
