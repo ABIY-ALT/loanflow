@@ -116,6 +116,10 @@ const districtLoanSchema = z.object({
 
 type DistrictFormValues = z.infer<typeof districtLoanSchema>;
 
+function RequiredMark() {
+  return <span className="ml-1 text-destructive" aria-hidden="true">*</span>;
+}
+
 export default function DistrictLoanSubmissionPage() {
   const { toast } = useToast();
   const router = useRouter();
@@ -327,11 +331,11 @@ export default function DistrictLoanSubmissionPage() {
                   name="customerName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Full Name</FormLabel>
+                      <FormLabel>Customer Full Name<RequiredMark /></FormLabel>
                       <div className="relative">
                         <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input placeholder="e.g., John Doe" {...field} className={cn("pl-10", form.formState.errors.customerName && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -343,11 +347,11 @@ export default function DistrictLoanSubmissionPage() {
                   name="customerEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Email</FormLabel>
+                      <FormLabel>Customer Email<RequiredMark /></FormLabel>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input placeholder="email@example.com" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input placeholder="email@example.com" {...field} className={cn("pl-10", form.formState.errors.customerEmail && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormDescription>A new customer profile will be created if this email is not found.</FormDescription>
@@ -360,11 +364,11 @@ export default function DistrictLoanSubmissionPage() {
                   name="customerPhone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Phone</FormLabel>
+                      <FormLabel>Customer Phone<RequiredMark /></FormLabel>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input placeholder="e.g., 0912345678" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input placeholder="e.g., 0912345678" {...field} className={cn("pl-10", form.formState.errors.customerPhone && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -376,7 +380,7 @@ export default function DistrictLoanSubmissionPage() {
                   name="customerBranch"
                   render={({ field, fieldState }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Customer Branch</FormLabel>
+                      <FormLabel>Customer Branch<RequiredMark /></FormLabel>
                       <FormControl>
                         <Combobox
                           options={crmBranches.map(b => ({ label: `${b.name} (${b.districtName})`, value: b.name }))}
@@ -402,12 +406,13 @@ export default function DistrictLoanSubmissionPage() {
                   name="loanAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Loan Amount</FormLabel>
+                      <FormLabel>Loan Amount<RequiredMark /></FormLabel>
                       <FormControl>
                         <Input 
                            type="number" 
                            placeholder="e.g., 10000" 
                            {...field} 
+                           className={cn(form.formState.errors.loanAmount && "border-destructive focus-visible:ring-destructive")}
                            value={field.value || ''}
                            onChange={e => {
                              const val = e.target.value;
@@ -436,7 +441,7 @@ export default function DistrictLoanSubmissionPage() {
                   name="sectorId"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Child Sector</FormLabel>
+                      <FormLabel>Child Sector<RequiredMark /></FormLabel>
                       <FormControl>
                         <Combobox
                           options={sectors.filter(s => s.parentId).map(s => ({ label: s.name, value: s.id }))}
@@ -458,7 +463,7 @@ export default function DistrictLoanSubmissionPage() {
                   name="requestTypeId"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>Request Type</FormLabel>
+                      <FormLabel>Request Type<RequiredMark /></FormLabel>
                       <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <FormControl>
                           <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
@@ -482,11 +487,11 @@ export default function DistrictLoanSubmissionPage() {
                 name="loanPurpose"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Loan Purpose</FormLabel>
+                    <FormLabel>Loan Purpose<RequiredMark /></FormLabel>
                     <div className="relative">
                       <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <FormControl>
-                        <Textarea placeholder="Describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} />
+                        <Textarea placeholder="Describe the purpose of the loan..." className={cn("resize-none pl-10", form.formState.errors.loanPurpose && "border-destructive focus-visible:ring-destructive")} {...field} disabled={isSubmitting} />
                       </FormControl>
                     </div>
                     <FormDescription>Provide a clear and concise reason for the loan application.</FormDescription>

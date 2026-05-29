@@ -121,6 +121,10 @@ interface WorkflowInfo {
   initialDepartmentName?: string;
 }
 
+function RequiredMark() {
+  return <span className="ml-1 text-destructive" aria-hidden="true">*</span>;
+}
+
 export default function HeadOfficeSubmissionPage() {
   const { toast } = useToast();
   const router = useRouter();
@@ -401,11 +405,11 @@ export default function HeadOfficeSubmissionPage() {
                   name="customerName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Full Name</FormLabel>
+                      <FormLabel>Customer Full Name<RequiredMark /></FormLabel>
                       <div className="relative">
                         <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input placeholder="e.g., John Doe" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input placeholder="e.g., John Doe" {...field} className={cn("pl-10", form.formState.errors.customerName && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -418,11 +422,11 @@ export default function HeadOfficeSubmissionPage() {
                   name="customerEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Email</FormLabel>
+                      <FormLabel>Customer Email<RequiredMark /></FormLabel>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className="pl-10" disabled={isSubmitting} />
+                          <Input type="email" placeholder="e.g., john.doe@example.com" {...field} className={cn("pl-10", form.formState.errors.customerEmail && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormDescription>A new customer profile will be created if this email is not found.</FormDescription>
@@ -436,11 +440,11 @@ export default function HeadOfficeSubmissionPage() {
                   name="customerPhone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Phone</FormLabel>
+                      <FormLabel>Customer Phone<RequiredMark /></FormLabel>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input type="tel" placeholder="e.g., 0912345678" {...field} onChange={(event) => field.onChange(normalizeEthiopianPhone(event.target.value))} className="pl-10" disabled={isSubmitting} />
+                          <Input type="tel" placeholder="e.g., 0912345678" {...field} onChange={(event) => field.onChange(normalizeEthiopianPhone(event.target.value))} className={cn("pl-10", form.formState.errors.customerPhone && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
                       <FormMessage />
@@ -453,7 +457,7 @@ export default function HeadOfficeSubmissionPage() {
                   name="customerBranch"
                   render={({ field, fieldState }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Customer Branch</FormLabel>
+                      <FormLabel>Customer Branch<RequiredMark /></FormLabel>
                       <Combobox
                         options={branchOptions}
                         value={field.value}
@@ -479,12 +483,13 @@ export default function HeadOfficeSubmissionPage() {
                   name="loanAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Loan Amount</FormLabel>
+                      <FormLabel>Loan Amount<RequiredMark /></FormLabel>
                        <FormControl>
                         <Input
                           type="number"
                           placeholder="e.g., 10000"
                           {...field}
+                          className={cn(form.formState.errors.loanAmount && "border-destructive focus-visible:ring-destructive")}
                           value={field.value || ''}
                           onChange={e => {
                             const val = e.target.value;
@@ -509,7 +514,7 @@ export default function HeadOfficeSubmissionPage() {
                   name="sectorId"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>Child Sector</FormLabel>
+                      <FormLabel>Child Sector<RequiredMark /></FormLabel>
                       <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isSubmitting || childSectorOptions.length === 0}>
                         <FormControl>
                           <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
@@ -532,7 +537,7 @@ export default function HeadOfficeSubmissionPage() {
                   name="requestTypeId"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>Request Type</FormLabel>
+                      <FormLabel>Request Type<RequiredMark /></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting || requestTypes.length === 0}>
                         <FormControl>
                           <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
@@ -565,11 +570,11 @@ export default function HeadOfficeSubmissionPage() {
                 name="loanPurpose"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Loan Purpose</FormLabel>
+                    <FormLabel>Loan Purpose<RequiredMark /></FormLabel>
                     <div className="relative">
                       <Info className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <FormControl>
-                        <Textarea placeholder="Briefly describe the purpose of the loan..." className="resize-none pl-10" {...field} disabled={isSubmitting} />
+                        <Textarea placeholder="Briefly describe the purpose of the loan..." className={cn("resize-none pl-10", form.formState.errors.loanPurpose && "border-destructive focus-visible:ring-destructive")} {...field} disabled={isSubmitting} />
                       </FormControl>
                     </div>
                     <FormDescription>Provide a clear and concise reason for the loan application.</FormDescription>
