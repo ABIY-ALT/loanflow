@@ -28,7 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
-import { isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
+import { cn, isValidLocalEthiopianPhone, normalizeEthiopianPhone } from '@/lib/utils';
 import Link from 'next/link';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
 import type { ConfigurableListItem } from '@/services/sector-and-request-type-service';
@@ -285,7 +285,7 @@ export default function HeadOfficeSubmissionPage() {
       form.setFocus(firstField);
     }
 
-    document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
 
   async function handleConfirmSubmit() {
@@ -379,12 +379,14 @@ export default function HeadOfficeSubmissionPage() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onFormSubmit, onFormInvalid)} className="space-y-8">
               {(validationErrors.length > 0 || submissionError) && (
-                <Alert id="loan-form-errors" variant="destructive">
+                <Alert id="loan-form-errors" variant="destructive" role="alert" aria-live="assertive" tabIndex={-1}>
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Please fix the following issues before submitting:</AlertTitle>
                   <div className="text-sm mt-2 space-y-1">
                     {validationErrors.length > 0 ? (
-                      validationErrors.map((msg, idx) => <p key={idx}>{msg}</p>)
+                      <ul className="list-disc pl-5 space-y-1">
+                        {validationErrors.map((msg, idx) => <li key={idx}>{msg}</li>)}
+                      </ul>
                     ) : (
                       <p>{submissionError}</p>
                     )}
@@ -505,12 +507,12 @@ export default function HeadOfficeSubmissionPage() {
                 <FormField
                   control={form.control}
                   name="sectorId"
-                  render={({ field }) => (
+                  render={({ field, fieldState }) => (
                     <FormItem>
                       <FormLabel>Child Sector</FormLabel>
                       <Select onValueChange={handleSectorChange} defaultValue={field.value} disabled={isSubmitting || childSectorOptions.length === 0}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a sector"} />
                           </SelectTrigger>
                         </FormControl>
@@ -528,12 +530,12 @@ export default function HeadOfficeSubmissionPage() {
                  <FormField
                   control={form.control}
                   name="requestTypeId"
-                  render={({ field }) => (
+                  render={({ field, fieldState }) => (
                     <FormItem>
                       <FormLabel>Request Type</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting || requestTypes.length === 0}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
                             <SelectValue placeholder={isLoading ? "Loading..." : "Select a request type"} />
                           </SelectTrigger>
                         </FormControl>

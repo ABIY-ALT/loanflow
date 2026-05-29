@@ -15,6 +15,7 @@ import type {
   RequestType as PrismaRequestType,
   DocumentRequirement as PrismaDocumentRequirement,
   Customer as PrismaCustomer,
+  Prisma,
 } from '@prisma/client';
 
 import { DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
@@ -28,7 +29,7 @@ import { getCurrentUser } from '@/app/auth/actions';
 import { normalizeEthiopianPhone } from '@/lib/utils';
 import { canDistributeToDistrictApproval } from '@/lib/district-workflow';
 
-import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
+import { formatISO, parseISO, addDays, isBefore, isValid, subMinutes } from 'date-fns';
 import { safeJsonParse, mapPrismaUserToAppUser, mapPrismaLoanToAppLoan } from './utils/mappers';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
@@ -43,6 +44,59 @@ async function getDistrictBranchNames(districtId?: string): Promise<string[] | n
     select: { name: true },
   });
   return branches.map((b) => b.name);
+}
+
+const DUPLICATE_SUBMISSION_WINDOW_MINUTES = 10;
+
+function normalizeSubmissionText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normalizeSubmissionEmail(value: unknown): string {
+  return normalizeSubmissionText(value).toLowerCase();
+}
+
+function buildLoanSubmissionFingerprint(user: User, loanData: any, submissionType: 'TYPE1' | 'TYPE2'): string {
+  return JSON.stringify({
+    submissionType,
+    createdById: user.id,
+    customerName: normalizeSubmissionText(loanData.customerName).toLowerCase(),
+    customerEmail: normalizeSubmissionEmail(loanData.customerEmail),
+    customerPhone: normalizeEthiopianPhone(loanData.customerPhone),
+    customerBranch: normalizeSubmissionText(loanData.customerBranch).toLowerCase(),
+    loanAmount: String(loanData.loanAmount),
+    sectorId: normalizeSubmissionText(loanData.sectorId),
+    requestTypeId: normalizeSubmissionText(loanData.requestTypeId),
+    loanPurpose: normalizeSubmissionText(loanData.loanPurpose).toLowerCase(),
+  });
+}
+
+async function acquireSubmissionLock(tx: Prisma.TransactionClient, fingerprint: string) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
+}
+
+async function findRecentDuplicateSubmission(
+  tx: Prisma.TransactionClient,
+  user: User,
+  loanData: any,
+  customerId: string,
+  submissionType: 'TYPE1' | 'TYPE2',
+  currentDate: Date,
+) {
+  return tx.loanRequest.findFirst({
+    where: {
+      createdById: user.id,
+      customerId,
+      loanAmount: loanData.loanAmount,
+      sectorId: loanData.sectorId,
+      requestTypeId: loanData.requestTypeId,
+      loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
+      submissionType,
+      submittedDate: { gte: subMinutes(currentDate, DUPLICATE_SUBMISSION_WINDOW_MINUTES) },
+    },
+    orderBy: { submittedDate: 'desc' },
+    select: { id: true },
+  });
 }
 
 /**
@@ -107,49 +161,56 @@ async function addLoanRequestInternal(
     const initialStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
     const normalizedCustomerPhone = normalizeEthiopianPhone(loanData.customerPhone);
 
-    const customer = await prisma.customer.upsert({
-      where: { email: loanData.customerEmail },
-      update: {
-        name: loanData.customerName,
-        phone: normalizedCustomerPhone || null,
-        branch: loanData.customerBranch || null,
-      },
-      create: {
-        email: loanData.customerEmail,
-        name: loanData.customerName,
-        phone: normalizedCustomerPhone || null,
-        branch: loanData.customerBranch || null,
-      },
-    });
+    const newLoan = await prisma.$transaction(async (tx) => {
+      await acquireSubmissionLock(tx, buildLoanSubmissionFingerprint(user, loanData, 'TYPE1'));
 
-    const newLoan = await prisma.loanRequest.create({
-      data: {
-        loanNumber: `LN-PSQL-${String(Date.now()).slice(-6)}`,
-        customer: { connect: { id: customer.id } },
-        loanAmount: loanData.loanAmount,
-        sector: { connect: { id: loanData.sectorId } },
-        requestType: { connect: { id: loanData.requestTypeId } },
-        loanPurpose: loanData.loanPurpose,
-        submittedDate: currentDate,
-        lastUpdatedDate: currentDate,
-        stageEntryDate: currentDate,
-        stageDeadline: stageDeadlineDate,
-        workflowVersion: { connect: { id: activeVersion.id } },
-        currentWorkflowStage: { connect: { id: firstStage.id } },
-        assignedDepartment: { connect: { id: initialDepartment.id } },
-        currentStageStatus: initialStatus,
-        createdBy: { connect: { id: user.id } },
-        history: {
-          create: [
-            {
-              stageName: firstStage.name,
-              timestamp: currentDate,
-              notes: initialHistoryNote,
-              user: { connect: { id: user.id } }
-            }
-          ]
-        }
-      },
+      const customer = await tx.customer.upsert({
+        where: { email: normalizeSubmissionEmail(loanData.customerEmail) },
+        update: {
+          name: normalizeSubmissionText(loanData.customerName),
+          phone: normalizedCustomerPhone || null,
+          branch: normalizeSubmissionText(loanData.customerBranch) || null,
+        },
+        create: {
+          email: normalizeSubmissionEmail(loanData.customerEmail),
+          name: normalizeSubmissionText(loanData.customerName),
+          phone: normalizedCustomerPhone || null,
+          branch: normalizeSubmissionText(loanData.customerBranch) || null,
+        },
+      });
+
+      const duplicateLoan = await findRecentDuplicateSubmission(tx, user, loanData, customer.id, 'TYPE1', currentDate);
+      if (duplicateLoan) return duplicateLoan;
+
+      return tx.loanRequest.create({
+        data: {
+          loanNumber: `LN-PSQL-${String(Date.now()).slice(-6)}`,
+          customer: { connect: { id: customer.id } },
+          loanAmount: loanData.loanAmount,
+          sector: { connect: { id: loanData.sectorId } },
+          requestType: { connect: { id: loanData.requestTypeId } },
+          loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
+          submittedDate: currentDate,
+          lastUpdatedDate: currentDate,
+          stageEntryDate: currentDate,
+          stageDeadline: stageDeadlineDate,
+          workflowVersion: { connect: { id: activeVersion.id } },
+          currentWorkflowStage: { connect: { id: firstStage.id } },
+          assignedDepartment: { connect: { id: initialDepartment.id } },
+          currentStageStatus: initialStatus,
+          createdBy: { connect: { id: user.id } },
+          history: {
+            create: [
+              {
+                stageName: firstStage.name,
+                timestamp: currentDate,
+                notes: initialHistoryNote,
+                user: { connect: { id: user.id } }
+              }
+            ]
+          }
+        },
+      });
     });
 
     return { id: newLoan.id };
@@ -256,6 +317,8 @@ export async function addType2LoanRequest(loanData: any) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await acquireSubmissionLock(tx, buildLoanSubmissionFingerprint(user, loanData, 'TYPE2'));
+
       // 1. Look up the District Specialized Workflow
       const districtWorkflowVersion = await tx.workflowVersion.findFirst({
         where: {
@@ -278,21 +341,23 @@ export async function addType2LoanRequest(loanData: any) {
       // 3. Customer upsert
       const normalizedCustomerPhone = normalizeEthiopianPhone(loanData.customerPhone);
       const customer = await tx.customer.upsert({
-        where: { email: loanData.customerEmail },
+        where: { email: normalizeSubmissionEmail(loanData.customerEmail) },
         update: {
-          name: loanData.customerName,
+          name: normalizeSubmissionText(loanData.customerName),
           phone: normalizedCustomerPhone || null,
-          branch: loanData.customerBranch || null,
+          branch: normalizeSubmissionText(loanData.customerBranch) || null,
         },
         create: {
-          email: loanData.customerEmail,
-          name: loanData.customerName,
+          email: normalizeSubmissionEmail(loanData.customerEmail),
+          name: normalizeSubmissionText(loanData.customerName),
           phone: normalizedCustomerPhone || null,
-          branch: loanData.customerBranch || null,
+          branch: normalizeSubmissionText(loanData.customerBranch) || null,
         },
       });
 
       const currentDate = new Date();
+      const duplicateLoan = await findRecentDuplicateSubmission(tx, user, loanData, customer.id, 'TYPE2', currentDate);
+      if (duplicateLoan) return duplicateLoan;
       
       // 2. Start at the Manager Assignment stage (index 1) since Secretary submission is what triggers creation
       const targetStageIndex = districtWorkflowVersion.stages.length > 1 ? 1 : 0;
@@ -317,7 +382,7 @@ export async function addType2LoanRequest(loanData: any) {
           loanAmount: loanData.loanAmount,
           sector: { connect: { id: loanData.sectorId } },
           requestType: { connect: { id: loanData.requestTypeId } },
-          loanPurpose: loanData.loanPurpose,
+          loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
           submittedDate: currentDate,
           lastUpdatedDate: currentDate,
           stageEntryDate: currentDate,

@@ -306,12 +306,14 @@ export default function DistrictLoanSubmissionPage() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onFormSubmit, onFormInvalid)} className="space-y-8">
               {(validationErrors.length > 0 || submissionError) && (
-                <Alert id="loan-form-errors" variant="destructive">
+                <Alert id="loan-form-errors" variant="destructive" role="alert" aria-live="assertive" tabIndex={-1}>
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Please fix the following issues before submitting:</AlertTitle>
                   <div className="text-sm mt-2 space-y-1">
                     {validationErrors.length > 0 ? (
-                      validationErrors.map((msg, idx) => <p key={idx}>{msg}</p>)
+                      <ul className="list-disc pl-5 space-y-1">
+                        {validationErrors.map((msg, idx) => <li key={idx}>{msg}</li>)}
+                      </ul>
                     ) : (
                       <p>{submissionError}</p>
                     )}
@@ -454,12 +456,14 @@ export default function DistrictLoanSubmissionPage() {
                 <FormField
                   control={form.control}
                   name="requestTypeId"
-                  render={({ field }) => (
+                  render={({ field, fieldState }) => (
                     <FormItem>
                       <FormLabel>Request Type</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select Request Type" /></SelectTrigger>
+                          <SelectTrigger className={cn(fieldState.invalid && "border-destructive focus:ring-destructive")}>
+                            <SelectValue placeholder="Select Request Type" />
+                          </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {requestTypes.map(rt => (
