@@ -72,7 +72,7 @@ function buildLoanSubmissionFingerprint(user: User, loanData: any, submissionTyp
 }
 
 async function acquireSubmissionLock(tx: Prisma.TransactionClient, fingerprint: string) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
 }
 
 async function findRecentDuplicateSubmission(
