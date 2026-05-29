@@ -19,6 +19,30 @@ function mapValuationQueueItem(item: any): ValuationQueueItem {
   };
 }
 
+function dedupeValuationCases(items: ValuationQueueItem[]) {
+  const latestByFingerprint = new Map<string, ValuationQueueItem>();
+  for (const it of items) {
+    const loan = it.loanRequest;
+    const fingerprint = [
+      loan.customerId,
+      loan.loanAmount,
+      loan.sectorId,
+      loan.requestTypeId,
+      String(loan.loanPurpose || '').trim().toLowerCase(),
+      loan.assignedDepartmentId || loan.assignedDepartment || '',
+      loan.currentStageId || loan.currentStageName || '',
+      loan.workflowVersionId || '',
+      loan.submissionType || '',
+    ].join('|');
+
+    const existing = latestByFingerprint.get(fingerprint);
+    if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.loanRequest.lastUpdatedDate).getTime()) {
+      latestByFingerprint.set(fingerprint, it);
+    }
+  }
+  return Array.from(latestByFingerprint.values());
+}
+
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   console.error(`[ValuationService:${context || 'Unknown'}] Error: ${message}`, originalError);
   return { error: message };
@@ -65,7 +89,8 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
       }
     });
 
-    return { cases: cases.map(mapValuationQueueItem) };
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getIncomingValuationCases");
   }
@@ -233,7 +258,8 @@ export async function getMyValuationCases(): Promise<ValuationResult<{ cases: Va
       }
     });
 
-    return { cases: cases.map(mapValuationQueueItem) };
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getMyValuationCases");
   }
@@ -475,7 +501,8 @@ export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ c
       }
     });
 
-    return { cases: cases.map(mapValuationQueueItem) };
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getValuationCasesByAssigner");
   }
@@ -539,7 +566,8 @@ export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases
       }
     });
 
-    return { cases: cases.map(mapValuationQueueItem) };
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getValuationReviewQueue");
   }

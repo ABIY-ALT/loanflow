@@ -50,8 +50,31 @@ export async function getCommitteeQueue() {
     });
 
     const settings = await getCommitteeSettings();
+    const appCases = cases.map(c => mapPrismaLoanToAppLoan(c as any));
+
+    // Dedupe by submission fingerprint to avoid duplicated submissions showing multiple times
+    const latestByFingerprint = new Map<string, typeof appCases[0]>();
+    for (const loan of appCases) {
+      const fingerprint = [
+        loan.customerId,
+        loan.loanAmount,
+        loan.sectorId,
+        loan.requestTypeId,
+        String(loan.loanPurpose || '').trim().toLowerCase(),
+        loan.assignedDepartmentId || loan.assignedDepartment || '',
+        loan.currentStageId || loan.currentStageName || '',
+        loan.workflowVersionId || '',
+        loan.submissionType || '',
+      ].join('|');
+
+      const existing = latestByFingerprint.get(fingerprint);
+      if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.lastUpdatedDate).getTime()) {
+        latestByFingerprint.set(fingerprint, loan);
+      }
+    }
+
     return { 
-      cases: cases.map(c => mapPrismaLoanToAppLoan(c as any)),
+      cases: Array.from(latestByFingerprint.values()),
       settings
     };
   } catch (e: any) {

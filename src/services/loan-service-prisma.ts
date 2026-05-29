@@ -46,7 +46,9 @@ async function getDistrictBranchNames(districtId?: string): Promise<string[] | n
   return branches.map((b) => b.name);
 }
 
-const DUPLICATE_SUBMISSION_WINDOW_MINUTES = 10;
+// Time window (minutes) during which a near-duplicate submission is considered the same case.
+// Increased to reduce accidental duplicate creations from retries or background processes.
+const DUPLICATE_SUBMISSION_WINDOW_MINUTES = 60; // 1 hour
 
 function normalizeSubmissionText(value: unknown): string {
   return String(value ?? '').trim();
@@ -71,21 +73,39 @@ function buildLoanSubmissionFingerprint(user: User, loanData: any, submissionTyp
   });
 }
 
+// Advisory lock fingerprint that does NOT include the submitting user, so
+// concurrent submissions for the same customer/amount/purpose across different
+// users will be serialized and the duplicate check will catch them.
+function buildSubmissionLockFingerprint(loanData: any, submissionType: 'TYPE1' | 'TYPE2'): string {
+  return JSON.stringify({
+    submissionType,
+    customerName: normalizeSubmissionText(loanData.customerName).toLowerCase(),
+    customerEmail: normalizeSubmissionEmail(loanData.customerEmail),
+    customerPhone: normalizeEthiopianPhone(loanData.customerPhone),
+    customerBranch: normalizeSubmissionText(loanData.customerBranch).toLowerCase(),
+    loanAmount: String(loanData.loanAmount),
+    sectorId: normalizeSubmissionText(loanData.sectorId),
+    requestTypeId: normalizeSubmissionText(loanData.requestTypeId),
+    loanPurpose: normalizeSubmissionText(loanData.loanPurpose).toLowerCase(),
+  });
+}
+
 async function acquireSubmissionLock(tx: Prisma.TransactionClient, fingerprint: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
 }
 
 async function findRecentDuplicateSubmission(
   tx: Prisma.TransactionClient,
-  user: User,
   loanData: any,
   customerId: string,
   submissionType: 'TYPE1' | 'TYPE2',
   currentDate: Date,
 ) {
+  // Look for any recent submission that matches the key submission properties,
+  // regardless of which user created it. This helps avoid duplicate records
+  // when retries or parallel requests occur from different actors.
   return tx.loanRequest.findFirst({
     where: {
-      createdById: user.id,
       customerId,
       loanAmount: loanData.loanAmount,
       sectorId: loanData.sectorId,
@@ -97,6 +117,32 @@ async function findRecentDuplicateSubmission(
     orderBy: { submittedDate: 'desc' },
     select: { id: true },
   });
+}
+
+// Helper: dedupe app-mapped loans by a submission fingerprint so that
+// duplicate database records representing the same submission are collapsed.
+function dedupeAppLoans(loans: LoanRequest[]) {
+  const latestByFingerprint = new Map<string, LoanRequest>();
+  for (const loan of loans) {
+    const fingerprint = [
+      loan.customerId,
+      loan.loanAmount,
+      loan.sectorId,
+      loan.requestTypeId,
+      String(loan.loanPurpose || '').trim().toLowerCase(),
+      loan.assignedDepartmentId || loan.assignedDepartment || '',
+      loan.currentStageId || loan.currentStageName || '',
+      loan.workflowVersionId || '',
+      loan.submissionType || '',
+    ].join('|');
+
+    const existing = latestByFingerprint.get(fingerprint);
+    if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.lastUpdatedDate).getTime()) {
+      latestByFingerprint.set(fingerprint, loan);
+    }
+  }
+
+  return Array.from(latestByFingerprint.values());
 }
 
 /**
@@ -162,7 +208,7 @@ async function addLoanRequestInternal(
     const normalizedCustomerPhone = normalizeEthiopianPhone(loanData.customerPhone);
 
     const newLoan = await prisma.$transaction(async (tx) => {
-      await acquireSubmissionLock(tx, buildLoanSubmissionFingerprint(user, loanData, 'TYPE1'));
+      await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData, 'TYPE1'));
 
       const customer = await tx.customer.upsert({
         where: { email: normalizeSubmissionEmail(loanData.customerEmail) },
@@ -179,7 +225,7 @@ async function addLoanRequestInternal(
         },
       });
 
-      const duplicateLoan = await findRecentDuplicateSubmission(tx, user, loanData, customer.id, 'TYPE1', currentDate);
+      const duplicateLoan = await findRecentDuplicateSubmission(tx, loanData, customer.id, 'TYPE1', currentDate);
       if (duplicateLoan) return duplicateLoan;
 
       return tx.loanRequest.create({
@@ -291,7 +337,33 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
 
     const districtSettings = await getDistrictSettings();
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any, { districtOverdueHours: districtSettings.overdueHours }));
-    return { loans: appLoans };
+
+    // Server-side dedupe: collapse likely duplicate submissions that represent
+    // the same case (e.g., created multiple times) by keeping the latest
+    // record per submission fingerprint. This prevents clients from seeing
+    // the same case repeated in different queues.
+    const latestByFingerprint = new Map<string, typeof appLoans[0]>();
+    for (const loan of appLoans) {
+      const key = [
+        loan.customerId,
+        loan.loanAmount,
+        loan.sectorId,
+        loan.requestTypeId,
+        String(loan.loanPurpose || '').trim().toLowerCase(),
+        loan.assignedDepartmentId || loan.assignedDepartment || '',
+        loan.currentStageId || loan.currentStageName || '',
+        loan.workflowVersionId || '',
+        loan.submissionType || '',
+      ].join('|');
+
+      const existing = latestByFingerprint.get(key);
+      if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.lastUpdatedDate).getTime()) {
+        latestByFingerprint.set(key, loan);
+      }
+    }
+
+    const dedupedLoans = Array.from(latestByFingerprint.values());
+    return { loans: dedupedLoans };
   } catch (e: any) {
     return createErrorResult("Failed to fetch loan requests.", "getLoanRequestsInternal", e);
   }
@@ -317,7 +389,7 @@ export async function addType2LoanRequest(loanData: any) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      await acquireSubmissionLock(tx, buildLoanSubmissionFingerprint(user, loanData, 'TYPE2'));
+      await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData, 'TYPE2'));
 
       // 1. Look up the District Specialized Workflow
       const districtWorkflowVersion = await tx.workflowVersion.findFirst({
@@ -356,7 +428,7 @@ export async function addType2LoanRequest(loanData: any) {
       });
 
       const currentDate = new Date();
-      const duplicateLoan = await findRecentDuplicateSubmission(tx, user, loanData, customer.id, 'TYPE2', currentDate);
+      const duplicateLoan = await findRecentDuplicateSubmission(tx, loanData, customer.id, 'TYPE2', currentDate);
       if (duplicateLoan) return duplicateLoan;
       
       // 2. Start at the Manager Assignment stage (index 1) since Secretary submission is what triggers creation
@@ -2037,7 +2109,8 @@ export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[
       orderBy: { submittedDate: 'desc' },
       include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, assignedBy: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
     });
-    return { loans: prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any)) };
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
+    return { loans: dedupeAppLoans(appLoans) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch submitted loans.", "getSubmittedLoanRequests", e);
   }
@@ -2085,7 +2158,7 @@ export async function getDistrictDashboardAnalytics(): Promise<{ loans?: LoanReq
     });
 
     return { 
-      loans: appLoans, 
+      loans: dedupeAppLoans(appLoans), 
       branches: districtBranchNames || [], 
       crms: crms.map(mapPrismaUserToAppUser) 
     };
@@ -2121,7 +2194,8 @@ export async function getDistrictSubmittedLoanRequests(): Promise<{ loans?: Loan
       orderBy: { submittedDate: 'desc' },
       include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, assignedBy: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
     });
-    return { loans: prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any)) };
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
+    return { loans: dedupeAppLoans(appLoans) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch district submitted loans.", "getDistrictSubmittedLoanRequests", e);
   }
@@ -2191,7 +2265,7 @@ export async function getAssignedLoanRequests(): Promise<{ loans?: LoanRequest[]
 
     const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
     console.log("Assigned Cases:", appLoans.length);
-    return { loans: appLoans };
+    return { loans: dedupeAppLoans(appLoans) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch assigned loan requests.", "getAssignedLoanRequests", e);
   }
@@ -2240,7 +2314,8 @@ export async function getIncomingLoanRequests(): Promise<{ loans?: LoanRequest[]
       },
     });
 
-    return { loans: prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any)) };
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
+    return { loans: dedupeAppLoans(appLoans) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch incoming loan requests.", "getIncomingLoanRequests", e);
   }
@@ -2288,7 +2363,8 @@ export async function getAssignedByMePortfolio(): Promise<{ loans?: LoanRequest[
       },
     });
 
-    return { loans: prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any)) };
+    const appLoans = prismaLoans.map(pl => mapPrismaLoanToAppLoan(pl as any));
+    return { loans: dedupeAppLoans(appLoans) };
   } catch (e: any) {
     return createErrorResult("Failed to fetch assigned-by-me portfolio.", "getAssignedByMePortfolio", e);
   }
