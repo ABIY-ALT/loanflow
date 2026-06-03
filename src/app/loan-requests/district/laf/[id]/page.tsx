@@ -88,6 +88,12 @@ export default function LAFPage() {
     lessRecommendTL: '12,000,000.00',
     lessRecommendOD: '4,000,000.00',
     excessDeficit: '0.00',
+    // right-column independent values
+    totalCollateralValueRight: '0.00',
+    lessExistingTLRight: '4,316,005.56',
+    lessRecommendTLRight: '12,000,000.00',
+    lessRecommendODRight: '4,000,000.00',
+    excessDeficitRight: '0.00',
 
     fulfillmentComments: '',
     creditInformation: '',
@@ -563,12 +569,12 @@ export default function LAFPage() {
                    <TableRow key={i} className={cn("h-5", row.bg)}>
                       <TableCell colSpan={4} className="border-r border-slate-900 p-0.5 font-bold text-right italic">{row.l}</TableCell>
                       <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">
-                        {isReadOnly ? <span>{lafData[row.k]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[row.k]} onChange={e => setLafData({...lafData, [row.k]: e.target.value})} />}
+                        {isReadOnly ? <span>{lafData[row.k]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[row.k] ?? ''} onChange={e => setLafData({...lafData, [row.k]: e.target.value})} />}
                       </TableCell>
                       <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold"></TableCell>
-                      <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">
-                         {isReadOnly ? <span>{lafData[row.k]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[row.k]} onChange={e => setLafData({...lafData, [row.k]: e.target.value})} />}
-                      </TableCell>
+                       <TableCell className="border-r border-slate-900 p-0.5 text-center font-bold">
+                         {isReadOnly ? <span>{lafData[`${row.k}Right`]}</span> : <Input className="h-4 p-0 border-none text-center font-bold shadow-none focus-visible:ring-0" value={lafData[`${row.k}Right`] ?? ''} onChange={e => setLafData({...lafData, [`${row.k}Right`]: e.target.value})} />}
+                       </TableCell>
                       <TableCell className="p-0.5"></TableCell>
                    </TableRow>
                  ))}
