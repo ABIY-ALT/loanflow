@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, Building, CheckCircle, Wallet, ArrowLeft, Send, ClipboardCheck } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { addType2LoanRequest } from '@/services/loan-service-prisma';
 import { getCRMBranches } from '@/services/crm-service';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
@@ -125,6 +125,7 @@ export default function DistrictLoanSubmissionPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<DistrictFormValues | null>(null);
   
@@ -233,8 +234,9 @@ export default function DistrictLoanSubmissionPage() {
   }
 
   const handleConfirmSubmit = async () => {
-    if (!formDataToSubmit) return;
+    if (!formDataToSubmit || isSubmitting || isSubmittingRef.current) return;
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     setIsConfirming(false);
     try {
       const result = await addType2LoanRequest(formDataToSubmit);
@@ -256,6 +258,7 @@ export default function DistrictLoanSubmissionPage() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 

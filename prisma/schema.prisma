@@ -225,12 +225,23 @@ model LoanRequest {
   documents               LoanDocument[]
   caseReviews             CaseReviewHistory[]
   notifications           Notification[]
+  submissionDedup         LoanSubmissionDedup?
 
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
   @@index([assignedDepartmentId])
   @@index([currentStageId])
+}
+
+/// Enforces at most one new LoanRequest per submission identity per hour (DB-level insert guard).
+model LoanSubmissionDedup {
+  dedupKey      String       @id
+  loanRequestId String?      @unique
+  loanRequest   LoanRequest? @relation(fields: [loanRequestId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+
+  @@index([createdAt])
 }
 
 model Notification {

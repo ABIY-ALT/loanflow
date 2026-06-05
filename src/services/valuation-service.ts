@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import type { ValuationQueueItem, ValuationResult, ValuationStaff } from '@/types/valuation';
 
 import { mapPrismaLoanToAppLoan } from './utils/mappers';
+import { dedupeLoansBySubmission } from '@/lib/loan-submission-fingerprint';
 
 const VALUATION_DEPT_NAME = 'Property Valuation Department';
 
@@ -20,27 +21,14 @@ function mapValuationQueueItem(item: any): ValuationQueueItem {
 }
 
 function dedupeValuationCases(items: ValuationQueueItem[]) {
-  const latestByFingerprint = new Map<string, ValuationQueueItem>();
-  for (const it of items) {
-    const loan = it.loanRequest;
-    const fingerprint = [
-      loan.customerId,
-      loan.loanAmount,
-      loan.sectorId,
-      loan.requestTypeId,
-      String(loan.loanPurpose || '').trim().toLowerCase(),
-      loan.assignedDepartmentId || loan.assignedDepartment || '',
-      loan.currentStageId || loan.currentStageName || '',
-      loan.workflowVersionId || '',
-      loan.submissionType || '',
-    ].join('|');
-
-    const existing = latestByFingerprint.get(fingerprint);
-    if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.loanRequest.lastUpdatedDate).getTime()) {
-      latestByFingerprint.set(fingerprint, it);
-    }
-  }
-  return Array.from(latestByFingerprint.values());
+  const uniqueLoans = dedupeLoansBySubmission(items.map((it) => it.loanRequest));
+  const loanIdOrder = new Map(uniqueLoans.map((loan, index) => [loan.id, index]));
+  return items
+    .filter((it) => loanIdOrder.has(it.loanRequest.id))
+    .sort(
+      (a, b) =>
+        (loanIdOrder.get(a.loanRequest.id) ?? 0) - (loanIdOrder.get(b.loanRequest.id) ?? 0),
+    );
 }
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {

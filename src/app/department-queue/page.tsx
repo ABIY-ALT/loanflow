@@ -16,37 +16,6 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-function getPendingAssignmentKey(loan: LoanRequest) {
-  return [
-    loan.customerId,
-    loan.loanAmount,
-    loan.sectorId,
-    loan.requestTypeId,
-    loan.loanPurpose.trim().toLowerCase(),
-    loan.assignedDepartmentId || loan.assignedDepartment || '',
-    loan.currentStageId || loan.currentStageName || '',
-    loan.workflowVersionId || '',
-    loan.submissionType || '',
-  ].join('|');
-}
-
-function dedupePendingAssignmentLoans(loans: LoanRequest[]) {
-  const latestByCase = new Map<string, LoanRequest>();
-
-  for (const loan of loans) {
-    // Prefer a stable unique identifier when available (loan.id),
-    // otherwise fall back to the computed fingerprint used previously.
-    const key = loan.id || getPendingAssignmentKey(loan);
-    const existing = latestByCase.get(key);
-
-    if (!existing || new Date(loan.lastUpdatedDate).getTime() > new Date(existing.lastUpdatedDate).getTime()) {
-      latestByCase.set(key, loan);
-    }
-  }
-
-  return Array.from(latestByCase.values());
-}
-
 export default function DepartmentQueuePage() {
   const { user, isLoading: authLoading } = useAuth();
   const [unassignedLoans, setUnassignedLoans] = useState<LoanRequest[]>([]);
@@ -83,7 +52,7 @@ export default function DepartmentQueuePage() {
           const filteredLoans = loansResult.loans.filter((loan: LoanRequest) =>
             loan.assignedToUsers.length === 0 && !loan.isReadyForManagerReview && !loan.isTerminalStage
           );
-          setUnassignedLoans(dedupePendingAssignmentLoans(filteredLoans));
+          setUnassignedLoans(filteredLoans);
         }
 
         if (deptsResult.departments) {

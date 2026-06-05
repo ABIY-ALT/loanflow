@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Building, Network, CheckCircle, Wallet } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { addLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
 import type { Branch, Sector, WorkflowDefinition } from '@/types/loan';
@@ -130,6 +130,7 @@ export default function HeadOfficeSubmissionPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<LoanRequestFormValues | null>(null);
   
@@ -293,8 +294,9 @@ export default function HeadOfficeSubmissionPage() {
   }
 
   async function handleConfirmSubmit() {
-    if (!formDataToSubmit) return;
+    if (!formDataToSubmit || isSubmitting || isSubmittingRef.current) return;
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     setIsConfirming(false);
     try {
       const result = await addLoanRequest({
@@ -327,6 +329,7 @@ export default function HeadOfficeSubmissionPage() {
       toast({ title: "Submission Failed", description: `Error: ${error.message || 'Unexpected error'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   }
 
