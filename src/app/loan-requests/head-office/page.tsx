@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller, type FieldErrors } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Building, Network, CheckCircle, Wallet } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, ArrowLeft, Network, CheckCircle, Wallet } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { addLoanRequest, getWorkflowDefinitions } from '@/services/loan-service-prisma';
 import { getBranches } from '@/services/branch-service';
@@ -103,12 +103,12 @@ function numberToWords(num: number): string {
 
 const loanRequestFormSchema = z.object({
   customerName: z.string().trim().min(2, { message: 'Customer name must be at least 2 characters.' }),
-  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).email({ message: 'Please enter a valid email address.' }),
+  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).pipe(z.email({ message: 'Please enter a valid email address.' })),
   customerPhone: z.string().trim().min(1, { message: 'Customer phone is required.' })
     .transform(normalizeEthiopianPhone)
     .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678 or 0712345678.' }),
   customerBranch: z.string().trim().min(1, { message: 'A branch must be selected.' }),
-  loanAmount: z.coerce.number({ required_error: 'Loan amount is required.', invalid_type_error: 'Loan amount must be a number.' }).positive({ message: 'Loan amount must be a positive number.' }),
+  loanAmount: z.coerce.number({ error: 'Please enter a valid loan amount.' }).positive({ message: 'Loan amount must be a positive number.' }),
   sectorId: z.string().trim().min(1, { message: 'A sector must be selected.' }),
   requestTypeId: z.string().trim().min(1, { message: 'A request type must be selected.' }),
   loanPurpose: z.string().trim().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
@@ -131,6 +131,7 @@ export default function HeadOfficeSubmissionPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+  const lastSubmitTimeRef = useRef(0);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<LoanRequestFormValues | null>(null);
   
@@ -179,7 +180,7 @@ export default function HeadOfficeSubmissionPage() {
           setRequestTypes(requestTypesResult.requestTypes || []);
         }
 
-        if (branchesResult.error) {
+        if ('error' in branchesResult) {
           setError(prev => (prev ? `${prev}\n` : '') + `Branches: ${branchesResult.error}`);
           setBranches([]);
         } else {
@@ -285,16 +286,26 @@ export default function HeadOfficeSubmissionPage() {
       variant: 'destructive',
     });
 
-    const firstField = Object.keys(errors)[0] as keyof LoanRequestFormValues | undefined;
-    if (firstField) {
-      form.setFocus(firstField);
-    }
-
-    setTimeout(() => document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    // Scroll to and focus the FIRST invalid field (works for native inputs and
+    // custom Select/Combobox alike, since FormControl sets aria-invalid on each).
+    // Falls back to the summary alert if no invalid control is found in the DOM.
+    setTimeout(() => {
+      const firstInvalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (firstInvalid) {
+        firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstInvalid.focus({ preventScroll: true });
+      } else {
+        document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
   }
 
   async function handleConfirmSubmit() {
     if (!formDataToSubmit || isSubmitting || isSubmittingRef.current) return;
+    // 3-second debounce: ignore a second confirm fired within 3s of the last attempt.
+    const now = Date.now();
+    if (now - lastSubmitTimeRef.current < 3000) return;
+    lastSubmitTimeRef.current = now;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     setIsConfirming(false);
@@ -304,7 +315,7 @@ export default function HeadOfficeSubmissionPage() {
         customerPhone: normalizeEthiopianPhone(formDataToSubmit.customerPhone),
       });
 
-      if (result.error) {
+      if ('error' in result && result.error) {
         // Improve clarity for missing/expired user session
         if (/unauthoriz/i.test(String(result.error))) {
           const friendly = 'Your session has expired or you are not signed in. Please sign in and try again.';
@@ -314,7 +325,7 @@ export default function HeadOfficeSubmissionPage() {
           setSubmissionError(result.error);
           toast({ title: "Submission Error", description: result.error, variant: "destructive", duration: 9000 });
         }
-      } else if (result.id) {
+      } else if ('id' in result && result.id) {
         setValidationErrors([]);
         setSubmissionError(null);
         toast({ title: "Loan Request Submitted", description: "Loan request submitted successfully." });
@@ -355,9 +366,6 @@ export default function HeadOfficeSubmissionPage() {
     );
   }
   
-  const getLabelForValue = (options: {value: string, label: string}[], value: string) => {
-    return options.find(opt => opt.value === value)?.label || value;
-  };
   const getSectorName = (id: string) => sectors.find(s => s.id === id)?.name || id;
   const getRequestTypeName = (id: string) => requestTypes.find(rt => rt.id === id)?.name || id;
 

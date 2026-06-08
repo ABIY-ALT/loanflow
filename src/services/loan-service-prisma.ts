@@ -37,7 +37,9 @@ import {
   acquireSubmissionLock,
   buildSubmissionLockFingerprint,
   finalizeSubmissionDedup,
+  findActiveCaseByCustomerEmailDepartment,
   guardAgainstDuplicateSubmission,
+  guardActiveCasePerCustomerDepartment,
   releaseSubmissionDedupForLoan,
   generateUniqueLoanNumber,
   normalizeSubmissionEmail,
@@ -46,6 +48,11 @@ import {
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
 import { safeJsonParse, mapPrismaUserToAppUser, mapPrismaLoanToAppLoan } from './utils/mappers';
+
+// Seeded District Specialized workflow id — the single workflow used by the
+// District channel. Centralized so the channel->workflow binding is explicit
+// and guarded in both submission paths.
+const DISTRICT_WORKFLOW_ID = 'wf-district-specialized';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
   console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
@@ -78,6 +85,8 @@ async function addLoanRequestInternal(
   user: User,
   loanData: any
 ): Promise<{ id?: string; error?: string }> {
+  // Hoisted so the catch block can recover gracefully from a unique-constraint race.
+  let resolvedDepartmentId: string | null = null;
   try {
     const selectedChildSector = await prisma.sector.findUnique({
       where: { id: loanData.sectorId },
@@ -97,6 +106,16 @@ async function addLoanRequestInternal(
 
     if (!firstWorkflowInSequence) {
       return createErrorResult(`No workflow sequence found for the selected Child Sector.`, "addLoanRequestInternal");
+    }
+
+    // Channel guard: the Head Office channel must resolve a Head Office (WF-0x)
+    // workflow, never the District Specialized workflow. Fail loudly if a seed/config
+    // error ever crosses the channels rather than silently routing the wrong pipeline.
+    if (firstWorkflowInSequence.id === DISTRICT_WORKFLOW_ID) {
+      return createErrorResult(
+        `Channel mismatch: Head Office submission resolved the District workflow. Check the workflow seed/config for this sector.`,
+        "addLoanRequestInternal",
+      );
     }
 
     const activeVersion = await prisma.workflowVersion.findFirst({
@@ -139,6 +158,7 @@ async function addLoanRequestInternal(
     } catch (e) {
       console.warn('[PrismaService:addLoanRequestInternal] Error during initial department safety check', e);
     }
+    resolvedDepartmentId = initialDepartment.id;
     const currentDate = new Date();
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
@@ -177,6 +197,17 @@ async function addLoanRequestInternal(
         },
       });
 
+      // Business rule: at most ONE active case per customer + department.
+      // Runs first (and locks on customer+department) so a human re-submitting
+      // with a different child sector / amount / purpose is still blocked.
+      const activeCase = await guardActiveCasePerCustomerDepartment(tx, customer.id, initialDepartment.id);
+      if (activeCase) {
+        console.warn(
+          `[PrismaService:addLoanRequestInternal] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} in department "${initialDepartment.name}". Returning existing case instead of creating a duplicate.`,
+        );
+        return { id: activeCase.id };
+      }
+
       const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
       if ('id' in guard) {
         console.info('[PrismaService:addLoanRequestInternal] Returning existing submission:', guard.id);
@@ -191,6 +222,7 @@ async function addLoanRequestInternal(
           sector: { connect: { id: loanData.sectorId } },
           requestType: { connect: { id: loanData.requestTypeId } },
           loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
+          submissionType: 'TYPE1', // Head Office channel (explicit; do not rely on schema default)
           submittedDate: currentDate,
           lastUpdatedDate: currentDate,
           stageEntryDate: currentDate,
@@ -219,6 +251,15 @@ async function addLoanRequestInternal(
 
     return { id: newLoan.id };
   } catch (e: any) {
+    // Graceful recovery: if the optional unique active-case index is in place and
+    // a concurrent insert raced past the advisory lock, return the existing case.
+    if (e?.code === 'P2002' && resolvedDepartmentId) {
+      const existing = await findActiveCaseByCustomerEmailDepartment(prisma, loanData.customerEmail, resolvedDepartmentId);
+      if (existing) {
+        console.warn(`[PrismaService:addLoanRequestInternal] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
+        return { id: existing.id };
+      }
+    }
     return createErrorResult(`Failed to add loan request. ${e.message}`, "addLoanRequestInternal", e);
   }
 }
@@ -320,6 +361,8 @@ export async function addType2LoanRequest(loanData: any) {
     return createErrorResult("Unauthorized", "addType2LoanRequest");
   }
 
+  // Hoisted so the catch block can recover gracefully from a unique-constraint race.
+  let resolvedDepartmentId: string | null = null;
   try {
     const result = await prisma.$transaction(async (tx) => {
       await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData));
@@ -341,15 +384,13 @@ export async function addType2LoanRequest(loanData: any) {
       });
 
       const currentDate = new Date();
-      const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
-      if ('id' in guard) {
-        console.info('[PrismaService:addType2LoanRequest] Returning existing submission:', guard.id);
-        return { id: guard.id };
-      }
 
+      // Channel guard: the District channel always binds to the seeded District
+      // Specialized workflow. Fail loudly if it is missing/misconfigured rather
+      // than silently routing the case down the wrong pipeline.
       const districtWorkflowVersion = await tx.workflowVersion.findFirst({
         where: {
-          workflowDefinition: { id: 'wf-district-specialized' },
+          workflowDefinition: { id: DISTRICT_WORKFLOW_ID },
           isActive: true,
         },
         include: {
@@ -361,14 +402,36 @@ export async function addType2LoanRequest(loanData: any) {
         },
       });
 
-      if (!districtWorkflowVersion || districtWorkflowVersion.stages.length === 0) {
+      if (
+        !districtWorkflowVersion ||
+        districtWorkflowVersion.workflowDefinitionId !== DISTRICT_WORKFLOW_ID ||
+        districtWorkflowVersion.stages.length === 0
+      ) {
         throw new Error('District Specialized Workflow not found or has no stages. Please run the seed script.');
       }
-      
+
       // 2. Start at the Manager Assignment stage (index 1) since Secretary submission is what triggers creation
       const targetStageIndex = districtWorkflowVersion.stages.length > 1 ? 1 : 0;
       const activeStage = districtWorkflowVersion.stages[targetStageIndex];
       const initialDepartment = activeStage.responsibleDepartment;
+      resolvedDepartmentId = initialDepartment.id;
+
+      // Business rule: at most ONE active case per customer + department.
+      // Must run BEFORE the fingerprint guard so we don't claim an unfinalized
+      // dedup slot before discovering the customer already has an active case.
+      const activeCase = await guardActiveCasePerCustomerDepartment(tx, customer.id, initialDepartment.id);
+      if (activeCase) {
+        console.warn(
+          `[PrismaService:addType2LoanRequest] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} in department "${initialDepartment.name}". Returning existing case instead of creating a duplicate.`,
+        );
+        return { id: activeCase.id };
+      }
+
+      const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
+      if ('id' in guard) {
+        console.info('[PrismaService:addType2LoanRequest] Returning existing submission:', guard.id);
+        return { id: guard.id };
+      }
 
       const stageDeadlineDate = addDays(currentDate, activeStage.defaultTimelineDays);
 
@@ -420,6 +483,15 @@ export async function addType2LoanRequest(loanData: any) {
 
     return { id: result.id };
   } catch (e: any) {
+    // Graceful recovery: if the optional unique active-case index is in place and
+    // a concurrent insert raced past the advisory lock, return the existing case.
+    if (e?.code === 'P2002' && resolvedDepartmentId) {
+      const existing = await findActiveCaseByCustomerEmailDepartment(prisma, loanData.customerEmail, resolvedDepartmentId);
+      if (existing) {
+        console.warn(`[PrismaService:addType2LoanRequest] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
+        return { id: existing.id };
+      }
+    }
     return createErrorResult(`Failed to add Type 2 loan request. ${e.message}`, "addType2LoanRequest", e);
   }
 }

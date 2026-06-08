@@ -49,6 +49,71 @@ export async function acquireSubmissionLock(tx: Prisma.TransactionClient, finger
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
 }
 
+/**
+ * Coarse business rule lock key: serializes ALL submissions for the same
+ * customer + department, regardless of sector / amount / purpose. This is what
+ * prevents a human from re-submitting the same customer to the same department
+ * with slightly different fields (e.g. switching child sector each time).
+ */
+export function buildCustomerDepartmentLockFingerprint(customerId: string, departmentId: string): string {
+  return `loan-active-case:${customerId}:${departmentId}`;
+}
+
+/** At most ONE active (non-terminal) case per customer + department. */
+export async function findActiveCaseForCustomerDepartment(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  departmentId: string,
+): Promise<{ id: string; loanNumber: string } | null> {
+  return tx.loanRequest.findFirst({
+    where: {
+      customerId,
+      assignedDepartmentId: departmentId,
+      isTerminalStage: false,
+    },
+    orderBy: { submittedDate: 'asc' }, // earliest = the original case
+    select: { id: true, loanNumber: true },
+  });
+}
+
+/**
+ * Looks up an existing active case by customer EMAIL + department, for use in
+ * catch blocks (outside the failed transaction) to recover from a unique-index
+ * violation gracefully. Accepts the base PrismaClient or a transaction client.
+ */
+export async function findActiveCaseByCustomerEmailDepartment(
+  client: { loanRequest: Prisma.TransactionClient['loanRequest'] },
+  customerEmail: string,
+  departmentId: string,
+): Promise<{ id: string; loanNumber: string } | null> {
+  return client.loanRequest.findFirst({
+    where: {
+      customer: { email: normalizeSubmissionEmail(customerEmail) },
+      assignedDepartmentId: departmentId,
+      isTerminalStage: false,
+    },
+    orderBy: { submittedDate: 'asc' },
+    select: { id: true, loanNumber: true },
+  });
+}
+
+/**
+ * Acquires a customer+department advisory lock and returns the existing active
+ * case if one already exists. MUST be called inside a transaction, BEFORE the
+ * fingerprint guard and BEFORE creating a new LoanRequest. Because both creation
+ * paths take the same lock key, two concurrent submissions for the same
+ * customer+department are serialized: the first creates, the second observes the
+ * existing case and returns it instead of creating a duplicate.
+ */
+export async function guardActiveCasePerCustomerDepartment(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  departmentId: string,
+): Promise<{ id: string; loanNumber: string } | null> {
+  await acquireSubmissionLock(tx, buildCustomerDepartmentLockFingerprint(customerId, departmentId));
+  return findActiveCaseForCustomerDepartment(tx, customerId, departmentId);
+}
+
 /** Active (non-terminal) duplicate for the same customer application, any channel. */
 export async function findActiveDuplicateSubmission(
   tx: Prisma.TransactionClient,

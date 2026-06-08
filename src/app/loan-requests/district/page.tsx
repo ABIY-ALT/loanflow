@@ -19,8 +19,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, Building, CheckCircle, Wallet, ArrowLeft, Send, ClipboardCheck } from 'lucide-react';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, CheckCircle, Wallet, ArrowLeft, Send, ClipboardCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { addType2LoanRequest } from '@/services/loan-service-prisma';
 import { getCRMBranches } from '@/services/crm-service';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
@@ -103,12 +103,12 @@ function numberToWords(num: number): string {
 
 const districtLoanSchema = z.object({
   customerName: z.string().trim().min(2, { message: 'Customer name must be at least 2 characters.' }),
-  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).email({ message: 'Please enter a valid email address.' }),
+  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).pipe(z.email({ message: 'Please enter a valid email address.' })),
   customerPhone: z.string().trim().min(1, { message: 'Customer phone is required.' })
     .transform(normalizeEthiopianPhone)
     .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678.' }),
   customerBranch: z.string().trim().min(1, { message: 'A branch must be selected.' }),
-  loanAmount: z.coerce.number({ required_error: 'Loan amount is required.', invalid_type_error: 'Loan amount must be a number.' }).positive({ message: 'Loan amount must be a positive number.' }),
+  loanAmount: z.coerce.number({ error: 'Please enter a valid loan amount.' }).positive({ message: 'Loan amount must be a positive number.' }),
   sectorId: z.string().trim().min(1, { message: 'A sector must be selected.' }),
   requestTypeId: z.string().trim().min(1, { message: 'A request type must be selected.' }),
   loanPurpose: z.string().trim().min(10, { message: 'Loan purpose must be at least 10 characters.' }),
@@ -126,6 +126,7 @@ export default function DistrictLoanSubmissionPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+  const lastSubmitTimeRef = useRef(0);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<DistrictFormValues | null>(null);
   
@@ -133,7 +134,7 @@ export default function DistrictLoanSubmissionPage() {
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
   const [crmBranches, setCrmBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
@@ -225,22 +226,32 @@ export default function DistrictLoanSubmissionPage() {
       description: 'One or more required fields are missing or invalid.',
       variant: 'destructive',
     });
-    const firstField = Object.keys(errors)[0] as keyof DistrictFormValues | undefined;
-    if (firstField) {
-      form.setFocus(firstField);
-    }
-    // scroll to the error alert for visibility
-    setTimeout(() => document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    // Scroll to and focus the FIRST invalid field (works for native inputs and
+    // custom Select/Combobox alike, since FormControl sets aria-invalid on each).
+    // Falls back to the summary alert if no invalid control is found in the DOM.
+    setTimeout(() => {
+      const firstInvalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (firstInvalid) {
+        firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstInvalid.focus({ preventScroll: true });
+      } else {
+        document.getElementById('loan-form-errors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
   }
 
   const handleConfirmSubmit = async () => {
     if (!formDataToSubmit || isSubmitting || isSubmittingRef.current) return;
+    // 3-second debounce: ignore a second confirm fired within 3s of the last attempt.
+    const now = Date.now();
+    if (now - lastSubmitTimeRef.current < 3000) return;
+    lastSubmitTimeRef.current = now;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     setIsConfirming(false);
     try {
       const result = await addType2LoanRequest(formDataToSubmit);
-      if (result.error) {
+      if ('error' in result && result.error) {
         if (/unauthoriz/i.test(String(result.error))) {
           const friendly = 'Your session has expired or you are not signed in. Please sign in and try again.';
           setSubmissionError(friendly);
