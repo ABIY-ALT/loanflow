@@ -19,7 +19,9 @@ export function normalizeSubmissionEmail(value: unknown): string {
 }
 
 export function generateUniqueLoanNumber(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Pattern: PREFIX-RANDOM_6_DIGITS (e.g. LN-T2-738974)
+  const randomNum = Math.floor(100000 + Math.random() * 900000);
+  return `${prefix}-${randomNum}`;
 }
 
 /** Advisory-lock payload: same application fields (any channel / user). */
@@ -50,25 +52,24 @@ export async function acquireSubmissionLock(tx: Prisma.TransactionClient, finger
 }
 
 /**
- * Coarse business rule lock key: serializes ALL submissions for the same
- * customer + department, regardless of sector / amount / purpose. This is what
- * prevents a human from re-submitting the same customer to the same department
- * with slightly different fields (e.g. switching child sector each time).
+ * Coarse business rule lock key: serializes submissions for the same
+ * customer + sector. This ensures absolute strictness: one active case
+ * per sector per customer, globally.
  */
-export function buildCustomerDepartmentLockFingerprint(customerId: string, departmentId: string): string {
-  return `loan-active-case:${customerId}:${departmentId}`;
+export function buildCustomerSectorLockFingerprint(customerId: string, sectorId: string): string {
+  return `loan-active-case:${customerId}:${sectorId}`;
 }
 
-/** At most ONE active (non-terminal) case per customer + department. */
-export async function findActiveCaseForCustomerDepartment(
+/** At most ONE active (non-terminal) case per customer + sector globally. */
+export async function findActiveCaseForCustomerSector(
   tx: Prisma.TransactionClient,
   customerId: string,
-  departmentId: string,
+  sectorId: string,
 ): Promise<{ id: string; loanNumber: string } | null> {
   return tx.loanRequest.findFirst({
     where: {
       customerId,
-      assignedDepartmentId: departmentId,
+      sectorId: sectorId,
       isTerminalStage: false,
     },
     orderBy: { submittedDate: 'asc' }, // earliest = the original case
@@ -77,19 +78,18 @@ export async function findActiveCaseForCustomerDepartment(
 }
 
 /**
- * Looks up an existing active case by customer EMAIL + department, for use in
- * catch blocks (outside the failed transaction) to recover from a unique-index
- * violation gracefully. Accepts the base PrismaClient or a transaction client.
+ * Looks up an existing active case by customer EMAIL + sector, for use in
+ * catch blocks (outside the failed transaction).
  */
-export async function findActiveCaseByCustomerEmailDepartment(
+export async function findActiveCaseByCustomerEmailSector(
   client: { loanRequest: Prisma.TransactionClient['loanRequest'] },
   customerEmail: string,
-  departmentId: string,
+  sectorId: string,
 ): Promise<{ id: string; loanNumber: string } | null> {
   return client.loanRequest.findFirst({
     where: {
       customer: { email: normalizeSubmissionEmail(customerEmail) },
-      assignedDepartmentId: departmentId,
+      sectorId: sectorId,
       isTerminalStage: false,
     },
     orderBy: { submittedDate: 'asc' },
@@ -98,20 +98,18 @@ export async function findActiveCaseByCustomerEmailDepartment(
 }
 
 /**
- * Acquires a customer+department advisory lock and returns the existing active
- * case if one already exists. MUST be called inside a transaction, BEFORE the
- * fingerprint guard and BEFORE creating a new LoanRequest. Because both creation
- * paths take the same lock key, two concurrent submissions for the same
- * customer+department are serialized: the first creates, the second observes the
- * existing case and returns it instead of creating a duplicate.
+ * Acquires a customer+sector advisory lock and returns the existing active
+ * case if one already exists. MUST be called inside a transaction.
+ * This is the ultimate strict guard: it ignores which department the case
+ * is currently in and blocks any new submission for the same sector.
  */
-export async function guardActiveCasePerCustomerDepartment(
+export async function guardActiveCasePerCustomerSector(
   tx: Prisma.TransactionClient,
   customerId: string,
-  departmentId: string,
+  sectorId: string,
 ): Promise<{ id: string; loanNumber: string } | null> {
-  await acquireSubmissionLock(tx, buildCustomerDepartmentLockFingerprint(customerId, departmentId));
-  return findActiveCaseForCustomerDepartment(tx, customerId, departmentId);
+  await acquireSubmissionLock(tx, buildCustomerSectorLockFingerprint(customerId, sectorId));
+  return findActiveCaseForCustomerSector(tx, customerId, sectorId);
 }
 
 /** Active (non-terminal) duplicate for the same customer application, any channel. */

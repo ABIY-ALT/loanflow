@@ -3,9 +3,10 @@
 'use client';
 
 import type { LoanRequest, User as UserType } from '@/types/loan';
-import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon, Briefcase } from 'lucide-react';
+import { DollarSign, Type, Info, User, Phone, Landmark, Building, Mail, Users as UsersIcon, Briefcase, Calendar } from 'lucide-react';
 import { InfoItem } from '@/components/loan/common/InfoItem';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { format, parseISO } from 'date-fns';
 import {
   Tooltip,
   TooltipContent,
@@ -32,6 +33,10 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
     return name.substring(0, 2).toUpperCase();
   };
 
+  const formattedSubmittedDate = loan.submittedDate 
+    ? format(parseISO(loan.submittedDate), 'MMM d, yyyy h:mm a')
+    : 'N/A';
+
   return (
     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
       <InfoItem icon={DollarSign} label="Loan Amount" value={`${loan.loanAmount.toLocaleString()} ETB`} />
@@ -39,6 +44,7 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
       <InfoItem icon={Briefcase} label="Child Sector" value={loan.sectorName} />
       <InfoItem icon={Type} label="Request Type" value={loan.requestTypeName} />
       <InfoItem icon={Info} label="Loan Purpose" value={loan.loanPurpose} />
+      <InfoItem icon={Calendar} label="Date Submitted" value={formattedSubmittedDate} />
       <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />
       <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
       <InfoItem icon={Building} label="Responsible Department" value={assignedDepartment || 'N/A'} />

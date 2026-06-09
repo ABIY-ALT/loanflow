@@ -134,6 +134,7 @@ export default function HeadOfficeSubmissionPage() {
   const lastSubmitTimeRef = useRef(0);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<LoanRequestFormValues | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
@@ -254,6 +255,7 @@ export default function HeadOfficeSubmissionPage() {
   const loanAmountValue = form.watch('loanAmount');
 
   function onFormSubmit(data: LoanRequestFormValues) {
+    if (isSubmitting || isSubmitted) return;
     setValidationErrors([]);
     setSubmissionError(null);
     setFormDataToSubmit(data);
@@ -328,10 +330,19 @@ export default function HeadOfficeSubmissionPage() {
       } else if ('id' in result && result.id) {
         setValidationErrors([]);
         setSubmissionError(null);
-        toast({ title: "Loan Request Submitted", description: "Loan request submitted successfully." });
+        setIsSubmitted(true);
+        if (result.isDuplicate) {
+          toast({ 
+            title: "Existing Case Found", 
+            description: "An active case already exists for this customer in the target department. Redirecting to the existing case.",
+            variant: "default"
+          });
+        } else {
+          toast({ title: "Loan Request Submitted", description: "Loan request submitted successfully." });
+        }
         form.reset();
         setFormDataToSubmit(null);
-        router.push('/loan-process');
+        router.push(`/loan-requests/${result.id}`);
       } else {
         toast({ title: "Submission Error", description: "An unexpected issue occurred.", variant: "destructive" });
       }
@@ -597,7 +608,7 @@ export default function HeadOfficeSubmissionPage() {
               <Button
                 type="submit"
                 className="w-full sm:w-auto"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isSubmitted}
               >
                 {isSubmitting ? (
                   <>

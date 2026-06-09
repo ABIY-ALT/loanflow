@@ -129,6 +129,7 @@ export default function DistrictLoanSubmissionPage() {
   const lastSubmitTimeRef = useRef(0);
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<DistrictFormValues | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
@@ -195,6 +196,7 @@ export default function DistrictLoanSubmissionPage() {
   const loanAmountValue = form.watch('loanAmount');
 
   function onFormSubmit(data: DistrictFormValues) {
+    if (isSubmitting || isSubmitted) return;
     setValidationErrors([]);
     setSubmissionError(null);
     setFormDataToSubmit(data);
@@ -260,9 +262,23 @@ export default function DistrictLoanSubmissionPage() {
           setSubmissionError(result.error);
           toast({ title: "Error", description: result.error, variant: "destructive" });
         }
+      } else if ('id' in result && result.id) {
+        form.reset();
+        setFormDataToSubmit(null);
+        setIsSubmitted(true);
+        if (result.isDuplicate) {
+          toast({
+            title: "Existing Case Found",
+            description: "An active case already exists for this customer in the target department. Redirecting to the existing case.",
+            variant: "default"
+          });
+          router.push(`/loan-requests/${result.id}`);
+        } else {
+          toast({ title: "Success", description: "District loan request submitted successfully." });
+          router.push(`/district/submitted-cases`);
+        }
       } else {
-        toast({ title: "Success", description: "District loan request submitted successfully." });
-        router.push(`/district/submitted-cases`);
+        toast({ title: "Error", description: "An unexpected issue occurred.", variant: "destructive" });
       }
     } catch (err: any) {
       setSubmissionError(err.message);
@@ -514,7 +530,7 @@ export default function DistrictLoanSubmissionPage() {
                 )}
               />
 
-              <Button type="submit" className="w-full sm:w-auto h-11 px-8 text-base font-semibold transition-all group hover:shadow-lg hover:shadow-primary/20" disabled={isSubmitting}>
+              <Button type="submit" className="w-full sm:w-auto h-11 px-8 text-base font-semibold transition-all group hover:shadow-lg hover:shadow-primary/20" disabled={isSubmitting || isSubmitted}>
                 {isSubmitting ? (
                   <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Submitting...</>
                 ) : (

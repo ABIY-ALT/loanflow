@@ -215,6 +215,11 @@ export default function LoanDetailPage() {
     }
 
     return Array.from(byCode.entries())
+      .filter(([code, def]) => {
+        const name = def.name || '';
+        if ((code === 4 || code === 7 || code === 8) && /optional|appeal/i.test(name)) return false;
+        return true;
+      })
       .sort((a, b) => a[0] - b[0])
       .map(([, def]) => def);
   }, [workflowDefinitions, getWorkflowCode]);
@@ -451,7 +456,6 @@ export default function LoanDetailPage() {
         const workflowTransitionPayload: Partial<Omit<LoanRequest, 'id'>> = {
           workflowVersionId: nextVer.id,
           currentStageId: firstStage.id,
-          assignedDepartmentId: nextWf.departmentId,
           stageCompletedBy: [],
           isReadyForManagerReview: false,
           isTerminalStage: false,
@@ -468,7 +472,6 @@ export default function LoanDetailPage() {
         await recordCaseReview({ loanRequestId: loan.id, action: 'APPROVED', comment: `${actionText}. Moved to stage '${nextStage.name}'.${reassignmentNote}` });
         const stageTransitionPayload: Partial<Omit<LoanRequest, 'id'>> = {
           currentStageId: nextStage.id,
-          assignedDepartmentId: users.find(u => u.department === nextStage.responsibleDepartment)?.departmentId,
           stageCompletedBy: [],
           history: [...loan.history, hist],
           isReadyForManagerReview: false,

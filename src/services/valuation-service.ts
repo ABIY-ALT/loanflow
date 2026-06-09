@@ -356,7 +356,17 @@ export async function approveValuationReport(queueId: string) {
 
       const loanMeta = await prisma.loanRequest.findUnique({
         where: { id: queueEntry.loanRequestId },
-        select: { createdById: true },
+        select: {
+          createdById: true,
+          sectorId: true,
+          workflowVersion: {
+            select: {
+              workflowDefinition: {
+                select: { order: true, name: true },
+              },
+            },
+          },
+        },
       });
 
       const returnUserId = forwardingEvent?.userId || loanMeta?.createdById || null;
@@ -391,22 +401,53 @@ export async function approveValuationReport(queueId: string) {
         updatePayload.assignedToUsers = { set: [{ id: returnUser.id }] };
       }
 
+      const currentWorkflowOrder = loanMeta?.workflowVersion?.workflowDefinition?.order ?? 0;
+      const nextWorkflow = await prisma.workflowDefinition.findFirst({
+        where: {
+          sectorId: loanMeta?.sectorId,
+          order: { gt: currentWorkflowOrder },
+          NOT: [
+            { name: { contains: "Appeal", mode: "insensitive" } },
+            { name: { contains: "Optional", mode: "insensitive" } },
+          ],
+        },
+        orderBy: { order: "asc" },
+        include: {
+          versions: {
+            where: { isActive: true },
+            take: 1,
+            include: {
+              stages: {
+                orderBy: { order: "asc" },
+                include: { responsibleDepartment: true },
+              },
+            },
+          },
+        },
+      });
+
+      const nextVersion = nextWorkflow?.versions[0];
+      const nextStage = nextVersion?.stages[0];
+      if (nextVersion && nextStage) {
+        let availableStatusesObj: Record<string, string[]> = {};
+        try {
+          availableStatusesObj = nextStage.availableStatuses ? JSON.parse(nextStage.availableStatuses) : {};
+        } catch {
+          availableStatusesObj = {};
+        }
+        const availableStatusesForDept = availableStatusesObj[nextStage.responsibleDepartment.name] || [];
+
+        updatePayload.workflowVersion = { connect: { id: nextVersion.id } };
+        updatePayload.currentWorkflowStage = { connect: { id: nextStage.id } };
+        updatePayload.assignedDepartment = { connect: { id: nextStage.responsibleDepartmentId } };
+        updatePayload.stageEntryDate = new Date();
+        updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
+        updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : "Initiated";
+      }
+
       await prisma.loanRequest.update({
         where: { id: queueEntry.loanRequestId },
-        data: {
-          ...updatePayload,
-          // Advance the workflow stage to Order 4
-          currentWorkflowStage: {
-            connect: { 
-              id: (await prisma.workflowStageDefinition.findFirst({
-                where: { 
-                  workflowVersion: { id: (await prisma.loanRequest.findUnique({ where: { id: queueEntry.loanRequestId }, select: { workflowVersionId: true } }))?.workflowVersionId || undefined },
-                  order: 4
-                }
-              }))?.id || undefined
-            }
-          }
-        },
+        data: updatePayload,
       });
     }
 

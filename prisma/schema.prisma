@@ -231,8 +231,8 @@ model LoanRequest {
 
   @@index([assignedDepartmentId])
   @@index([currentStageId])
-  // Speeds up the "one active case per customer + department" duplicate guard.
-  @@index([customerId, assignedDepartmentId, isTerminalStage])
+  // Speeds up the "one active case per customer + department + sector" duplicate guard.
+  @@index([customerId, assignedDepartmentId, sectorId, isTerminalStage])
 }
 
 /// Enforces at most one new LoanRequest per submission identity per hour (DB-level insert guard).

@@ -52,10 +52,9 @@ export async function getCommitteeQueue() {
     });
 
     const settings = await getCommitteeSettings();
-    const uniqueCases = dedupeLoanRowsBySubmission(cases);
 
     return { 
-      cases: uniqueCases.map((c) => mapPrismaLoanToAppLoan(c as any)),
+      cases: cases.map((c) => mapPrismaLoanToAppLoan(c as any)),
       settings
     };
   } catch (e: any) {

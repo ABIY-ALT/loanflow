@@ -1,8 +1,8 @@
 -- =============================================================================
--- OPTIONAL DB-LEVEL HARD CONSTRAINT: one active case per customer + department.
+-- OPTIONAL DB-LEVEL HARD CONSTRAINT: one active case per customer + department + sector.
 -- =============================================================================
 -- This is the database backstop behind the application-level guard in
--- src/services/loan-submission-guard.ts (guardActiveCasePerCustomerDepartment).
+-- src/services/loan-submission-guard.ts (guardActiveCasePerCustomerDepartmentSector).
 --
 -- It is NOT placed under prisma/migrations/ on purpose: a UNIQUE index CANNOT be
 -- created while violating rows exist, and `prisma migrate deploy` would abort the
@@ -11,10 +11,10 @@
 --
 -- 1) Inspect remaining duplicate active cases:
 --
---    SELECT "customerId", "assignedDepartmentId", COUNT(*)
+--    SELECT "customerId", "assignedDepartmentId", "sectorId", COUNT(*)
 --    FROM "LoanRequest"
 --    WHERE "isTerminalStage" = false
---    GROUP BY "customerId", "assignedDepartmentId"
+--    GROUP BY "customerId", "assignedDepartmentId", "sectorId"
 --    HAVING COUNT(*) > 1;
 --
 --    Resolve every row above (set the redundant ones to a terminal stage) until
@@ -33,18 +33,18 @@ BEGIN
     FROM "LoanRequest"
     WHERE "isTerminalStage" = false
       AND "assignedDepartmentId" IS NOT NULL
-    GROUP BY "customerId", "assignedDepartmentId"
+    GROUP BY "customerId", "assignedDepartmentId", "sectorId"
     HAVING COUNT(*) > 1
   ) d;
 
   IF dup_count > 0 THEN
     RAISE EXCEPTION
-      'Cannot create unique index: % customer+department group(s) still have multiple active cases. Resolve them first (see header query).',
+      'Cannot create unique index: % customer+department+sector group(s) still have multiple active cases. Resolve them first (see header query).',
       dup_count;
   END IF;
 END $$;
 
--- Partial unique index: at most one non-terminal case per (customer, department).
-CREATE UNIQUE INDEX IF NOT EXISTS "LoanRequest_active_case_per_customer_department_key"
-  ON "LoanRequest"("customerId", "assignedDepartmentId")
+-- Partial unique index: at most one non-terminal case per (customer, department, sector).
+CREATE UNIQUE INDEX IF NOT EXISTS "LoanRequest_active_case_per_customer_department_sector_key"
+  ON "LoanRequest"("customerId", "assignedDepartmentId", "sectorId")
   WHERE "isTerminalStage" = false AND "assignedDepartmentId" IS NOT NULL;

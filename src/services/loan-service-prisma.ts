@@ -18,8 +18,6 @@ import type {
   Prisma,
 } from '@prisma/client';
 
-import { DocumentRequirementType as PrismaDocumentRequirementType } from '@prisma/client';
-
 import type { LoanRequest, User, WorkflowDefinition, WorkflowVersion, WorkflowStageDefinition, Department, LoanDocument, LoanHistoryEntry, DocumentRequirement, Customer, CustomerWithDepartment, Sector, RequestType } from '@/types/loan';
 import { LoanDocumentStatus as AppLoanDocumentStatus, DocumentRequirementType as AppDocumentRequirementType } from '@/types/loan';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
@@ -37,9 +35,9 @@ import {
   acquireSubmissionLock,
   buildSubmissionLockFingerprint,
   finalizeSubmissionDedup,
-  findActiveCaseByCustomerEmailDepartment,
+  findActiveCaseByCustomerEmailSector,
   guardAgainstDuplicateSubmission,
-  guardActiveCasePerCustomerDepartment,
+  guardActiveCasePerCustomerSector,
   releaseSubmissionDedupForLoan,
   generateUniqueLoanNumber,
   normalizeSubmissionEmail,
@@ -63,6 +61,8 @@ function mapAndDedupePrismaLoans<T extends LoanRowForDedup>(
   prismaLoans: T[],
   options: { districtOverdueHours?: number } = {},
 ): LoanRequest[] {
+  // Restore deduping to prevent showing the same application multiple times if it was
+  // accidentally double-submitted or exists as multiple rows for the same intent.
   return dedupeLoanRowsBySubmission(prismaLoans).map((pl) =>
     mapPrismaLoanToAppLoan(pl as any, options),
   );
@@ -77,6 +77,169 @@ async function getDistrictBranchNames(districtId?: string): Promise<string[] | n
   return branches.map((b) => b.name);
 }
 
+const PLACEHOLDER_SECTOR_NAMES = new Set([
+  'unselected sector',
+  'unselected',
+  'n/a',
+  'none',
+]);
+
+const CANONICAL_CHILD_SECTOR_PARENT: Record<string, string> = {
+  'financial institution': 'Institutional Banking and Hospitality and Green Financing Sector',
+  'mining, power and water': 'Institutional Banking and Hospitality and Green Financing Sector',
+  'domestic trade and service': 'Service sector Department',
+  'hotel and tourism': 'Service sector Department',
+  transport: 'Service sector Department',
+  'international trade - export': 'Service sector Department',
+  'international trade - import': 'Service sector Department',
+  'personal loan': 'Service sector Department',
+  'manufacturing industry': 'Construction Manufacturing and Agriculture Sector Department',
+  agriculture: 'Construction Manufacturing and Agriculture Sector Department',
+  'building and construction': 'Construction Manufacturing and Agriculture Sector Department',
+  'building & construction': 'Construction Manufacturing and Agriculture Sector Department',
+};
+
+function normalizeRoutingName(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ');
+}
+
+function roleMatches(roleName: string | null | undefined, tokens: string[]) {
+  const normalizedRole = normalizeRoutingName(roleName);
+  return tokens.some((token) => normalizedRole.includes(normalizeRoutingName(token)));
+}
+
+function getWorkflowCodeFromName(name?: string | null): number | null {
+  const match = String(name || '').match(/\bWF-(\d{2})\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function getRoleHierarchyForStage(stageName: string, departmentName: string, workflowName?: string | null): string[][] {
+  const combined = normalizeRoutingName(`${workflowName || ''} ${stageName} ${departmentName}`);
+  const workflowCode = getWorkflowCodeFromName(workflowName);
+
+  if (combined.includes('valuation')) {
+    return [['Director', 'Chief'], ['Manager'], ['Property Valuation Officer', 'Valuation Officer', 'Officer']];
+  }
+
+  if (workflowCode === 5 || workflowCode === 7 || combined.includes('appraisal')) {
+    return [['Chief', 'Deputy Chief'], ['Director'], ['Manager'], ['Credit Appraisal Officer', 'Appraisal Officer', 'Officer', 'Analyst']];
+  }
+
+  if (workflowCode === 3 || workflowCode === 6 || workflowCode === 8 || combined.includes('rm valuation result') || combined.includes('disbursement')) {
+    return [['CRM', 'Customer Relationship Manager', 'Relationship Manager'], ['Loan Officer', 'Officer']];
+  }
+
+  return [['Director', 'Chief'], ['Manager'], ['CRM', 'Customer Relationship Manager', 'Relationship Manager'], ['Officer']];
+}
+
+type ResolvedSubmissionSector =
+  | {
+      sector: PrismaSector & {
+        parentId: string;
+        parent: PrismaSector;
+      };
+    }
+  | { error: string };
+
+async function resolveChildSectorForSubmission(sectorId: string): Promise<ResolvedSubmissionSector> {
+  const selectedChildSector = await prisma.sector.findUnique({
+    where: { id: String(sectorId || '').trim() },
+    include: { parent: true },
+  });
+
+  if (!selectedChildSector) {
+    return { error: 'Invalid child sector selected.' };
+  }
+
+  const normalizedChildName = normalizeRoutingName(selectedChildSector.name);
+  if (PLACEHOLDER_SECTOR_NAMES.has(normalizedChildName)) {
+    return { error: 'A valid child sector must be selected. "Unselected Sector" cannot be used for loan routing.' };
+  }
+
+  const canonicalParentName = CANONICAL_CHILD_SECTOR_PARENT[normalizedChildName];
+  let resolvedParent = selectedChildSector.parent;
+
+  if (canonicalParentName && normalizeRoutingName(resolvedParent?.name) !== normalizeRoutingName(canonicalParentName)) {
+    const canonicalParent = await prisma.sector.findUnique({ where: { name: canonicalParentName } });
+    if (!canonicalParent) {
+      return { error: `Parent sector "${canonicalParentName}" is not configured.` };
+    }
+
+    await prisma.sector.update({
+      where: { id: selectedChildSector.id },
+      data: { parentId: canonicalParent.id },
+    });
+    resolvedParent = canonicalParent;
+  }
+
+  if (!resolvedParent || PLACEHOLDER_SECTOR_NAMES.has(normalizeRoutingName(resolvedParent.name))) {
+    return { error: 'Selected child sector is not linked to a valid parent sector department.' };
+  }
+
+  return {
+    sector: {
+      ...selectedChildSector,
+      parentId: resolvedParent.id,
+      parent: resolvedParent,
+    },
+  };
+}
+
+async function findWorkflowAssignee(
+  client: Prisma.TransactionClient | typeof prisma,
+  params: {
+    departmentId: string;
+    departmentName: string;
+    stageName: string;
+    workflowName?: string | null;
+    allowedRoles?: string | null;
+    preferredUserIds?: string[];
+  },
+): Promise<{ id: string; name: string; customRoleName: string | null } | null> {
+  const preferredUserIds = params.preferredUserIds?.filter(Boolean) || [];
+  if (preferredUserIds.length > 0) {
+    const preferred = await client.user.findFirst({
+      where: {
+        id: { in: preferredUserIds },
+        departmentId: params.departmentId,
+        isActive: true,
+      },
+      select: { id: true, name: true, customRole: { select: { name: true } } },
+      orderBy: { name: 'asc' },
+    });
+    if (preferred) {
+      return { id: preferred.id, name: preferred.name, customRoleName: preferred.customRole?.name || null };
+    }
+  }
+
+  const users = await client.user.findMany({
+    where: { departmentId: params.departmentId, isActive: true },
+    select: { id: true, name: true, customRole: { select: { name: true } } },
+    orderBy: { name: 'asc' },
+  });
+
+  if (users.length === 0) return null;
+
+  const allowedRoles = safeJsonParse<string[]>(params.allowedRoles, []);
+  if (allowedRoles.length > 0) {
+    const allowed = users.find((u) => roleMatches(u.customRole?.name, allowedRoles));
+    if (allowed) return { id: allowed.id, name: allowed.name, customRoleName: allowed.customRole?.name || null };
+  }
+
+  const hierarchy = getRoleHierarchyForStage(params.stageName, params.departmentName, params.workflowName);
+  for (const roleGroup of hierarchy) {
+    const assignee = users.find((u) => roleMatches(u.customRole?.name, roleGroup));
+    if (assignee) return { id: assignee.id, name: assignee.name, customRoleName: assignee.customRole?.name || null };
+  }
+
+  const fallback = users[0];
+  return { id: fallback.id, name: fallback.name, customRoleName: fallback.customRole?.name || null };
+}
+
 /**
  * SERVICE LAYER (Internal Logic)
  */
@@ -84,17 +247,15 @@ async function getDistrictBranchNames(districtId?: string): Promise<string[] | n
 async function addLoanRequestInternal(
   user: User,
   loanData: any
-): Promise<{ id?: string; error?: string }> {
+): Promise<{ id?: string; isDuplicate?: boolean; error?: string }> {
   // Hoisted so the catch block can recover gracefully from a unique-constraint race.
   let resolvedDepartmentId: string | null = null;
   try {
-    const selectedChildSector = await prisma.sector.findUnique({
-      where: { id: loanData.sectorId },
-      include: { parent: true }
-    });
-    if (!selectedChildSector || !selectedChildSector.parentId) {
-      return createErrorResult("Invalid child sector selected or it has no parent.", "addLoanRequestInternal");
+    const sectorResolution = await resolveChildSectorForSubmission(loanData.sectorId);
+    if ('error' in sectorResolution) {
+      return createErrorResult(sectorResolution.error, "addLoanRequestInternal");
     }
+    const selectedChildSector = sectorResolution.sector;
 
     const firstWorkflowInSequence = await prisma.workflowDefinition.findFirst({
       where: {
@@ -163,9 +324,17 @@ async function addLoanRequestInternal(
     const stageDeadlineDate = addDays(currentDate, firstStage.defaultTimelineDays);
 
     const systemUserId = 'system-prisma';
-    const initialHistoryNote = `Loan application submitted by ${user.fullName}. Initial Department: ${initialDepartment.name}. Workflow: ${firstWorkflowInSequence.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}. Awaiting assignment.`;
+    const initialAssignee = await findWorkflowAssignee(prisma, {
+      departmentId: initialDepartment.id,
+      departmentName: initialDepartment.name,
+      stageName: firstStage.name,
+      workflowName: firstWorkflowInSequence.name,
+      allowedRoles: firstStage.allowedRoles,
+    });
 
-    const availableStatusesObj = safeJsonParse(firstStage.availableStatuses, {});
+    const initialHistoryNote = `Loan application submitted by ${user.fullName}. Child Sector: ${selectedChildSector.name}. Parent Sector Department: ${selectedChildSector.parent.name}. Initial Department: ${initialDepartment.name}. Workflow: ${firstWorkflowInSequence.name} (V${activeVersion.versionNumber}). Initial stage: ${firstStage.name}.${initialAssignee ? ` Assigned to ${initialAssignee.name}.` : ' Awaiting assignment.'}`;
+
+    const availableStatusesObj = safeJsonParse<Record<string, string[]>>(firstStage.availableStatuses, {});
     const availableStatusesForDept = availableStatusesObj[firstStage.responsibleDepartment.name] || [];
     const initialStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
     const normalizedCustomerPhone = normalizeEthiopianPhone(loanData.customerPhone);
@@ -197,21 +366,20 @@ async function addLoanRequestInternal(
         },
       });
 
-      // Business rule: at most ONE active case per customer + department.
-      // Runs first (and locks on customer+department) so a human re-submitting
-      // with a different child sector / amount / purpose is still blocked.
-      const activeCase = await guardActiveCasePerCustomerDepartment(tx, customer.id, initialDepartment.id);
+      // Business rule: at most ONE active case per customer + sector globally.
+      // This is the absolute strict guard: ignore department, just block the sector.
+      const activeCase = await guardActiveCasePerCustomerSector(tx, customer.id, selectedChildSector.id);
       if (activeCase) {
         console.warn(
-          `[PrismaService:addLoanRequestInternal] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} in department "${initialDepartment.name}". Returning existing case instead of creating a duplicate.`,
+          `[PrismaService:addLoanRequestInternal] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} for sector "${selectedChildSector.name}".`,
         );
-        return { id: activeCase.id };
+        return { id: activeCase.id, isDuplicate: true };
       }
 
       const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
       if ('id' in guard) {
         console.info('[PrismaService:addLoanRequestInternal] Returning existing submission:', guard.id);
-        return { id: guard.id };
+        return { id: guard.id, isDuplicate: true };
       }
 
       const created = await tx.loanRequest.create({
@@ -219,7 +387,7 @@ async function addLoanRequestInternal(
           loanNumber: generateUniqueLoanNumber('LN-PSQL'),
           customer: { connect: { id: customer.id } },
           loanAmount: loanData.loanAmount,
-          sector: { connect: { id: loanData.sectorId } },
+          sector: { connect: { id: selectedChildSector.id } },
           requestType: { connect: { id: loanData.requestTypeId } },
           loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
           submissionType: 'TYPE1', // Head Office channel (explicit; do not rely on schema default)
@@ -230,6 +398,7 @@ async function addLoanRequestInternal(
           workflowVersion: { connect: { id: activeVersion.id } },
           currentWorkflowStage: { connect: { id: firstStage.id } },
           assignedDepartment: { connect: { id: initialDepartment.id } },
+          ...(initialAssignee ? { assignedToUsers: { connect: { id: initialAssignee.id } } } : {}),
           currentStageStatus: initialStatus,
           createdBy: { connect: { id: user.id } },
           history: {
@@ -246,18 +415,18 @@ async function addLoanRequestInternal(
         select: { id: true },
       });
       await finalizeSubmissionDedup(tx, guard.dedupKey, created.id);
-      return created;
+      return { id: created.id, isDuplicate: false };
     });
 
-    return { id: newLoan.id };
+    return { id: newLoan.id, isDuplicate: newLoan.isDuplicate };
   } catch (e: any) {
     // Graceful recovery: if the optional unique active-case index is in place and
     // a concurrent insert raced past the advisory lock, return the existing case.
     if (e?.code === 'P2002' && resolvedDepartmentId) {
-      const existing = await findActiveCaseByCustomerEmailDepartment(prisma, loanData.customerEmail, resolvedDepartmentId);
+      const existing = await findActiveCaseByCustomerEmailSector(prisma, loanData.customerEmail, loanData.sectorId);
       if (existing) {
         console.warn(`[PrismaService:addLoanRequestInternal] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
-        return { id: existing.id };
+        return { id: existing.id, isDuplicate: true };
       }
     }
     return createErrorResult(`Failed to add loan request. ${e.message}`, "addLoanRequestInternal", e);
@@ -347,7 +516,7 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
  * CONTROLLER LAYER (Exported Actions)
  */
 
-export async function addLoanRequest(loanData: any) {
+export async function addLoanRequest(loanData: any): Promise<{ id?: string; isDuplicate?: boolean; error?: string }> {
   const { user } = await getCurrentUser();
   if (!user || !user.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST)) {
     return createErrorResult("Unauthorized", "addLoanRequest");
@@ -355,7 +524,7 @@ export async function addLoanRequest(loanData: any) {
   return addLoanRequestInternal(user, loanData);
 }
 
-export async function addType2LoanRequest(loanData: any) {
+export async function addType2LoanRequest(loanData: any): Promise<{ id?: string; isDuplicate?: boolean; error?: string }> {
   const { user } = await getCurrentUser();
   if (!user || !user.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST)) {
     return createErrorResult("Unauthorized", "addType2LoanRequest");
@@ -364,6 +533,12 @@ export async function addType2LoanRequest(loanData: any) {
   // Hoisted so the catch block can recover gracefully from a unique-constraint race.
   let resolvedDepartmentId: string | null = null;
   try {
+    const sectorResolution = await resolveChildSectorForSubmission(loanData.sectorId);
+    if ('error' in sectorResolution) {
+      return createErrorResult(sectorResolution.error, "addType2LoanRequest");
+    }
+    const selectedChildSector = sectorResolution.sector;
+
     const result = await prisma.$transaction(async (tx) => {
       await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData));
 
@@ -416,26 +591,25 @@ export async function addType2LoanRequest(loanData: any) {
       const initialDepartment = activeStage.responsibleDepartment;
       resolvedDepartmentId = initialDepartment.id;
 
-      // Business rule: at most ONE active case per customer + department.
-      // Must run BEFORE the fingerprint guard so we don't claim an unfinalized
-      // dedup slot before discovering the customer already has an active case.
-      const activeCase = await guardActiveCasePerCustomerDepartment(tx, customer.id, initialDepartment.id);
+      // Business rule: at most ONE active case per customer + sector globally.
+      // Absolute strictness: ignore department, block the sector.
+      const activeCase = await guardActiveCasePerCustomerSector(tx, customer.id, selectedChildSector.id);
       if (activeCase) {
         console.warn(
-          `[PrismaService:addType2LoanRequest] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} in department "${initialDepartment.name}". Returning existing case instead of creating a duplicate.`,
+          `[PrismaService:addType2LoanRequest] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} for sector "${selectedChildSector.name}".`,
         );
-        return { id: activeCase.id };
+        return { id: activeCase.id, isDuplicate: true };
       }
 
       const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
       if ('id' in guard) {
         console.info('[PrismaService:addType2LoanRequest] Returning existing submission:', guard.id);
-        return { id: guard.id };
+        return { id: guard.id, isDuplicate: true };
       }
 
       const stageDeadlineDate = addDays(currentDate, activeStage.defaultTimelineDays);
 
-      const availableStatusesObj = safeJsonParse(activeStage.availableStatuses, {});
+      const availableStatusesObj = safeJsonParse<Record<string, string[]>>(activeStage.availableStatuses, {});
       const availableStatusesForDept = availableStatusesObj[initialDepartment.name] || [];
       const initialStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
 
@@ -448,7 +622,7 @@ export async function addType2LoanRequest(loanData: any) {
           loanNumber: generateUniqueLoanNumber('LN-T2'),
           customer: { connect: { id: customer.id } },
           loanAmount: loanData.loanAmount,
-          sector: { connect: { id: loanData.sectorId } },
+          sector: { connect: { id: selectedChildSector.id } },
           requestType: { connect: { id: loanData.requestTypeId } },
           loanPurpose: normalizeSubmissionText(loanData.loanPurpose),
           submittedDate: currentDate,
@@ -478,18 +652,18 @@ export async function addType2LoanRequest(loanData: any) {
         select: { id: true },
       });
       await finalizeSubmissionDedup(tx, guard.dedupKey, newLoan.id);
-      return newLoan;
+      return { id: newLoan.id, isDuplicate: false };
     });
 
-    return { id: result.id };
+    return { id: result.id, isDuplicate: result.isDuplicate };
   } catch (e: any) {
     // Graceful recovery: if the optional unique active-case index is in place and
     // a concurrent insert raced past the advisory lock, return the existing case.
     if (e?.code === 'P2002' && resolvedDepartmentId) {
-      const existing = await findActiveCaseByCustomerEmailDepartment(prisma, loanData.customerEmail, resolvedDepartmentId);
+      const existing = await findActiveCaseByCustomerEmailSector(prisma, loanData.customerEmail, loanData.sectorId);
       if (existing) {
         console.warn(`[PrismaService:addType2LoanRequest] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
-        return { id: existing.id };
+        return { id: existing.id, isDuplicate: true };
       }
     }
     return createErrorResult(`Failed to add Type 2 loan request. ${e.message}`, "addType2LoanRequest", e);
@@ -1538,7 +1712,10 @@ export async function updateLoanRequest(
 
         const newStageDef = await tx.workflowStageDefinition.findUnique({
           where: { id: dataToUpdate.currentStageId },
-          include: { responsibleDepartment: true }
+          include: {
+            responsibleDepartment: true,
+            workflowVersion: { include: { workflowDefinition: true } },
+          }
         });
         if (!newStageDef) throw new Error(`Stage definition not found.`);
 
@@ -1550,17 +1727,52 @@ export async function updateLoanRequest(
 
         updatePayload.isReadyForManagerReview = false;
         updatePayload.stageCompletedBy = { set: [] };
-        if (isDepartmentHandover) {
-          // Keep assignee continuity within a department; reset only on handover to another department.
-          updatePayload.assignedToUsers = { set: [] };
-          updatePayload.assignedBy = { disconnect: true };
+        const explicitAssigneesProvided = dataToUpdate.hasOwnProperty('assignedToUsers');
+        if (isDepartmentHandover && !explicitAssigneesProvided) {
+          const autoAssignee = await findWorkflowAssignee(tx, {
+            departmentId: newStageDef.responsibleDepartmentId,
+            departmentName: newStageDef.responsibleDepartment.name,
+            stageName: newStageDef.name,
+            workflowName: newStageDef.workflowVersion.workflowDefinition.name,
+            allowedRoles: newStageDef.allowedRoles,
+            preferredUserIds: existingLoan.createdById ? [existingLoan.createdById] : [],
+          });
+
+          if (autoAssignee) {
+            updatePayload.assignedToUsers = { set: [{ id: autoAssignee.id }] };
+            updatePayload.assignedBy = { connect: { id: user.id } };
+          } else {
+            updatePayload.assignedToUsers = { set: [] };
+            updatePayload.assignedBy = { disconnect: true };
+          }
         }
 
         updatePayload.assignedDepartment = { connect: { id: newStageDef.responsibleDepartmentId } };
 
-        const availableStatusesObj = safeJsonParse(newStageDef.availableStatuses, {});
+        const availableStatusesObj = safeJsonParse<Record<string, string[]>>(newStageDef.availableStatuses, {});
         const availableStatusesForDept = availableStatusesObj[newStageDef.responsibleDepartment.name] || [];
         updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
+
+        const workflowCode = getWorkflowCodeFromName(newStageDef.workflowVersion.workflowDefinition.name);
+        const isValuationWorkflow = workflowCode === 2 || workflowCode === 4 || normalizeRoutingName(newStageDef.responsibleDepartment.name).includes('valuation');
+        if (isValuationWorkflow) {
+          const assigneeId = updatePayload.assignedToUsers?.set?.[0]?.id;
+          await tx.valuationQueue.upsert({
+            where: { loanRequestId: id },
+            update: {
+              status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
+              assignedToId: assigneeId || null,
+              routingOption: assigneeId ? 'OFFICER' : null,
+              isCheckedByChecker: false,
+            },
+            create: {
+              loanRequestId: id,
+              status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
+              assignedToId: assigneeId || null,
+              routingOption: assigneeId ? 'OFFICER' : null,
+            },
+          });
+        }
       }
 
       if (dataToUpdate.respondToInfoRequest) {
@@ -1763,10 +1975,16 @@ export async function moveLoanToStage(loanRequestId: string, nextStageId: string
     }
 
     const [existingLoan, nextStage] = await Promise.all([
-      prisma.loanRequest.findUnique({ where: { id: loanRequestId } }),
+      prisma.loanRequest.findUnique({
+        where: { id: loanRequestId },
+        include: { assignedToUsers: true },
+      }),
       prisma.workflowStageDefinition.findUnique({
         where: { id: nextStageId },
-        include: { responsibleDepartment: true },
+        include: {
+          responsibleDepartment: true,
+          workflowVersion: { include: { workflowDefinition: true } },
+        },
       }),
     ]);
 
@@ -1777,7 +1995,7 @@ export async function moveLoanToStage(loanRequestId: string, nextStageId: string
       return createErrorResult("Next stage not found.", "moveLoanToStage");
     }
 
-    const availableStatusesObj = safeJsonParse(nextStage.availableStatuses, {});
+    const availableStatusesObj = safeJsonParse<Record<string, string[]>>(nextStage.availableStatuses, {});
     const availableStatusesForDept = availableStatusesObj[nextStage.responsibleDepartment.name] || [];
     const initialStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : 'Initiated';
     const now = new Date();
@@ -1803,8 +2021,43 @@ export async function moveLoanToStage(loanRequestId: string, nextStageId: string
     };
 
     if (isDepartmentHandover) {
-      updateData.assignedToUsers = { set: [] };
-      updateData.assignedBy = { disconnect: true };
+      const autoAssignee = await findWorkflowAssignee(prisma, {
+        departmentId: nextStage.responsibleDepartmentId,
+        departmentName: nextStage.responsibleDepartment.name,
+        stageName: nextStage.name,
+        workflowName: nextStage.workflowVersion.workflowDefinition.name,
+        allowedRoles: nextStage.allowedRoles,
+        preferredUserIds: existingLoan.createdById ? [existingLoan.createdById] : [],
+      });
+
+      if (autoAssignee) {
+        updateData.assignedToUsers = { set: [{ id: autoAssignee.id }] };
+        updateData.assignedBy = { connect: { id: user.id } };
+      } else {
+        updateData.assignedToUsers = { set: [] };
+        updateData.assignedBy = { disconnect: true };
+      }
+    }
+
+    const workflowCode = getWorkflowCodeFromName(nextStage.workflowVersion.workflowDefinition.name);
+    const isValuationWorkflow = workflowCode === 2 || workflowCode === 4 || normalizeRoutingName(nextStage.responsibleDepartment.name).includes('valuation');
+    if (isValuationWorkflow) {
+      const assigneeId = updateData.assignedToUsers?.set?.[0]?.id;
+      updateData.valuationQueue = {
+        upsert: {
+          update: {
+            status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
+            assignedToId: assigneeId || null,
+            routingOption: assigneeId ? 'OFFICER' : null,
+            isCheckedByChecker: false,
+          },
+          create: {
+            status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
+            assignedToId: assigneeId || null,
+            routingOption: assigneeId ? 'OFFICER' : null,
+          },
+        },
+      };
     }
 
     const updatedLoan = await prisma.loanRequest.update({
@@ -2139,7 +2392,10 @@ export async function getSubmittedLoanRequests(): Promise<{ loans?: LoanRequest[
     const { user } = await getCurrentUser();
     if (!user || !user.permissions.includes(PERMISSIONS.VIEW_OWN_SUBMITTED_CASES)) return { error: "Unauthorized" };
     const prismaLoans = await prisma.loanRequest.findMany({
-      where: { createdBy: { id: user.id } },
+      where: { 
+        createdBy: { id: user.id },
+        submissionType: 'TYPE1' // Only Head Office submissions
+      },
       orderBy: { submittedDate: 'desc' },
       include: { customer: true, sector: { include: { parent: true } }, requestType: true, assignedToUsers: { include: { department: true, customRole: true } }, stageCompletedBy: { include: { department: true, customRole: true } }, currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } }, workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } }, assignedDepartment: true, assignedBy: true, history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } }, documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } } },
     });
@@ -2206,8 +2462,9 @@ export async function getDistrictSubmittedLoanRequests(): Promise<{ loans?: Loan
     const districtBranchNames = await getDistrictBranchNames(user.districtId);
     
     // We want to show cases in the user's district OR cases created by the user themselves.
-    // This ensures CRMs always see their own submissions even if their district mapping is incomplete.
+    // MUST be TYPE2 (District Specialized) only.
     const whereClause: any = {
+      submissionType: 'TYPE2',
       OR: [{ createdBy: { id: user.id } }],
     };
 
@@ -2618,9 +2875,7 @@ export async function getCompletedCaseHistory(): Promise<{ cases?: CompletedCase
       }
     }
 
-    const uniqueInteractionLoans = dedupeLoanRowsBySubmission(interactionLoans);
-
-    const cases: CompletedCaseRecord[] = uniqueInteractionLoans.map((loan) => {
+    const cases: CompletedCaseRecord[] = interactionLoans.map((loan) => {
       const allHistory = loan.history || [];
       const myHistoryEvents = allHistory.filter((h) => h.userId === user.id);
       const latestMyEvent = myHistoryEvents[0];
