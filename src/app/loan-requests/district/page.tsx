@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, Mail, Phone, Info, Loader2, AlertCircle, CheckCircle, Wallet, ArrowLeft, Send, ClipboardCheck } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
-import { addType2LoanRequest } from '@/services/loan-service-prisma';
+import { addType2LoanRequest, checkCustomerForActiveLoans } from '@/services/loan-service-prisma';
 import { getCRMBranches } from '@/services/crm-service';
 import { getSectors, getRequestTypes } from '@/services/sector-and-request-type-service';
 import type { Branch, Sector } from '@/types/loan';
@@ -103,7 +103,10 @@ function numberToWords(num: number): string {
 
 const districtLoanSchema = z.object({
   customerName: z.string().trim().min(2, { message: 'Customer name must be at least 2 characters.' }),
-  customerEmail: z.string().trim().min(1, { message: 'Customer email is required.' }).pipe(z.email({ message: 'Please enter a valid email address.' })),
+  customerEmail: z.string().trim().refine(
+    val => val === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val),
+    { message: 'Please enter a valid email address.' }
+  ),
   customerPhone: z.string().trim().min(1, { message: 'Customer phone is required.' })
     .transform(normalizeEthiopianPhone)
     .refine(isValidLocalEthiopianPhone, { message: 'Phone number must be in local format like 0912345678.' }),
@@ -130,6 +133,7 @@ export default function DistrictLoanSubmissionPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [formDataToSubmit, setFormDataToSubmit] = useState<DistrictFormValues | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [existingActiveLoanCount, setExistingActiveLoanCount] = useState<number | null>(null);
   
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [requestTypes, setRequestTypes] = useState<ConfigurableListItem[]>([]);
@@ -199,7 +203,11 @@ export default function DistrictLoanSubmissionPage() {
     if (isSubmitting || isSubmitted) return;
     setValidationErrors([]);
     setSubmissionError(null);
+    setExistingActiveLoanCount(null);
     setFormDataToSubmit(data);
+    checkCustomerForActiveLoans(data.customerPhone, data.customerEmail ?? '').then(r => {
+      setExistingActiveLoanCount(r.count);
+    });
     setIsConfirming(true);
   }
 
@@ -268,9 +276,10 @@ export default function DistrictLoanSubmissionPage() {
         setIsSubmitted(true);
         if (result.isDuplicate) {
           toast({
-            title: "Existing Case Found",
-            description: "An active case already exists for this customer in the target department. Redirecting to the existing case.",
-            variant: "default"
+            title: "Duplicate Submission Detected",
+            description: "An identical loan request (same customer, amount, sector, type, and purpose) already exists. Redirecting to the existing case.",
+            variant: "default",
+            duration: 8000,
           });
           router.push(`/loan-requests/${result.id}`);
         } else {
@@ -377,14 +386,14 @@ export default function DistrictLoanSubmissionPage() {
                   name="customerEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Customer Email<RequiredMark /></FormLabel>
+                      <FormLabel>Customer Email</FormLabel>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <FormControl>
-                          <Input placeholder="email@example.com" {...field} className={cn("pl-10", form.formState.errors.customerEmail && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
+                          <Input placeholder="email@example.com (optional)" {...field} className={cn("pl-10", form.formState.errors.customerEmail && "border-destructive focus-visible:ring-destructive")} disabled={isSubmitting} />
                         </FormControl>
                       </div>
-                      <FormDescription>A new customer profile will be created if this email is not found.</FormDescription>
+                      <FormDescription>Optional — leave blank if the customer has no email. A separate customer record will always be created.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -556,7 +565,7 @@ export default function DistrictLoanSubmissionPage() {
                 <h4 className="font-semibold text-lg border-b pb-2">Customer Information</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                     <p><strong className="block text-muted-foreground">Name</strong>{formDataToSubmit.customerName}</p>
-                    <p><strong className="block text-muted-foreground">Email</strong>{formDataToSubmit.customerEmail}</p>
+                    <p><strong className="block text-muted-foreground">Email</strong>{formDataToSubmit.customerEmail || 'Not provided'}</p>
                     <p><strong className="block text-muted-foreground">Phone</strong>{formDataToSubmit.customerPhone}</p>
                     <p><strong className="block text-muted-foreground">Branch</strong>{formDataToSubmit.customerBranch}</p>
                 </div>
@@ -572,6 +581,13 @@ export default function DistrictLoanSubmissionPage() {
                     <p className="text-sm p-2 bg-muted/50 rounded-md mt-1">{formDataToSubmit.loanPurpose}</p>
                 </div>
             </div>
+            {existingActiveLoanCount !== null && existingActiveLoanCount > 0 && (
+              <Alert variant="destructive" className="mt-2">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Warning: Customer Already Has {existingActiveLoanCount} Active Loan{existingActiveLoanCount > 1 ? 's' : ''}</AlertTitle>
+                <p className="text-sm mt-1">This customer already has active loan(s) in the system. Only proceed if this is a genuinely different application.</p>
+              </Alert>
+            )}
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" disabled={isSubmitting}>Cancel</Button>

@@ -35,13 +35,13 @@ import {
   acquireSubmissionLock,
   buildSubmissionLockFingerprint,
   finalizeSubmissionDedup,
-  findActiveCaseByCustomerEmailSector,
   guardAgainstDuplicateSubmission,
-  guardActiveCasePerCustomerSector,
   releaseSubmissionDedupForLoan,
   generateUniqueLoanNumber,
   normalizeSubmissionEmail,
   normalizeSubmissionText,
+  isPlaceholderEmail,
+  generateGuestCustomerEmail,
 } from '@/services/loan-submission-guard';
 
 import { formatISO, parseISO, addDays, isBefore, isValid } from 'date-fns';
@@ -244,6 +244,68 @@ async function findWorkflowAssignee(
  * SERVICE LAYER (Internal Logic)
  */
 
+// ---------------------------------------------------------------------------
+// Customer resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Identify or create the customer for a loan submission.
+ *
+ * Priority order:
+ *  1. Real email   → upsert by email; existing record is NEVER overwritten.
+ *  2. Placeholder/no email + phone → find existing customer by phone number.
+ *     Re-using the same customer record enables correct duplicate detection
+ *     for customers who don't have email addresses.
+ *  3. No match     → create a new customer with a unique synthetic email key.
+ */
+async function resolveCustomerForSubmission(
+  tx: Prisma.TransactionClient,
+  loanData: any,
+  normalizedPhone: string | null,
+): Promise<{ id: string }> {
+  const normalizedEmail = normalizeSubmissionEmail(loanData.customerEmail);
+  const customerName = normalizeSubmissionText(loanData.customerName);
+  const customerBranch = normalizeSubmissionText(loanData.customerBranch);
+
+  // 1. Real email → find-or-create; never overwrite existing customer data.
+  if (!isPlaceholderEmail(normalizedEmail)) {
+    return tx.customer.upsert({
+      where: { email: normalizedEmail },
+      update: {},
+      create: {
+        email: normalizedEmail,
+        name: customerName,
+        phone: normalizedPhone || null,
+        branch: customerBranch || null,
+      },
+      select: { id: true },
+    });
+  }
+
+  // 2. Placeholder / no email → look up by phone number.
+  //    This is the key step that lets the downstream duplicate guard work for
+  //    customers without real email addresses.
+  if (normalizedPhone) {
+    const byPhone = await tx.customer.findFirst({
+      where: { phone: normalizedPhone },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' }, // oldest record = original customer entry
+    });
+    if (byPhone) return byPhone;
+  }
+
+  // 3. No match at all → create a brand-new customer.
+  return tx.customer.create({
+    data: {
+      email: generateGuestCustomerEmail(),
+      name: customerName,
+      phone: normalizedPhone || null,
+      branch: customerBranch || null,
+    },
+    select: { id: true },
+  });
+}
+
 async function addLoanRequestInternal(
   user: User,
   loanData: any
@@ -351,31 +413,10 @@ async function addLoanRequestInternal(
     const newLoan = await prisma.$transaction(async (tx) => {
       await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData));
 
-      const customer = await tx.customer.upsert({
-        where: { email: normalizeSubmissionEmail(loanData.customerEmail) },
-        update: {
-          name: normalizeSubmissionText(loanData.customerName),
-          phone: normalizedCustomerPhone || null,
-          branch: normalizeSubmissionText(loanData.customerBranch) || null,
-        },
-        create: {
-          email: normalizeSubmissionEmail(loanData.customerEmail),
-          name: normalizeSubmissionText(loanData.customerName),
-          phone: normalizedCustomerPhone || null,
-          branch: normalizeSubmissionText(loanData.customerBranch) || null,
-        },
-      });
+      const customer = await resolveCustomerForSubmission(tx, loanData, normalizedCustomerPhone);
 
-      // Business rule: at most ONE active case per customer + sector globally.
-      // This is the absolute strict guard: ignore department, just block the sector.
-      const activeCase = await guardActiveCasePerCustomerSector(tx, customer.id, selectedChildSector.id);
-      if (activeCase) {
-        console.warn(
-          `[PrismaService:addLoanRequestInternal] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} for sector "${selectedChildSector.name}".`,
-        );
-        return { id: activeCase.id, isDuplicate: true };
-      }
-
+      // Exact-duplicate guard: same customer + amount + sector + type + purpose = reject.
+      // Any change in those fields = create a new loan request.
       const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
       if ('id' in guard) {
         console.info('[PrismaService:addLoanRequestInternal] Returning existing submission:', guard.id);
@@ -420,15 +461,6 @@ async function addLoanRequestInternal(
 
     return { id: newLoan.id, isDuplicate: newLoan.isDuplicate };
   } catch (e: any) {
-    // Graceful recovery: if the optional unique active-case index is in place and
-    // a concurrent insert raced past the advisory lock, return the existing case.
-    if (e?.code === 'P2002' && resolvedDepartmentId) {
-      const existing = await findActiveCaseByCustomerEmailSector(prisma, loanData.customerEmail, loanData.sectorId);
-      if (existing) {
-        console.warn(`[PrismaService:addLoanRequestInternal] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
-        return { id: existing.id, isDuplicate: true };
-      }
-    }
     return createErrorResult(`Failed to add loan request. ${e.message}`, "addLoanRequestInternal", e);
   }
 }
@@ -516,6 +548,47 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
  * CONTROLLER LAYER (Exported Actions)
  */
 
+/**
+ * Check how many active (non-terminal) loans a customer already has.
+ * Used by submission forms to warn staff before creating a duplicate.
+ * Lookup order: real email → phone (for placeholder-email customers).
+ */
+export async function checkCustomerForActiveLoans(
+  phone: string,
+  email: string,
+): Promise<{ count: number }> {
+  try {
+    const normalizedPhone = normalizeEthiopianPhone(phone) || normalizeSubmissionText(phone);
+    const normalizedEmail = normalizeSubmissionEmail(email);
+
+    let customerId: string | null = null;
+
+    if (!isPlaceholderEmail(normalizedEmail)) {
+      const customer = await prisma.customer.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      });
+      customerId = customer?.id ?? null;
+    } else if (normalizedPhone) {
+      const customer = await prisma.customer.findFirst({
+        where: { phone: normalizedPhone },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      customerId = customer?.id ?? null;
+    }
+
+    if (!customerId) return { count: 0 };
+
+    const count = await prisma.loanRequest.count({
+      where: { customerId, isTerminalStage: false },
+    });
+    return { count };
+  } catch {
+    return { count: 0 };
+  }
+}
+
 export async function addLoanRequest(loanData: any): Promise<{ id?: string; isDuplicate?: boolean; error?: string }> {
   const { user } = await getCurrentUser();
   if (!user || !user.permissions.includes(PERMISSIONS.CREATE_LOAN_REQUEST)) {
@@ -543,20 +616,7 @@ export async function addType2LoanRequest(loanData: any): Promise<{ id?: string;
       await acquireSubmissionLock(tx, buildSubmissionLockFingerprint(loanData));
 
       const normalizedCustomerPhone = normalizeEthiopianPhone(loanData.customerPhone);
-      const customer = await tx.customer.upsert({
-        where: { email: normalizeSubmissionEmail(loanData.customerEmail) },
-        update: {
-          name: normalizeSubmissionText(loanData.customerName),
-          phone: normalizedCustomerPhone || null,
-          branch: normalizeSubmissionText(loanData.customerBranch) || null,
-        },
-        create: {
-          email: normalizeSubmissionEmail(loanData.customerEmail),
-          name: normalizeSubmissionText(loanData.customerName),
-          phone: normalizedCustomerPhone || null,
-          branch: normalizeSubmissionText(loanData.customerBranch) || null,
-        },
-      });
+      const customer = await resolveCustomerForSubmission(tx, loanData, normalizedCustomerPhone);
 
       const currentDate = new Date();
 
@@ -591,16 +651,8 @@ export async function addType2LoanRequest(loanData: any): Promise<{ id?: string;
       const initialDepartment = activeStage.responsibleDepartment;
       resolvedDepartmentId = initialDepartment.id;
 
-      // Business rule: at most ONE active case per customer + sector globally.
-      // Absolute strictness: ignore department, block the sector.
-      const activeCase = await guardActiveCasePerCustomerSector(tx, customer.id, selectedChildSector.id);
-      if (activeCase) {
-        console.warn(
-          `[PrismaService:addType2LoanRequest] Duplicate blocked: customer ${customer.id} already has active case ${activeCase.loanNumber} for sector "${selectedChildSector.name}".`,
-        );
-        return { id: activeCase.id, isDuplicate: true };
-      }
-
+      // Exact-duplicate guard: same customer + amount + sector + type + purpose = reject.
+      // Any change in those fields = create a new loan request.
       const guard = await guardAgainstDuplicateSubmission(tx, loanData, customer.id);
       if ('id' in guard) {
         console.info('[PrismaService:addType2LoanRequest] Returning existing submission:', guard.id);
@@ -657,15 +709,6 @@ export async function addType2LoanRequest(loanData: any): Promise<{ id?: string;
 
     return { id: result.id, isDuplicate: result.isDuplicate };
   } catch (e: any) {
-    // Graceful recovery: if the optional unique active-case index is in place and
-    // a concurrent insert raced past the advisory lock, return the existing case.
-    if (e?.code === 'P2002' && resolvedDepartmentId) {
-      const existing = await findActiveCaseByCustomerEmailSector(prisma, loanData.customerEmail, loanData.sectorId);
-      if (existing) {
-        console.warn(`[PrismaService:addType2LoanRequest] Unique-constraint race resolved; returning existing case ${existing.loanNumber}.`);
-        return { id: existing.id, isDuplicate: true };
-      }
-    }
     return createErrorResult(`Failed to add Type 2 loan request. ${e.message}`, "addType2LoanRequest", e);
   }
 }
@@ -1320,7 +1363,7 @@ export async function completeValuationWork(loanRequestId: string) {
             create: {
               userId: user.id,
               stageName: "Valuation Completed",
-              notes: `Valuation work completed and submitted for manager and checker review by ${user.name}.`,
+              notes: `Valuation work completed and submitted for manager and checker review by ${user.fullName}.`,
             }
           }
         }
@@ -1350,7 +1393,7 @@ export async function forwardToAnalyst(loanRequestId: string, analystId: string)
           create: {
             userId: user.id,
             stageName: "Forward to Analyst",
-            notes: `Case forwarded to Analyst (User ID ${analystId}) by ${user.name}.`,
+            notes: `Case forwarded to Analyst (User ID ${analystId}) by ${user.fullName}.`,
           }
         }
       }
@@ -1499,7 +1542,7 @@ export async function handoffValuationReturnToAnalyst(
             create: {
               userId: user.id,
               stageName: "Forward to Analyst",
-              notes: `Case returned from valuation and forwarded to district analyst (${analyst.name || analyst.id}) by ${user.name}.`,
+              notes: `Case returned from valuation and forwarded to district analyst (${analyst.name || analyst.id}) by ${user.fullName}.`,
             },
           },
         },

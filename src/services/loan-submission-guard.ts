@@ -24,10 +24,64 @@ export function generateUniqueLoanNumber(prefix: string): string {
   return `${prefix}-${randomNum}`;
 }
 
-/** Advisory-lock payload: same application fields (any channel / user). */
+// ---------------------------------------------------------------------------
+// Placeholder-email detection
+// ---------------------------------------------------------------------------
+
+const PLACEHOLDER_EMAILS = new Set([
+  'noemail@gmail.com',
+  'noemail@yahoo.com',
+  'noemail@hotmail.com',
+  'no-email@gmail.com',
+  'noreply@gmail.com',
+  'placeholder@gmail.com',
+  'dummy@gmail.com',
+  'none@gmail.com',
+  'null@gmail.com',
+  'empty@gmail.com',
+  'notavailable@gmail.com',
+  'na@gmail.com',
+  'test@gmail.com',
+  'default@gmail.com',
+]);
+
+/** Returns true when the (already-normalized) email is a known placeholder or blank. */
+export function isPlaceholderEmail(normalizedEmail: string): boolean {
+  if (!normalizedEmail) return true;
+  if (PLACEHOLDER_EMAILS.has(normalizedEmail)) return true;
+  // Catch variants: noemail@…, no-email@…, no_email@…
+  if (/^no[_.-]?email@/i.test(normalizedEmail)) return true;
+  // Catch previously-generated synthetic addresses
+  if (normalizedEmail.endsWith('@no-email.internal')) return true;
+  return false;
+}
+
+/** Generate a unique synthetic email for customers who have no real email. */
+export function generateGuestCustomerEmail(): string {
+  const ts = Date.now().toString(36);
+  const r1 = Math.random().toString(36).substring(2, 8);
+  const r2 = Math.random().toString(36).substring(2, 8);
+  return `guest-${ts}-${r1}${r2}@no-email.internal`;
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Advisory-lock fingerprint for a submission.
+ *
+ * When the email is a placeholder we key on phone number instead so that:
+ *   – concurrent same-phone/same-details submissions are serialised (correct dedup)
+ *   – different-phone submissions don't unnecessarily block each other
+ */
 export function buildSubmissionLockFingerprint(loanData: any): string {
+  const normalizedEmail = normalizeSubmissionEmail(loanData.customerEmail);
+  const phone = normalizeEthiopianPhone(loanData.customerPhone) || normalizeSubmissionText(loanData.customerPhone);
+  const customerKey = isPlaceholderEmail(normalizedEmail)
+    ? `phone:${phone}`
+    : `email:${normalizedEmail}`;
+
   return JSON.stringify({
-    customerEmail: normalizeSubmissionEmail(loanData.customerEmail),
+    customerKey,
     loanAmount: normalizeLoanAmount(loanData.loanAmount),
     sectorId: normalizeSubmissionText(loanData.sectorId),
     requestTypeId: normalizeSubmissionText(loanData.requestTypeId),
@@ -47,69 +101,12 @@ export function buildPermanentSubmissionDedupKey(customerId: string, loanData: a
   return createHash('sha256').update(fingerprint).digest('hex');
 }
 
+/**
+ * Acquires a submission advisory lock.
+ * MUST be called inside a transaction.
+ */
 export async function acquireSubmissionLock(tx: Prisma.TransactionClient, fingerprint: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fingerprint})::bigint)`;
-}
-
-/**
- * Coarse business rule lock key: serializes submissions for the same
- * customer + sector. This ensures absolute strictness: one active case
- * per sector per customer, globally.
- */
-export function buildCustomerSectorLockFingerprint(customerId: string, sectorId: string): string {
-  return `loan-active-case:${customerId}:${sectorId}`;
-}
-
-/** At most ONE active (non-terminal) case per customer + sector globally. */
-export async function findActiveCaseForCustomerSector(
-  tx: Prisma.TransactionClient,
-  customerId: string,
-  sectorId: string,
-): Promise<{ id: string; loanNumber: string } | null> {
-  return tx.loanRequest.findFirst({
-    where: {
-      customerId,
-      sectorId: sectorId,
-      isTerminalStage: false,
-    },
-    orderBy: { submittedDate: 'asc' }, // earliest = the original case
-    select: { id: true, loanNumber: true },
-  });
-}
-
-/**
- * Looks up an existing active case by customer EMAIL + sector, for use in
- * catch blocks (outside the failed transaction).
- */
-export async function findActiveCaseByCustomerEmailSector(
-  client: { loanRequest: Prisma.TransactionClient['loanRequest'] },
-  customerEmail: string,
-  sectorId: string,
-): Promise<{ id: string; loanNumber: string } | null> {
-  return client.loanRequest.findFirst({
-    where: {
-      customer: { email: normalizeSubmissionEmail(customerEmail) },
-      sectorId: sectorId,
-      isTerminalStage: false,
-    },
-    orderBy: { submittedDate: 'asc' },
-    select: { id: true, loanNumber: true },
-  });
-}
-
-/**
- * Acquires a customer+sector advisory lock and returns the existing active
- * case if one already exists. MUST be called inside a transaction.
- * This is the ultimate strict guard: it ignores which department the case
- * is currently in and blocks any new submission for the same sector.
- */
-export async function guardActiveCasePerCustomerSector(
-  tx: Prisma.TransactionClient,
-  customerId: string,
-  sectorId: string,
-): Promise<{ id: string; loanNumber: string } | null> {
-  await acquireSubmissionLock(tx, buildCustomerSectorLockFingerprint(customerId, sectorId));
-  return findActiveCaseForCustomerSector(tx, customerId, sectorId);
 }
 
 /** Active (non-terminal) duplicate for the same customer application, any channel. */
