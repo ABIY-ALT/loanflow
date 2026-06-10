@@ -102,15 +102,32 @@ export function EditLoanDetailsDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
-            <div className="bg-amber-50 border border-amber-200 p-3 rounded-md flex items-center gap-3 mb-4">
-               <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold shrink-0">
-                  {loan.customerBranch?.slice(0, 2).toUpperCase() || '??'}
-               </div>
-               <div>
-                  <p className="text-xs text-amber-700 font-semibold uppercase tracking-wider">Customer Branch</p>
-                  <p className="text-sm font-bold text-amber-900">{loan.customerBranch || 'Universal'}</p>
-               </div>
-            </div>
+            {loan.submissionType === 'TYPE1' ? (
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-md flex items-center gap-3 mb-4">
+                 <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold shrink-0">
+                    {loan.customerName?.slice(0, 1).toUpperCase() || 'C'}
+                 </div>
+                 <div className="flex-1 min-w-0">
+                    <p className="text-xs text-blue-700 font-semibold uppercase tracking-wider">Customer Name</p>
+                    <p className="text-sm font-bold text-blue-900 truncate">{loan.customerName || 'N/A'}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-[10px] bg-white border-blue-200 text-blue-700 font-medium">
+                        {loan.requestTypeName || 'Loan Request'}
+                      </Badge>
+                    </div>
+                 </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-md flex items-center gap-3 mb-4">
+                 <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold shrink-0">
+                    {loan.customerBranch?.slice(0, 2).toUpperCase() || '??'}
+                 </div>
+                 <div>
+                    <p className="text-xs text-amber-700 font-semibold uppercase tracking-wider">Customer Branch</p>
+                    <p className="text-sm font-bold text-amber-900">{loan.customerBranch || 'Universal'}</p>
+                 </div>
+              </div>
+            )}
 
             <FormField
               control={form.control}
@@ -118,85 +135,89 @@ export function EditLoanDetailsDialog({
               render={({ field }) => {
                 const targetBranch = (loan.customerBranch || '').trim().toLowerCase();
                 
-                // Sort users: 1. Branch Match, 2. CRM role, 3. Others
-                const sortedUsers = [...users].sort((a, b) => {
-                  const aMatch = a.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch);
-                  const bMatch = b.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch);
-                  if (aMatch && !bMatch) return -1;
-                  if (!aMatch && bMatch) return 1;
-
-                  const aIsCRM = a.customRoleName?.toLowerCase().includes('crm');
-                  const bIsCRM = b.customRoleName?.toLowerCase().includes('crm');
-                  if (aIsCRM && !bIsCRM) return -1;
-                  if (!aIsCRM && bIsCRM) return 1;
-
-                  return a.fullName.localeCompare(b.fullName);
-                });
-
-                const branchMatchingUsers = sortedUsers.filter(u => 
-                  u.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch)
+                // Grouping Logic
+                const directors = users.filter(u => u.customRoleName?.toLowerCase().includes('director'));
+                const chiefs = users.filter(u => u.customRoleName?.toLowerCase().includes('chief'));
+                const managers = users.filter(u => u.customRoleName?.toLowerCase().includes('manager'));
+                const crms = users.filter(u => 
+                  u.customRoleName?.toLowerCase().includes('crm') && 
+                  !u.customRoleName?.toLowerCase().includes('manager') && 
+                  !u.customRoleName?.toLowerCase().includes('director') && 
+                  !u.customRoleName?.toLowerCase().includes('chief')
                 );
-                
-                const otherUsers = sortedUsers.filter(u => 
-                  !u.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch)
+                const others = users.filter(u => 
+                  !directors.includes(u) && 
+                  !chiefs.includes(u) && 
+                  !managers.includes(u) && 
+                  !crms.includes(u)
                 );
+
+                const renderUserList = (userList: UserType[], groupLabel: string, highlightColor?: string) => {
+                  if (userList.length === 0) return null;
+                  
+                  // Sort within group: Branch Match first
+                  const sorted = [...userList].sort((a, b) => {
+                    const aMatch = a.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch);
+                    const bMatch = b.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch);
+                    if (aMatch && !bMatch) return -1;
+                    if (!aMatch && bMatch) return 1;
+                    return a.fullName.localeCompare(b.fullName);
+                  });
+
+                  return (
+                    <div className="space-y-2">
+                      <h4 className={cn(
+                        "text-[10px] font-bold uppercase tracking-widest pl-1",
+                        highlightColor || "text-muted-foreground"
+                      )}>{groupLabel}</h4>
+                      <div className={cn(
+                        "space-y-1 p-2 border rounded-md",
+                        highlightColor ? "bg-muted/20 border-muted" : "border-border"
+                      )}>
+                        {sorted.map(user => (
+                          <UserAssignmentRow 
+                            key={user.id} 
+                            user={user} 
+                            isSelected={!!field.value?.includes(user.id)} 
+                            onToggle={(selected) => {
+                              const current = field.value || [];
+                              field.onChange(selected ? [...current, user.id] : current.filter(id => id !== user.id));
+                            }}
+                            isSaving={isSaving}
+                            isRecommended={user.assignedBranches?.some(br => br.trim().toLowerCase() === targetBranch)}
+                            isCRMOnly={user.customRoleName?.toLowerCase().includes('crm')}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                };
                 
                 return (
                 <FormItem>
                    <div className="flex items-center justify-between">
                      <FormLabel>Assign to Staff</FormLabel>
-                     {branchMatchingUsers.length > 0 && (
-                        <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-200 text-[10px]">
-                           {branchMatchingUsers.length} Branch Match{branchMatchingUsers.length > 1 ? 'es' : ''}
-                        </Badge>
-                     )}
                    </div>
-                    <FormDesc>Select staff members to follow up on this case. CRMs are prioritized.</FormDesc>
-                    <div className="space-y-4 pt-2">
-                      {branchMatchingUsers.length > 0 && (
-                         <div className="space-y-2">
-                            <h4 className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1 text-green-700">Recommended (Branch Match)</h4>
-                            <div className="space-y-1 p-2 border border-green-200 bg-green-50/30 rounded-md">
-                               {branchMatchingUsers.map(user => (
-                                   <UserAssignmentRow 
-                                     key={user.id} 
-                                     user={user} 
-                                     isSelected={!!field.value?.includes(user.id)} 
-                                     onToggle={(selected) => {
-                                       const current = field.value || [];
-                                       field.onChange(selected ? [...current, user.id] : current.filter(id => id !== user.id));
-                                     }}
-                                     isSaving={isSaving}
-                                     isRecommended
-                                     isCRMOnly={user.customRoleName?.toLowerCase().includes('crm')}
-                                   />
-                               ))}
-                            </div>
-                         </div>
+                    <FormDesc>Select staff members to follow up on this case. Hierarchy is grouped for easier selection.</FormDesc>
+                    <div className="space-y-6 pt-2">
+                      {/* Directors & Chiefs - Top Level */}
+                      {(directors.length > 0 || chiefs.length > 0) && (
+                        <div className="space-y-4">
+                          {renderUserList(directors, "Directors", "text-purple-700")}
+                          {renderUserList(chiefs, "Chief Officers", "text-blue-700")}
+                        </div>
                       )}
 
-                      <div className="space-y-2">
-                         <h4 className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1">
-                            {branchMatchingUsers.length > 0 ? 'Other Available Staff' : 'Available Staff (CRMs First)'}
-                         </h4>
-                         <div className="space-y-1 p-2 border rounded-md max-h-64 overflow-y-auto">
-                            {otherUsers.map(user => (
-                               <UserAssignmentRow 
-                                 key={user.id} 
-                                 user={user} 
-                                 isSelected={!!field.value?.includes(user.id)} 
-                                 onToggle={(selected) => {
-                                   const current = field.value || [];
-                                   field.onChange(selected ? [...current, user.id] : current.filter(id => id !== user.id));
-                                 }}
-                                 isSaving={isSaving}
-                                 // Force highlight for CRMs even if no branch match, but use a subtle indicator
-                                 isCRMOnly={user.customRoleName?.toLowerCase().includes('crm')}
-                               />
-                            ))}
-                            {users.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No staff found for this district.</p>}
-                         </div>
-                      </div>
+                      {/* Managers - Middle Level */}
+                      {renderUserList(managers, "Managers", "text-amber-700")}
+
+                      {/* CRMs & Analysts - Operational Level */}
+                      {renderUserList(crms, "Relationship Managers (CRMs)", "text-green-700")}
+                      
+                      {/* Others */}
+                      {renderUserList(others, "Other Available Staff")}
+
+                      {users.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No staff found for this department.</p>}
                     </div>
                   <FormMessage />
                 </FormItem>
