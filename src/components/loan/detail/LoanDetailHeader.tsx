@@ -75,16 +75,17 @@ export function LoanDetailHeader({
 
   if (!loan || !currentUser) return null;
 
+  const isAdmin = userPermissions.has(PERMISSIONS.MANAGE_USERS);
   const isDistrict = loan.submissionType === 'TYPE2';
 
-  const canAssignStaff = userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+  const canAssignStaff = isAdmin || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
   const isCurrentUserAssigned = loan.assignedToUsers.some((u) => u.id === currentUser.id);
   const hasCurrentUserCompleted =
     loan.stageCompletedBy?.some((u) => u.id === currentUser.id) || false;
 
-  const canApprove = userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
+  const canApprove = isAdmin || userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE);
   const canDistributeToApproval =
-    userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) &&
+    (isAdmin || userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL)) &&
     canDistributeToDistrictApproval(loan);
 
   const stageGuidance = useMemo(() => {
@@ -105,28 +106,28 @@ export function LoanDetailHeader({
     }
     return undefined;
   }, [loan.currentStageOrder, loan.currentStageStatus]);
-  const canReturn = userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
-  const canMarkStageComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
+  const canReturn = isAdmin || userPermissions.has(PERMISSIONS.RETURN_LOAN_FOR_REWORK);
+  const canMarkStageComplete = isAdmin || userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
   const canSkipPvr =
-    userPermissions.has(PERMISSIONS.SKIP_PVR_AND_VALUATION) &&
+    (isAdmin || userPermissions.has(PERMISSIONS.SKIP_PVR_AND_VALUATION)) &&
     isDistrict &&
     (
       [2, 3].includes(loan.currentStageOrder) ||
       (currentStageName || '').toLowerCase().includes('pvr') ||
       (currentStageName || '').toLowerCase().includes('valuation')
     );
-  const canDirectPromote = canPromote;
+  const canDirectPromote = isAdmin || canPromote;
   const isDirectPromotion = !requiresApproval;
 
   /* ─── Shared utility blocks ─── */
   const SharedLeftActions = (
     <>
-      {canAssignStaff && isActionableStage && (
+      {(isAdmin || canAssignStaff) && isActionableStage && (
         <Button variant="outline" onClick={onOpenEditDialog} disabled={isSaving}>
           <UserPlus className="mr-2 h-4 w-4" /> Assign
         </Button>
       )}
-      {(userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) ||
+      {(isAdmin || userPermissions.has(PERMISSIONS.ADD_LOAN_NOTES) ||
         (isDistrict && loan.currentStageOrder === 6)) &&
         isActionableStage && (
           <Button variant="outline" onClick={onOpenAddNoteDialog} disabled={isSaving}>
@@ -134,7 +135,7 @@ export function LoanDetailHeader({
             {isDistrict && loan.currentStageOrder === 6 ? 'Add Remark' : 'Add Note'}
           </Button>
         )}
-      {isActionableStage && userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST) && (
+      {isActionableStage && (isAdmin || userPermissions.has(PERMISSIONS.LOG_INFO_REQUEST)) && (
         <Button variant="outline" onClick={onOpenLogInfoDialog} disabled={isSaving}>
           <Edit3 className="mr-2 h-4 w-4" /> Log Request
         </Button>
@@ -144,12 +145,12 @@ export function LoanDetailHeader({
 
   const SharedRightActions = (
     <>
-      {isActionableStage && userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION) && (
+      {isActionableStage && (isAdmin || userPermissions.has(PERMISSIONS.MANUAL_STAGE_TRANSITION)) && (
         <Button variant="secondary" onClick={onOpenManualTransitionDialog} disabled={isSaving}>
           <Shuffle className="mr-2 h-4 w-4" /> Manual Transition
         </Button>
       )}
-      {isActionableStage && userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS) && (
+      {isActionableStage && (isAdmin || userPermissions.has(PERMISSIONS.TERMINATE_LOAN_PROCESS)) && (
         <Button variant="destructive" onClick={onOpenTerminateLoanDialog} disabled={isSaving}>
           <ShieldX className="mr-2 h-4 w-4" /> Terminate
         </Button>
@@ -203,7 +204,7 @@ export function LoanDetailHeader({
           <div className="flex flex-wrap gap-2 items-center">
             {/* Staff mark complete */}
             {isActionableStage &&
-              isCurrentUserAssigned &&
+              (isAdmin || isCurrentUserAssigned) &&
               !loan.isReadyForManagerReview &&
               (canMarkStageComplete || canDirectPromote) && (
                 <Button
@@ -398,7 +399,7 @@ export function LoanDetailHeader({
         {/* CENTRE: core workflow progression */}
         <div className="flex flex-wrap gap-2 items-center">
           {isActionableStage &&
-            isCurrentUserAssigned &&
+            (isAdmin || isCurrentUserAssigned) &&
             !loan.isReadyForManagerReview &&
             (canMarkStageComplete || canDirectPromote) && (
               <Button

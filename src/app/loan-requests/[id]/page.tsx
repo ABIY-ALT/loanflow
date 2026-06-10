@@ -132,8 +132,12 @@ export default function LoanDetailPage() {
   }, []);
 
   const canCurrentUserAct = useMemo(() => {
-    if (!currentUser || !currentStageDef || !isActionableInUserDepartment || !loan) return false;
-    if (isAdmin) return true;
+    if (!currentUser || !currentStageDef || !loan) return false;
+    
+    // Admin bypass: can act on any non-terminal loan regardless of department or role
+    if (isAdmin && !loan.isTerminalStage) return true;
+
+    if (!isActionableInUserDepartment) return false;
 
     const allowedRoles = currentStageDef.allowedRoles || [];
     const normalizedUserRole = currentUser.customRoleName?.toLowerCase().trim() || '';
@@ -504,6 +508,96 @@ export default function LoanDetailPage() {
     }
   };
 
+  const handleManualTransition = async (newWorkflowVersionId: string, newStageId: string, reason: string) => {
+    if (!loan || !currentUser) return;
+    setIsSaving(true);
+    try {
+      const h: LoanHistoryEntry = {
+        id: `manual-${Date.now()}`,
+        stageName: currentStageDef?.name || 'N/A',
+        timestamp: formatISO(new Date()),
+        userId: currentUser.id,
+        userName: currentUser.fullName,
+        notes: `Manual Transition: ${reason}`,
+      };
+
+      const result = await updateLoanRequest(loan.id, {
+        workflowVersionId: newWorkflowVersionId,
+        currentStageId: newStageId,
+        history: [...loan.history, h],
+        isReadyForManagerReview: false,
+        stageCompletedBy: [],
+        lastUpdatedDate: formatISO(new Date()),
+      });
+
+      if (result.error) {
+        toast({ title: "Transition Failed", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Transition Successful", description: "Loan moved to the new stage." });
+        setIsManualTransitionDialogOpen(false);
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTerminateLoan = async (reason: string) => {
+    if (!loan || !currentUser) return;
+    setIsSaving(true);
+    try {
+      const h: LoanHistoryEntry = {
+        id: `term-${Date.now()}`,
+        stageName: currentStageDef?.name || 'N/A',
+        timestamp: formatISO(new Date()),
+        userId: currentUser.id,
+        userName: currentUser.fullName,
+        notes: `Loan Terminated: ${reason}`,
+      };
+
+      const result = await updateLoanRequest(loan.id, {
+        isTerminalStage: true,
+        currentStageStatus: 'Terminated',
+        history: [...loan.history, h],
+        lastUpdatedDate: formatISO(new Date()),
+      });
+
+      if (result.error) {
+        toast({ title: "Termination Failed", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Loan Terminated", description: "The loan process has been permanently stopped." });
+        setIsTerminateLoanDialogOpen(false);
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReturnToCRM = async (note: string) => {
+    if (!loan) return;
+    setIsSaving(true);
+    try {
+      const result = await returnToOriginatingCRM(loan.id, note);
+      
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case returned to Originating CRM successfully." });
+        setIsReturnForReworkDialogOpen(false);
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAssignLoan = async (assignedUserIds: string[]) => {
     const selectedUsers = users.filter(u => assignedUserIds.includes(u.id));
     
@@ -675,7 +769,7 @@ export default function LoanDetailPage() {
         onOpenTerminateLoanDialog={() => setIsTerminateLoanDialogOpen(true)} 
         onOpenManualTransitionDialog={() => setIsManualTransitionDialogOpen(true)} 
         onOpenDistributeDialog={
-          userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL)
+          (isAdmin || userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL))
             ? () => setIsDistributeDialogOpen(true)
             : undefined
         }
@@ -812,6 +906,21 @@ export default function LoanDetailPage() {
       <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={async r => { const h: LoanHistoryEntry = { id: `ir-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', requiredFulfilment: r, isFulfilled: false }; await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Request logged."); setIsLogInfoDialogOpen(false); }} isSaving={isSaving} />
       <UploadLoanDocumentDialog isOpen={isUploadDocDialogOpen} onOpenChange={setIsUploadDocDialogOpen} loanId={loan.id} documentRequirement={currentDocumentRequirementToUpload} onSubmitAfterUpload={async (r, p, f) => { const nd: LoanDocument = { id: `doc-${Date.now()}`, name: r.name, requirementId: r.id, status: AppLoanDocumentStatus.SUBMITTED, filePath: p, uploadedAt: formatISO(new Date()) }; await handleLocalAndUpdateService({ documents: [...loan.documents, nd] }, "Uploaded."); setIsUploadDocDialogOpen(false); }} isParentSaving={isSaving} />
       <RespondToInfoRequestDialog isOpen={isRespondToInfoDialogOpen} onOpenChange={setIsRespondToInfoDialogOpen} entry={selectedEntryForResponse} onSubmit={async (id, res, fulfilled) => { await handleLocalAndUpdateService({ respondToInfoRequest: { entryId: id, response: res, markFulfilled: fulfilled } }, "Response saved."); setIsRespondToInfoDialogOpen(false); }} isSaving={isSaving} />
+      <TerminateLoanDialog
+        isOpen={isTerminateLoanDialogOpen}
+        onOpenChange={setIsTerminateLoanDialogOpen}
+        loan={loan}
+        onSubmit={handleTerminateLoan}
+        isSaving={isSaving}
+      />
+      <ManualTransitionDialog
+        isOpen={isManualTransitionDialogOpen}
+        onOpenChange={setIsManualTransitionDialogOpen}
+        currentLoan={loan}
+        workflowDefinitions={workflowDefinitions}
+        onSubmit={handleManualTransition}
+        isSaving={isSaving}
+      />
       <ReturnLoanForReworkDialog 
         isOpen={isReturnForReworkDialogOpen} 
         onOpenChange={setIsReturnForReworkDialogOpen} 
@@ -854,6 +963,7 @@ export default function LoanDetailPage() {
           setIsReturnForReworkDialogOpen(false); 
           router.refresh();
         }} 
+        onReturnToCRM={handleReturnToCRM}
         isSaving={isSaving} 
       />
 

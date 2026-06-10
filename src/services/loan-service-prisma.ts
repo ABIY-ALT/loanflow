@@ -122,10 +122,15 @@ function getRoleHierarchyForStage(stageName: string, departmentName: string, wor
   const workflowCode = getWorkflowCodeFromName(workflowName);
 
   if (combined.includes('valuation')) {
-    return [['Director', 'Chief'], ['Manager'], ['Property Valuation Officer', 'Valuation Officer', 'Officer']];
+    return [['Chief', 'Deputy Chief'], ['Director'], ['Manager'], ['Property Valuation Officer', 'Valuation Officer', 'Officer']];
   }
 
-  if (workflowCode === 5 || workflowCode === 7 || combined.includes('appraisal')) {
+  // WF-05: Appraisal Workflow
+  if (workflowCode === 5 || combined.includes('appraisal')) {
+    return [['Chief', 'Deputy Chief'], ['Director'], ['Division Manager', 'Manager'], ['Credit Analyst', 'Appraisal Officer', 'Officer', 'Analyst']];
+  }
+
+  if (workflowCode === 7 || combined.includes('appraisal')) {
     return [['Chief', 'Deputy Chief'], ['Director'], ['Manager'], ['Credit Appraisal Officer', 'Appraisal Officer', 'Officer', 'Analyst']];
   }
 
@@ -133,7 +138,7 @@ function getRoleHierarchyForStage(stageName: string, departmentName: string, wor
     return [['CRM', 'Customer Relationship Manager', 'Relationship Manager'], ['Loan Officer', 'Officer']];
   }
 
-  return [['Director', 'Chief'], ['Manager'], ['CRM', 'Customer Relationship Manager', 'Relationship Manager'], ['Officer']];
+  return [['Chief', 'Deputy Chief'], ['Director'], ['Manager'], ['CRM', 'Customer Relationship Manager', 'Relationship Manager'], ['Officer']];
 }
 
 type ResolvedSubmissionSector =
@@ -1099,6 +1104,90 @@ export async function approveDistrictAnalyst(loanRequestId: string, analystRecom
 /**
  * Stage 7 -> 6: Return for Rework (Reback)
  */
+export async function returnToOriginatingCRM(
+  loanRequestId: string,
+  note: string,
+  isCommentOnly?: boolean
+) {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "returnToOriginatingCRM");
+
+    await prisma.$transaction(async (tx) => {
+      const loan = await tx.loanRequest.findUnique({
+        where: { id: loanRequestId },
+        include: {
+          workflowVersion: { 
+            include: { 
+              stages: { orderBy: { order: 'asc' }, include: { responsibleDepartment: true } } 
+            } 
+          },
+          customer: { select: { name: true } },
+          createdBy: true,
+        },
+      });
+
+      if (!loan) throw new Error("Loan not found");
+      if (!loan.createdById) throw new Error("Originating CRM/RM not found for this loan.");
+
+      // Find the first stage of the workflow (typically the submission/intake stage)
+      const targetStage = loan.workflowVersion?.stages[0];
+      if (!targetStage) throw new Error("Target stage (Intake) not found.");
+
+      const now = new Date();
+      const status = isCommentOnly ? 'RETURNED_FOR_COMMENT' : 'RETURNED_FOR_REWORK';
+      const historyNotes = isCommentOnly 
+        ? `Returned to Originating CRM/RM for comment: ${note}` 
+        : `Returned to Originating CRM/RM for rework: ${note}`;
+      const action = isCommentOnly ? 'COMMENT_REQUESTED' : 'REWORKED';
+
+      await tx.loanRequest.update({
+        where: { id: loanRequestId },
+        data: {
+          currentWorkflowStage: { connect: { id: targetStage.id } },
+          assignedDepartment: { connect: { id: targetStage.responsibleDepartmentId } },
+          stageEntryDate: now,
+          currentStageStatus: status,
+          isReadyForManagerReview: false,
+          assignedToUsers: { set: [{ id: loan.createdById }] },
+          lastUpdatedDate: now,
+          history: {
+            create: {
+              userId: user.id,
+              stageName: targetStage.name,
+              notes: historyNotes,
+            }
+          }
+        }
+      });
+
+      // Record in reviews table
+      await tx.caseReviewHistory.create({
+        data: {
+          loanRequest: { connect: { id: loanRequestId } },
+          performedBy: { connect: { id: user.id } },
+          action: action,
+          comment: note,
+          createdAt: now,
+        }
+      });
+
+      await createCaseAssignedNotifications(tx, {
+        loanRequestId,
+        loanNumber: loan.loanNumber,
+        customerName: loan.customer?.name,
+        assigneeIds: [loan.createdById],
+        assignedByUserId: user.id,
+        assignedByName: user.fullName,
+      });
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult(e.message, "returnToOriginatingCRM");
+  }
+}
+
 export async function returnToDistrictAnalyst(
   loanRequestId: string,
   note: string,
@@ -1349,6 +1438,7 @@ export async function completeValuationWork(loanRequestId: string) {
         where: { id: queueEntry.id },
         data: {
           status: nextStatus,
+          assignedToId: null, // Requirement Fix: Clear queue assignment so it's not "with" the officer anymore
           isCheckedByChecker: false // Reset checker flag just in case
         }
       });
@@ -1359,11 +1449,12 @@ export async function completeValuationWork(loanRequestId: string) {
           isReadyForManagerReview: true,
           currentStageStatus: 'Pending Manager Review',
           lastUpdatedDate: new Date(),
+          assignedToUsers: { set: [] }, // Clear officer assignment after completion
           history: {
             create: {
               userId: user.id,
               stageName: "Valuation Completed",
-              notes: `Valuation work completed and submitted for manager and checker review by ${user.fullName}.`,
+              notes: `Valuation work completed and submitted for final review by ${user.fullName}.`,
             }
           }
         }
@@ -1784,6 +1875,16 @@ export async function updateLoanRequest(
           if (autoAssignee) {
             updatePayload.assignedToUsers = { set: [{ id: autoAssignee.id }] };
             updatePayload.assignedBy = { connect: { id: user.id } };
+
+            // Requirement Fix: Ensure auto-assigned users receive notifications during handover
+            await createCaseAssignedNotifications(tx, {
+              loanRequestId: id,
+              loanNumber: existingLoan.loanNumber,
+              customerName: existingLoan.customer?.name,
+              assigneeIds: [autoAssignee.id],
+              assignedByUserId: user.id,
+              assignedByName: user.fullName,
+            });
           } else {
             updatePayload.assignedToUsers = { set: [] };
             updatePayload.assignedBy = { disconnect: true };
@@ -1866,6 +1967,14 @@ export async function updateLoanRequest(
 
       const submittedForManagerReview = dataToUpdate.isReadyForManagerReview === true;
       const completedByCurrentUser = Boolean(dataToUpdate.stageCompletedBy?.some((u) => u.id === user.id));
+
+      // HEAD OFFICE WORKFLOW ENHANCEMENT:
+      // When a staff member marks a case as ready for manager review,
+      // automatically assign it back to the person who assigned it (the Director or Manager).
+      if (submittedForManagerReview && !dataToUpdate.hasOwnProperty('assignedToUsers') && existingLoan.assignedById) {
+        updatePayload.assignedToUsers = { set: [{ id: existingLoan.assignedById }] };
+      }
+
       const stageTransitioned = Boolean(
         dataToUpdate.currentStageId
         && existingLoan.currentStageId
@@ -2282,6 +2391,9 @@ export async function getDepartmentUsers(departmentName?: string): Promise<{ use
     const whereClause: any = { isActive: true };
     if (departmentName) {
       whereClause.department = { name: departmentName };
+    } else if (!currentUser.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
+      // If no department specified and not an admin, default to user's own department
+      whereClause.departmentId = currentUser.departmentId;
     }
 
     // Geographic Hardening: If current user is tied to a district, only show users in the same district.
@@ -2572,6 +2684,19 @@ export async function getAssignedLoanRequests(): Promise<{ loans?: LoanRequest[]
       assignedToUsers: { some: { id: user.id } },
     };
 
+    // Requirement Fix: For District submissions (TYPE2), when moved to Valuation, 
+    // it should be visible ONLY to users with District Valuation access or permissions.
+    // Head Office cases (TYPE1) remain visible in My Assignments as normal.
+    const hasDistrictValuationAccess = user.permissions.includes(PERMISSIONS.VIEW_DISTRICT_VALUATION);
+    if (!hasDistrictValuationAccess) {
+      baseWhere.NOT = {
+        AND: [
+          { submissionType: 'TYPE2' },
+          { assignedDepartment: { name: 'Property Valuation Department' } }
+        ]
+      };
+    }
+
     const prismaLoans = await prisma.loanRequest.findMany({
       where: districtFilter ? { AND: [baseWhere, districtFilter] } : baseWhere,
       orderBy: [{ isUrgent: 'desc' }, { lastUpdatedDate: 'desc' }],
@@ -2608,6 +2733,31 @@ export async function getIncomingLoanRequests(): Promise<{ loans?: LoanRequest[]
       return { loans: [] };
     }
 
+    // DEPARTMENT ROUTING RULE:
+    // If a Chief/Deputy Chief exists, they see incoming cases.
+    // If no Chief exists, the Director sees them.
+    // Managers/Staff only see them if no Chief or Director exists in the department.
+    const deptUsers = await prisma.user.findMany({
+      where: { departmentId: user.departmentId, isActive: true },
+      select: { customRole: { select: { name: true } } }
+    });
+
+    const hasChief = deptUsers.some(u => roleMatches(u.customRole?.name, ['Chief', 'Deputy Chief']));
+    const hasDirector = deptUsers.some(u => roleMatches(u.customRole?.name, ['Director']));
+
+    const isChief = roleMatches(user.customRoleName, ['Chief', 'Deputy Chief']);
+    const isDirector = roleMatches(user.customRoleName, ['Director']);
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+    if (!isAdmin) {
+      if (hasChief && !isChief) {
+        return { loans: [] };
+      }
+      if (!hasChief && hasDirector && !isDirector) {
+        return { loans: [] };
+      }
+    }
+
     const districtBranchNames = await getDistrictBranchNames(user.districtId);
     if (user.districtId && districtBranchNames && districtBranchNames.length === 0) {
       return { loans: [] };
@@ -2618,10 +2768,31 @@ export async function getIncomingLoanRequests(): Promise<{ loans?: LoanRequest[]
 
     const baseWhere: any = {
       assignedDepartmentId: user.departmentId,
-      assignedToUsers: { none: {} },
       isReadyForManagerReview: false,
       isTerminalStage: false,
     };
+
+    // Logic Fix: If the current user has assignment permissions (Director/Chief/Manager),
+    // they should see both unassigned cases AND cases assigned specifically to them
+    // that still need delegation. This handles cases that were auto-assigned to them
+    // by the system hierarchy logic.
+    if (user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
+      baseWhere.OR = [
+        { assignedToUsers: { none: {} } },
+        { assignedToUsers: { some: { id: user.id } } }
+      ];
+    } else {
+      baseWhere.assignedToUsers = { none: {} };
+    }
+
+    // Logic Fix: Scope incoming cases by submission type to avoid Head Office users
+    // seeing District (Type 2) unassigned cases that might be incorrectly routed
+    // or awaiting district-level assignment.
+    if (user.districtId) {
+      baseWhere.submissionType = 'TYPE2';
+    } else {
+      baseWhere.submissionType = 'TYPE1';
+    }
 
     const prismaLoans = await prisma.loanRequest.findMany({
       where: districtFilter ? { AND: [baseWhere, districtFilter] } : baseWhere,

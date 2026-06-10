@@ -144,6 +144,26 @@ export function ManagerReviewQueuePage({
     }
   };
 
+  const handleReturnToCRM = async (note: string) => {
+    if (!selectedLoan) return;
+    setIsSaving(true);
+    try {
+      const result = await returnToOriginatingCRM(selectedLoan.id, note);
+      
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case returned to Originating CRM successfully." });
+        setIsReturnDialogOpen(false);
+        router.refresh();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleReturnToAnalyst = async (note: string, assigneeIds: string[], isCommentOnly?: boolean) => {
     if (!selectedLoan) return;
     setIsSaving(true);
@@ -681,6 +701,7 @@ export function ManagerReviewQueuePage({
           const isCommentOnly = selectedLoan?.submissionType === 'TYPE2' && selectedLoan?.currentStageOrder === 7 ? true : undefined;
           await handleReturnToAnalyst(note, assigneeIds, isCommentOnly);
         }}
+        onReturnToCRM={handleReturnToCRM}
         isSaving={isSaving}
       />
     </div>

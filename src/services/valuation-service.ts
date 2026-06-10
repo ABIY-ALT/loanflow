@@ -7,6 +7,7 @@ import type { ValuationQueueItem, ValuationResult, ValuationStaff } from '@/type
 
 import { mapPrismaLoanToAppLoan } from './utils/mappers';
 import { dedupeLoansBySubmission } from '@/lib/loan-submission-fingerprint';
+import { createCaseAssignedNotifications } from './notification-service';
 
 const VALUATION_DEPT_NAME = 'Property Valuation Department';
 
@@ -53,7 +54,10 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
 
     const cases = await prisma.valuationQueue.findMany({
       where: {
-        status: "PENDING"
+        status: "PENDING",
+        loanRequest: {
+          submissionType: 'TYPE2' // Queue is for District Valuation
+        }
       },
       include: {
         loanRequest: {
@@ -151,29 +155,44 @@ export async function routeValuationCase(
       updateData.makerId = user.id;
     }
     
-    const updated = await prisma.valuationQueue.update({
-      where: { id: queueId },
-      data: updateData
-    });
+    const { updated, loan } = await prisma.$transaction(async (tx) => {
+      const updatedQueue = await tx.valuationQueue.update({
+        where: { id: queueId },
+        data: updateData
+      });
 
-    // **FIX**: Also update the loanRequest's assignedToUsers so the case is removed from incoming queue
-    // This syncs the assignment from valuationQueue to loanRequest
-    await prisma.loanRequest.update({
-      where: { id: queueEntry.loanRequestId },
-      data: {
-        assignedToUsers: {
-          connect: { id: assigneeId }
+      // **FIX**: Also update the loanRequest's assignedToUsers so the case is removed from incoming queue
+      // This syncs the assignment from valuationQueue to loanRequest
+      const updatedLoan = await tx.loanRequest.update({
+        where: { id: queueEntry.loanRequestId },
+        data: {
+          assignedToUsers: {
+            connect: { id: assigneeId }
+          }
+        },
+        include: { customer: true }
+      });
+
+      await tx.loanHistoryEntry.create({
+        data: {
+          loanRequestId: queueEntry.loanRequestId,
+          userId: user.id,
+          stageName: "Valuation Routing",
+          notes: `Case routed to ${routingOption.toLowerCase()} (${status}) and assigned to user ID ${assigneeId} by ${user.fullName}.`,
         }
-      }
-    });
+      });
 
-    await prisma.loanHistoryEntry.create({
-      data: {
-        loanRequestId: queueEntry.loanRequestId,
-        userId: user.id,
-        stageName: "Valuation Routing",
-        notes: `Case routed to ${routingOption.toLowerCase()} (${status}) and assigned to user ID ${assigneeId} by ${user.fullName}.`,
-      }
+      // Send notification to the assignee
+      await createCaseAssignedNotifications(tx, {
+        loanRequestId: updatedLoan.id,
+        loanNumber: updatedLoan.loanNumber,
+        customerName: updatedLoan.customer.name,
+        assigneeIds: [assigneeId],
+        assignedByUserId: user.id,
+        assignedByName: user.fullName,
+      });
+
+      return { updated: updatedQueue, loan: updatedLoan };
     });
 
     return { success: true, updated };
@@ -214,6 +233,9 @@ export async function getMyValuationCases(): Promise<ValuationResult<{ cases: Va
     const where: any = {
       status: {
         in: ["ASSIGNED_TO_MANAGER", "ASSIGNED_TO_OFFICER"]
+      },
+      loanRequest: {
+        submissionType: 'TYPE2' // "My Valuation" workspace is for District cases
       }
     };
 
@@ -265,17 +287,22 @@ export async function submitValuationReport(queueId: string, reportData: any) {
 
     if (!queueEntry) return createErrorResult("Queue entry not found", "submitValuationReport");
 
-    // Workflow: Officer -> Checker -> Director
-    let nextStatus = "PENDING_CHECKER_REVIEW";
-    
-    // If a manager (maker) is doing the report themselves, maybe it goes straight to checker?
-    // Or if a checker/director is doing it?
-    // Based on user input: "officer was done approve and also check by valution checker"
+    // Workflow: Officer -> Manager (Maker) -> Director
+    let nextStatus = "PENDING_MANAGER_REVIEW";
     
     await prisma.valuationQueue.update({
       where: { id: queueId },
       data: {
         status: nextStatus,
+        assignedToId: null, // Requirement Fix: Clear queue assignment
+      }
+    });
+
+    await prisma.loanRequest.update({
+      where: { id: queueEntry.loanRequestId },
+      data: {
+        assignedToUsers: { set: [] }, // Clear officer assignment
+        currentStageStatus: "Pending Manager Review"
       }
     });
 
@@ -284,7 +311,7 @@ export async function submitValuationReport(queueId: string, reportData: any) {
         loanRequestId: queueEntry.loanRequestId,
         userId: user.id,
         stageName: "Valuation Report Submission",
-        notes: `Valuation report submitted by ${user.fullName}. Pending checker review.`,
+        notes: `Valuation report submitted by ${user.fullName}. Pending manager review.`,
       }
     });
 
@@ -313,18 +340,26 @@ export async function approveValuationReport(queueId: string) {
     let notes = "";
 
     if (queueEntry.status === "PENDING_MANAGER_REVIEW") {
-      // Maker (Manager who assigned the case) must approve
-      // If it's an admin, they can bypass
-      const isMaker = queueEntry.makerId === user.id;
+      // Any manager or someone with promote permission can approve for Director review
+      const isManager = user.customRoleName?.includes('Manager') || user.customRoleName?.includes('Director');
+      const hasPermission = user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
       const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
-      if (!isMaker && !isAdmin) {
-        return createErrorResult("Only the assigning Manager (Maker) can approve this report for Director review.", "approveValuationReport");
+      if (!isManager && !hasPermission && !isAdmin) {
+        return createErrorResult("Only a Manager or authorized personnel can approve this report for Director review.", "approveValuationReport");
       }
 
       nextStatus = "PENDING_DIRECTOR_REVIEW";
-      notes = `Valuation report approved by Maker (${user.fullName}). Sent to Director review.`;
+      notes = `Valuation report approved by ${user.fullName}. Sent to Director review.`;
     } else if (queueEntry.status === "PENDING_DIRECTOR_REVIEW") {
+      // Only Director or Admin can perform final approval
+      const isDirector = user.customRoleName?.includes('Director');
+      const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+      if (!isDirector && !isAdmin) {
+        return createErrorResult("Only a Department Director can perform the final valuation approval.", "approveValuationReport");
+      }
+
       nextStatus = "COMPLETED";
       notes = `Valuation report approved by Director (${user.fullName}). Valuation completed.`;
     }
@@ -357,13 +392,22 @@ export async function approveValuationReport(queueId: string) {
       const loanMeta = await prisma.loanRequest.findUnique({
         where: { id: queueEntry.loanRequestId },
         select: {
+          id: true,
+          loanNumber: true,
           createdById: true,
           sectorId: true,
+          submissionType: true,
+          currentStageId: true,
           workflowVersion: {
             select: {
+              id: true,
               workflowDefinition: {
-                select: { order: true, name: true },
+                select: { id: true, order: true, name: true },
               },
+              stages: {
+                orderBy: { order: 'asc' },
+                include: { responsibleDepartment: true }
+              }
             },
           },
         },
@@ -401,48 +445,71 @@ export async function approveValuationReport(queueId: string) {
         updatePayload.assignedToUsers = { set: [{ id: returnUser.id }] };
       }
 
-      const currentWorkflowOrder = loanMeta?.workflowVersion?.workflowDefinition?.order ?? 0;
-      const nextWorkflow = await prisma.workflowDefinition.findFirst({
-        where: {
-          sectorId: loanMeta?.sectorId,
-          order: { gt: currentWorkflowOrder },
-          NOT: [
-            { name: { contains: "Appeal", mode: "insensitive" } },
-            { name: { contains: "Optional", mode: "insensitive" } },
-          ],
-        },
-        orderBy: { order: "asc" },
-        include: {
-          versions: {
-            where: { isActive: true },
-            take: 1,
+      // Logic Fix: Handle Head Office vs District routing after valuation
+      if (loanMeta?.submissionType === 'TYPE2') {
+        // District Workflow: Stay in the same workflow, move to the next stage
+        const currentStages = loanMeta.workflowVersion?.stages || [];
+        const currentStageIdx = currentStages.findIndex(s => s.id === loanMeta.currentStageId);
+        
+        if (currentStageIdx !== -1 && currentStageIdx < currentStages.length - 1) {
+          const nextStage = currentStages[currentStageIdx + 1];
+          updatePayload.currentWorkflowStage = { connect: { id: nextStage.id } };
+          updatePayload.assignedDepartment = { connect: { id: nextStage.responsibleDepartmentId } };
+          updatePayload.stageEntryDate = new Date();
+          updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
+          updatePayload.currentStageStatus = "Initiated";
+        }
+      } else {
+        // Head Office Workflow: Original logic (return to sender or move to next workflow if defined)
+        // For HO, usually we return to the next stage in the SAME workflow first.
+        const currentStages = loanMeta?.workflowVersion?.stages || [];
+        const currentStageIdx = currentStages.findIndex(s => s.id === loanMeta?.currentStageId);
+
+        if (currentStageIdx !== -1 && currentStageIdx < currentStages.length - 1) {
+          const nextStage = currentStages[currentStageIdx + 1];
+          updatePayload.currentWorkflowStage = { connect: { id: nextStage.id } };
+          updatePayload.assignedDepartment = { connect: { id: nextStage.responsibleDepartmentId } };
+          updatePayload.stageEntryDate = new Date();
+          updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
+          updatePayload.currentStageStatus = "Initiated";
+        } else {
+          // If it was the last stage of the current HO workflow, look for the next one in sequence
+          const currentWorkflowOrder = loanMeta?.workflowVersion?.workflowDefinition?.order ?? 0;
+          const nextWorkflow = await prisma.workflowDefinition.findFirst({
+            where: {
+              sectorId: loanMeta?.sectorId,
+              order: { gt: currentWorkflowOrder },
+              NOT: [
+                { name: { contains: "Appeal", mode: "insensitive" } },
+                { name: { contains: "Optional", mode: "insensitive" } },
+              ],
+            },
+            orderBy: { order: "asc" },
             include: {
-              stages: {
-                orderBy: { order: "asc" },
-                include: { responsibleDepartment: true },
+              versions: {
+                where: { isActive: true },
+                take: 1,
+                include: {
+                  stages: {
+                    orderBy: { order: "asc" },
+                    include: { responsibleDepartment: true },
+                  },
+                },
               },
             },
-          },
-        },
-      });
+          });
 
-      const nextVersion = nextWorkflow?.versions[0];
-      const nextStage = nextVersion?.stages[0];
-      if (nextVersion && nextStage) {
-        let availableStatusesObj: Record<string, string[]> = {};
-        try {
-          availableStatusesObj = nextStage.availableStatuses ? JSON.parse(nextStage.availableStatuses) : {};
-        } catch {
-          availableStatusesObj = {};
+          const nextVersion = nextWorkflow?.versions[0];
+          const nextStage = nextVersion?.stages[0];
+          if (nextVersion && nextStage) {
+            updatePayload.workflowVersion = { connect: { id: nextVersion.id } };
+            updatePayload.currentWorkflowStage = { connect: { id: nextStage.id } };
+            updatePayload.assignedDepartment = { connect: { id: nextStage.responsibleDepartmentId } };
+            updatePayload.stageEntryDate = new Date();
+            updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
+            updatePayload.currentStageStatus = "Initiated";
+          }
         }
-        const availableStatusesForDept = availableStatusesObj[nextStage.responsibleDepartment.name] || [];
-
-        updatePayload.workflowVersion = { connect: { id: nextVersion.id } };
-        updatePayload.currentWorkflowStage = { connect: { id: nextStage.id } };
-        updatePayload.assignedDepartment = { connect: { id: nextStage.responsibleDepartmentId } };
-        updatePayload.stageEntryDate = new Date();
-        updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
-        updatePayload.currentStageStatus = availableStatusesForDept.length > 0 ? availableStatusesForDept[0] : "Initiated";
       }
 
       await prisma.loanRequest.update({
@@ -544,26 +611,25 @@ export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases
 
     const isChecker = user.customRoleName?.includes('Checker');
     const isDirector = user.customRoleName?.includes('Director');
+    const isManager = user.customRoleName?.includes('Manager');
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
     const orConditions: any[] = [];
 
-    // Checkers see cases in PENDING_MANAGER_REVIEW
-    if (isChecker || isAdmin) {
+    // Managers/Makers see cases in PENDING_MANAGER_REVIEW
+    // If they have promote permission, they can act as a reviewer
+    if (isManager || isAdmin || user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
       orConditions.push({ status: "PENDING_MANAGER_REVIEW" });
-    }
-
-    // Makers see cases in PENDING_MANAGER_REVIEW that they assigned
-    if (user.customRoleName?.includes('Manager') && !isAdmin) {
-      orConditions.push({ 
-        status: "PENDING_MANAGER_REVIEW",
-        makerId: user.id 
-      });
     }
 
     // Directors see cases in PENDING_DIRECTOR_REVIEW
     if (isDirector || isAdmin) {
       orConditions.push({ status: "PENDING_DIRECTOR_REVIEW" });
+    }
+
+    // Checkers can see cases in PENDING_MANAGER_REVIEW to mark as checked
+    if (isChecker && !orConditions.some(c => c.status === "PENDING_MANAGER_REVIEW")) {
+      orConditions.push({ status: "PENDING_MANAGER_REVIEW" });
     }
 
     if (orConditions.length === 0) return { cases: [] };

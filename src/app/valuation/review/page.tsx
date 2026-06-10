@@ -193,10 +193,10 @@ export default function ValuationReviewQueue() {
                 </Button>
               )}
 
-              {/* Maker/Director Approval */}
+              {/* Manager/Director Approval */}
               {(
-                (user?.customRoleName?.includes('Maker') && selectedCase.status === "PENDING_MANAGER_REVIEW" && selectedCase.makerId === user.id) ||
-                (user?.customRoleName?.includes('Director') && selectedCase.status === "PENDING_DIRECTOR_REVIEW") ||
+                (selectedCase.status === "PENDING_MANAGER_REVIEW" && (user?.customRoleName?.includes('Manager') || user?.customRoleName?.includes('Director') || user?.permissions.includes('PROMOTE_LOAN_STAGE'))) ||
+                (selectedCase.status === "PENDING_DIRECTOR_REVIEW" && (user?.customRoleName?.includes('Director') || user?.permissions.includes('PROMOTE_LOAN_STAGE'))) ||
                 (user?.permissions.includes('MANAGE_USERS')) // Admin
               ) && (
                 <Button onClick={handleApprove} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
