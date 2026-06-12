@@ -2821,6 +2821,83 @@ export async function getIncomingLoanRequests(): Promise<{ loans?: LoanRequest[]
   }
 }
 
+export async function getIncomingCasesCount(): Promise<{ count?: number, error?: string }> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user || !user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES)) {
+      return createErrorResult("Unauthorized", "getIncomingCasesCount");
+    }
+    if (!user.departmentId) {
+      return { count: 0 };
+    }
+
+    const deptUsers = await prisma.user.findMany({
+      where: { departmentId: user.departmentId, isActive: true },
+      select: { customRole: { select: { name: true } } }
+    });
+
+    const hasChief = deptUsers.some(u => roleMatches(u.customRole?.name, ['Chief', 'Deputy Chief']));
+    const hasDirector = deptUsers.some(u => roleMatches(u.customRole?.name, ['Director']));
+
+    const isChief = roleMatches(user.customRoleName, ['Chief', 'Deputy Chief']);
+    const isDirector = roleMatches(user.customRoleName, ['Director']);
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+    if (!isAdmin) {
+      if (hasChief && !isChief) return { count: 0 };
+      if (!hasChief && hasDirector && !isDirector) return { count: 0 };
+    }
+
+    const districtBranchNames = await getDistrictBranchNames(user.districtId);
+    if (user.districtId && districtBranchNames && districtBranchNames.length === 0) {
+      return { count: 0 };
+    }
+    const districtFilter = districtBranchNames
+      ? { customer: { branch: { in: districtBranchNames } } }
+      : null;
+
+    const baseWhere: any = {
+      assignedDepartmentId: user.departmentId,
+      isReadyForManagerReview: false,
+      isTerminalStage: false,
+    };
+
+    if (user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {
+      baseWhere.OR = [
+        { assignedToUsers: { none: {} } },
+        { assignedToUsers: { some: { id: user.id } } }
+      ];
+    } else {
+      baseWhere.assignedToUsers = { none: {} };
+    }
+
+    if (user.districtId) {
+      baseWhere.submissionType = 'TYPE2';
+    } else {
+      baseWhere.submissionType = 'TYPE1';
+    }
+
+    const prismaLoans = await prisma.loanRequest.findMany({
+      where: districtFilter ? { AND: [baseWhere, districtFilter] } : baseWhere,
+      select: { id: true, submissionId: true },
+    });
+    
+    const uniqueIds = new Set();
+    const deduped = prismaLoans.filter(loan => {
+       if (loan.submissionId) {
+         if (uniqueIds.has(loan.submissionId)) return false;
+         uniqueIds.add(loan.submissionId);
+         return true;
+       }
+       return true;
+    });
+
+    return { count: deduped.length };
+  } catch (e: any) {
+    return createErrorResult("Failed to fetch incoming cases count.", "getIncomingCasesCount", e);
+  }
+}
+
 export async function getAssignedByMePortfolio(): Promise<{ loans?: LoanRequest[]; error?: string }> {
   try {
     const { user } = await getCurrentUser();
