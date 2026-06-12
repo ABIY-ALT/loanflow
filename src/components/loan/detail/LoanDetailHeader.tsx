@@ -46,6 +46,9 @@ interface LoanDetailHeaderProps {
   isActionableStage: boolean;
   canPromote: boolean;
   requiresApproval: boolean;
+  // WF-05 routing stages: the stage moves when staff is assigned, so the
+  // promote button is replaced by guidance pointing at the Assign action.
+  assignMovesStage?: boolean;
 }
 
 export function LoanDetailHeader({
@@ -68,6 +71,7 @@ export function LoanDetailHeader({
   isActionableStage,
   canPromote,
   requiresApproval,
+  assignMovesStage,
 }: LoanDetailHeaderProps) {
   const { user: currentUser } = useAuth();
   const router = useRouter();
@@ -398,7 +402,13 @@ export function LoanDetailHeader({
 
         {/* CENTRE: core workflow progression */}
         <div className="flex flex-wrap gap-2 items-center">
+          {isActionableStage && assignMovesStage && canAssignStaff && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
+              Routing stage: use <span className="font-semibold">Assign</span> to pick the next owner — the case moves to their stage automatically.
+            </div>
+          )}
           {isActionableStage &&
+            !assignMovesStage &&
             (isAdmin || isCurrentUserAssigned) &&
             !loan.isReadyForManagerReview &&
             (canMarkStageComplete || canDirectPromote) && (

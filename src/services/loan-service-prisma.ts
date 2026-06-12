@@ -1763,8 +1763,12 @@ export async function updateLoanRequest(
     if (dataToUpdate.hasOwnProperty('assignedToUsers')) {
       const userPermissions = new Set(user.permissions || []);
       const isAdmin = userPermissions.has(PERMISSIONS.MANAGE_USERS);
+      const selectedAssigneeIds = (dataToUpdate.assignedToUsers || []).map((u: any) => u.id).filter(Boolean);
+      const isAssigningBackToAssigner = selectedAssigneeIds.length === 1 && selectedAssigneeIds[0] === existingLoan.assignedById;
+
       const canAssign = isAdmin
-        || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF);
+        || userPermissions.has(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)
+        || isAssigningBackToAssigner;
 
       if (!canAssign) {
         return createErrorResult("Unauthorized: missing assignment permission.", "updateLoanRequest");
@@ -1780,7 +1784,6 @@ export async function updateLoanRequest(
         return createErrorResult("Unauthorized: you can only assign within the loan's current department.", "updateLoanRequest");
       }
 
-      const selectedAssigneeIds = (dataToUpdate.assignedToUsers || []).map(u => u.id).filter(Boolean);
       if (selectedAssigneeIds.length > 0) {
         const selectedUsers = await prisma.user.findMany({
           where: { id: { in: selectedAssigneeIds } },

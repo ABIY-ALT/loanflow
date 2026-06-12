@@ -135,7 +135,7 @@ export default function IncomingCasesPage() {
         loan.loanNumber,
         loan.customerName,
         loan.currentStageName || '',
-        loan.assignedToUsers.map(u => u.fullName).join('; '),
+        loan.assignedToUsers.slice(-1).map(u => u.fullName).join('; '),
         loan.assignedDepartment || '',
         loan.stageDeadline ? format(parseISO(loan.stageDeadline), 'MMM dd, yyyy') : '',
         latestHistory?.notes || '',
@@ -340,7 +340,7 @@ export default function IncomingCasesPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex -space-x-2 overflow-hidden">
-                              {loan.assignedToUsers.map((u) => (
+                              {loan.assignedToUsers.slice(-1).map((u) => (
                                 <Badge key={u.id} variant="secondary" className="border border-background text-[10px] py-0 px-1.5">
                                   {u.fullName.split(' ')[0]}
                                 </Badge>

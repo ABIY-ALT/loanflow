@@ -37,7 +37,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS, type AppPermission } from '@/lib/permissions';
 import type { LoanRequest, User } from '@/types/loan';
 import { cn } from '@/lib/utils';
-import { getLoanRequests } from '@/services/loan-service-prisma';
+import { getIncomingCasesCount, getLoanRequests } from '@/services/loan-service-prisma';
 import { getIncomingValuationCases } from '@/services/valuation-service';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -289,9 +289,10 @@ export default function SidebarNav() {
   const fetchCounts = useCallback(async (isInitial = false) => {
     if (!user) return;
     try {
-      const [loansResult, valuationResult] = await Promise.all([
+      const [loansResult, valuationResult, incomingResult] = await Promise.all([
         getLoanRequests(),
-        getIncomingValuationCases()
+        getIncomingValuationCases(),
+        getIncomingCasesCount(),
       ]);
 
       let valuation = 0;
@@ -302,13 +303,9 @@ export default function SidebarNav() {
       if (loansResult && 'loans' in loansResult && loansResult.loans) {
         const loans = loansResult.loans as LoanRequest[];
 
-        // 1. Incoming (Unassigned cases in user's dept)
-        const incoming = loans.filter((l: LoanRequest) =>
-          l.assignedDepartment === user.department &&
-          (l.assignedToUsers?.length || 0) === 0 &&
-          !l.isReadyForManagerReview &&
-          !l.isTerminalStage
-        ).length;
+        // 1. Incoming — server-side count using the same hierarchy/visibility
+        // rules as the Incoming Cases page, so the badge matches the queue.
+        const incoming = ('count' in incomingResult && incomingResult.count) || 0;
 
         // 2. Manager Review (Ready for review in manager's dept)
         const review = loans.filter((l: LoanRequest) =>

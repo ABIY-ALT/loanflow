@@ -131,6 +131,28 @@ export default function LoanDetailPage() {
     return match ? Number(match[1]) : null;
   }, []);
 
+  const isWf05Appraisal = useMemo(
+    () => getWorkflowCode(currentWorkflowDef?.name) === 5,
+    [currentWorkflowDef, getWorkflowCode]
+  );
+  // WF-05 stages 0-3 are supervisory routing stages (Chief → Director → Division Manager):
+  // assigning the next owner moves the case forward without a separate promote step.
+  const isWf05RoutingStage = isWf05Appraisal && [0, 1, 2, 3].includes(currentStageDef?.order ?? -1);
+  // WF-05 stages 7-9 are committee handoff stages: any permitted assigned user advances
+  // them with a single click instead of the mark-complete + manager-approval round trip.
+  const isWf05CommitteeStage = isWf05Appraisal && [7, 8, 9].includes(currentStageDef?.order ?? -1);
+  // WF-05 stages 4 and 5 are officer stages: they should advance immediately upon completion
+  // without needing an extra manager approval round trip.
+  const isWf05OfficerStage = isWf05Appraisal && [4, 5].includes(currentStageDef?.order ?? -1);
+  // At stage 1 the Director chooses which division manager stage the case goes to.
+  const wf05DivisionOptions = useMemo(() => {
+    if (!isWf05Appraisal || currentStageDef?.order !== 1 || !currentWorkflowVersion) return undefined;
+    return currentWorkflowVersion.stages
+      .filter(s => s.order === 2 || s.order === 3)
+      .sort((a, b) => a.order - b.order)
+      .map(s => ({ order: s.order, label: s.name }));
+  }, [isWf05Appraisal, currentStageDef, currentWorkflowVersion]);
+
   const canCurrentUserAct = useMemo(() => {
     if (!currentUser || !currentStageDef || !loan) return false;
     
@@ -326,8 +348,20 @@ export default function LoanDetailPage() {
       return;
     }
 
-    if (canDirectPromote) {
-      await handleManagerPromoteLoan(true);
+    // WF-05 committee stages (7-9) advance in one click for any permitted assigned
+    // user — no manager-approval round trip for the committee handoffs.
+    if (canDirectPromote || isWf05CommitteeStage || isWf05OfficerStage) {
+      let reassignedUsers: UserType[] | undefined = undefined;
+      
+      // If we are promoting from Stage 5 (Review Appraisal Analysis), reassign back to the assigning manager
+      if (isWf05Appraisal && currentStageDef.order === 5 && loan.assignedById) {
+        const assigningManager = users.find(u => u.id === loan.assignedById);
+        if (assigningManager) {
+          reassignedUsers = [assigningManager];
+        }
+      }
+      
+      await handleManagerPromoteLoan(true, reassignedUsers);
       return;
     }
 
@@ -385,11 +419,14 @@ export default function LoanDetailPage() {
     }
   };
 
-  const handleManagerPromoteLoan = async (isDirect: boolean = false, reassignedUsers?: UserType[]) => {
+  const handleManagerPromoteLoan = async (isDirect: boolean = false, reassignedUsers?: UserType[], targetStage?: WorkflowStageDefinition) => {
     if (!currentUser || !loan || !currentWorkflowVersion || !currentStageDef || !currentWorkflowDef) return;
     const idx = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (idx === -1) return;
-    const actionText = isDirect ? `Completed & Promoted by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
+    if (targetStage && targetStage.order <= currentStageDef.order) return;
+    const actionText = targetStage
+      ? `Assigned & Routed by ${currentUser.customRoleName}`
+      : isDirect ? `Completed & Promoted by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
     const reassignmentNote = reassignedUsers && reassignedUsers.length > 0
       ? ` Reassigned next stage to ${reassignedUsers.map(u => u.fullName).join(', ')}.`
       : '';
@@ -471,7 +508,7 @@ export default function LoanDetailPage() {
         }
         await handleLocalAndUpdateService(workflowTransitionPayload, `Loan moved to ${nextWf.name}.`);
     } else {
-        const nextStage = currentWorkflowVersion.stages[idx + 1];
+        const nextStage = targetStage ?? currentWorkflowVersion.stages[idx + 1];
         const hist: LoanHistoryEntry = { id: `hist-stg-${Date.now()}`, stageName: nextStage.name, timestamp: formatISO(new Date()), userId: currentUser.id, userName: currentUser.fullName, notes: `${actionText}. Moved to stage '${nextStage.name}'.${reassignmentNote}` };
         await recordCaseReview({ loanRequestId: loan.id, action: 'APPROVED', comment: `${actionText}. Moved to stage '${nextStage.name}'.${reassignmentNote}` });
         const stageTransitionPayload: Partial<Omit<LoanRequest, 'id'>> = {
@@ -598,12 +635,12 @@ export default function LoanDetailPage() {
     }
   };
 
-  const handleAssignLoan = async (assignedUserIds: string[]) => {
+  const handleAssignLoan = async (assignedUserIds: string[], targetStageOrder?: number) => {
     const selectedUsers = users.filter(u => assignedUserIds.includes(u.id));
-    
-    // For District Workflow: If we are at the Manager Assignment stage, 
+
+    // For District Workflow: If we are at the Manager Assignment stage,
     // assigning a staff member should also promote the case to the next stage (CRM PVR Preparation).
-    const isDistrictAssignmentStage = loan?.submissionType === 'TYPE2' && 
+    const isDistrictAssignmentStage = loan?.submissionType === 'TYPE2' &&
                                      currentStageDef?.name.toLowerCase().includes('assignment');
 
     if (isDistrictAssignmentStage) {
@@ -611,6 +648,42 @@ export default function LoanDetailPage() {
       await handleManagerPromoteLoan(false, selectedUsers);
       setIsEditLoanDialogOpen(false);
       return;
+    }
+
+    // WF-05 routing stages: assigning the next owner also moves the case forward.
+    // The target stage follows the seniority of the chosen assignee so vacant
+    // hierarchy levels are skipped: Director → stage 1, Division Manager →
+    // stage 2/3 (per the division choice), Appraisal Officer → stage 4. This
+    // lets a Deputy Chief or Director assign straight to an Officer when no
+    // Director/Manager exists in the department.
+    if (isWf05RoutingStage && selectedUsers.length > 0 && currentWorkflowVersion && currentStageDef) {
+      const currentOrder = currentStageDef.order;
+      const hasTier = (token: string) =>
+        selectedUsers.some(u => (u.customRoleName || '').toLowerCase().includes(token));
+      
+      // Prioritize the lowest tier (highest stage order) among selected users
+      // so the case advances properly down the hierarchy.
+      const isOfficer = selectedUsers.some(u => {
+        const role = (u.customRoleName || '').toLowerCase();
+        return !role.includes('chief') && !role.includes('director') && !role.includes('manager');
+      });
+
+      const nextOrder =
+        isOfficer ? 4
+        : hasTier('manager') ? (targetStageOrder === 2 || targetStageOrder === 3 ? targetStageOrder : 2)
+        : hasTier('director') ? 1
+        : 0;
+
+      if (nextOrder > currentOrder) {
+        const targetStage = currentWorkflowVersion.stages.find(s => s.order === nextOrder);
+        if (targetStage) {
+          await handleManagerPromoteLoan(false, selectedUsers, targetStage);
+          setIsEditLoanDialogOpen(false);
+          return;
+        }
+      }
+      // Same-tier (or more senior) assignee: keep the case at the current
+      // routing stage and just swap the assignee below.
     }
 
     const result = await handleLocalAndUpdateService(
@@ -683,8 +756,31 @@ export default function LoanDetailPage() {
   };
 
   const handleSaveAnalysis = async (notes: string) => {
-    if (!loan || !currentUser) return;
+    if (!loan || !currentUser || !currentStageDef) return;
     
+    if (isWf05Appraisal && currentStageDef.order === 5) {
+      let reassignedUsers: UserType[] | undefined = undefined;
+      if (loan.assignedById) {
+        const assigningManager = users.find(u => u.id === loan.assignedById);
+        if (assigningManager) {
+          reassignedUsers = [assigningManager];
+        }
+      }
+      
+      const h: LoanHistoryEntry = { 
+        id: `analyst-${Date.now()}`, 
+        stageName: currentStageDef.name, 
+        timestamp: formatISO(new Date()), 
+        userId: currentUser.id, 
+        userName: currentUser.fullName, 
+        notes: `Analysis completed: ${notes}` 
+      };
+      
+      loan.history.push(h); // Optimistically add so it's included in promote
+      await handleManagerPromoteLoan(true, reassignedUsers);
+      return;
+    }
+
     const h: LoanHistoryEntry = { 
       id: `analyst-${Date.now()}`, 
       stageName: currentStageDef?.name || 'Analyst Review', 
@@ -776,9 +872,10 @@ export default function LoanDetailPage() {
         onSkipPvr={handleSkipPvr}
         isSkippingPvr={isSkippingPvr}
         isSaving={isSaving} 
-        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)} 
-        canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)} 
-        requiresApproval={currentStageDef?.requiresApproval ?? true} 
+        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)}
+        canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)}
+        requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
+        assignMovesStage={isWf05RoutingStage}
       />
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">
@@ -900,7 +997,7 @@ export default function LoanDetailPage() {
           })()}
         </CardContent>
       </Card>
-      <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} onSubmit={async d => { await handleAssignLoan(d.assignedTo || []); }} isSaving={isSaving} />
+      <EditLoanDetailsDialog isOpen={isEditLoanDialogOpen} onOpenChange={setIsEditLoanDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} divisionOptions={wf05DivisionOptions} title={isWf05RoutingStage ? 'Assign & Move to Next Stage' : undefined} description={isWf05RoutingStage ? 'Assigning the next owner moves this case to their stage automatically.' : undefined} submitLabel={isWf05RoutingStage ? 'Assign & Move' : undefined} clearPreviousAssignments={isWf05RoutingStage} onSubmit={async d => { await handleAssignLoan(d.assignedTo || [], d.targetStageOrder); }} isSaving={isSaving} />
       <EditLoanDetailsDialog isOpen={isApproveReassignDialogOpen} onOpenChange={setIsApproveReassignDialogOpen} loan={loan} users={users.filter(u => u.department === loan.assignedDepartment)} currentDepartment={loan.assignedDepartment} title="Approve And Reassign" description="Select the users who should own the next stage in this same department. If the next stage moves to another department, the assignment will be cleared automatically." submitLabel="Approve And Promote" onSubmit={async d => { const uIds = d.assignedTo || []; await handleManagerPromoteLoan(false, users.filter(u => uIds.includes(u.id))); setIsApproveReassignDialogOpen(false); }} isSaving={isSaving} />
       <AddNoteToLoanDialog isOpen={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen} onSubmit={async n => { const h: LoanHistoryEntry = { id: `n-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', notes: n }; await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Note added."); setIsAddNoteDialogOpen(false); }} isSaving={isSaving} />
       <LogInfoRequestForLoanDialog isOpen={isLogInfoDialogOpen} onOpenChange={setIsLogInfoDialogOpen} onSubmit={async r => { const h: LoanHistoryEntry = { id: `ir-${Date.now()}`, stageName: currentStageDef?.name || 'N/A', timestamp: formatISO(new Date()), userId: currentUser?.id || 'sys', userName: currentUser?.fullName || 'sys', requiredFulfilment: r, isFulfilled: false }; await handleLocalAndUpdateService({ history: [...loan.history, h] }, "Request logged."); setIsLogInfoDialogOpen(false); }} isSaving={isSaving} />

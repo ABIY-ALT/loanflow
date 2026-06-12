@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 import type { LoanRequest, User as UserType, Department } from '@/types/loan';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
@@ -40,7 +40,9 @@ const assignStaffFormSchema = z.object({
   assignedTo: z.array(z.string()).optional(), // Array of User IDs
 });
 
-type AssignStaffFormValues = z.infer<typeof assignStaffFormSchema>;
+type AssignStaffFormValues = z.infer<typeof assignStaffFormSchema> & {
+  targetStageOrder?: number;
+};
 
 interface EditLoanDetailsDialogProps {
   isOpen: boolean;
@@ -53,6 +55,10 @@ interface EditLoanDetailsDialogProps {
   title?: string;
   description?: string;
   submitLabel?: string;
+  // When provided, the assigner must choose which stage the case is routed to
+  // (e.g. WF-05 Director picking the Wholesale or Retail division manager stage).
+  divisionOptions?: { order: number; label: string }[];
+  clearPreviousAssignments?: boolean;
 }
 
 export function EditLoanDetailsDialog({
@@ -66,6 +72,8 @@ export function EditLoanDetailsDialog({
   title,
   description,
   submitLabel,
+  divisionOptions,
+  clearPreviousAssignments,
 }: EditLoanDetailsDialogProps) {
   const { user: currentUser } = useAuth();
   const userPermissions = useMemo(() => new Set(currentUser?.permissions || []), [currentUser]);
@@ -77,13 +85,16 @@ export function EditLoanDetailsDialog({
     resolver: zodResolver(assignStaffFormSchema),
   });
 
+  const [selectedDivision, setSelectedDivision] = useState<number | undefined>(undefined);
+
   useEffect(() => {
     if (loan && isOpen) {
       form.reset({
-        assignedTo: loan.assignedToUsers.map(u => u.id) || [],
+        assignedTo: clearPreviousAssignments ? [] : (loan.assignedToUsers.map(u => u.id) || []),
       });
+      setSelectedDivision(divisionOptions?.[0]?.order);
     }
-  }, [loan, isOpen, form]);
+  }, [loan, isOpen, form, divisionOptions, clearPreviousAssignments]);
 
   if (!loan || !canAssignStaff) return null;
 
@@ -101,7 +112,7 @@ export function EditLoanDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+          <form onSubmit={form.handleSubmit((d) => onSubmit({ ...d, targetStageOrder: divisionOptions?.length ? selectedDivision : undefined }))} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
             {loan.submissionType === 'TYPE1' ? (
               <div className="bg-blue-50 border border-blue-200 p-3 rounded-md flex items-center gap-3 mb-4">
                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold shrink-0">
@@ -126,6 +137,34 @@ export function EditLoanDetailsDialog({
                     <p className="text-xs text-amber-700 font-semibold uppercase tracking-wider">Customer Branch</p>
                     <p className="text-sm font-bold text-amber-900">{loan.customerBranch || 'Universal'}</p>
                  </div>
+              </div>
+            )}
+
+            {divisionOptions && divisionOptions.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest pl-1 text-indigo-700">Route to Division</h4>
+                <div className="space-y-1 p-2 border rounded-md border-indigo-200 bg-indigo-50/40">
+                  {divisionOptions.map(option => (
+                    <label
+                      key={option.order}
+                      className={cn(
+                        "flex items-center gap-3 p-2 rounded-sm cursor-pointer transition-colors",
+                        selectedDivision === option.order ? "bg-indigo-100" : "hover:bg-muted/50"
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="wf05-division"
+                        checked={selectedDivision === option.order}
+                        onChange={() => setSelectedDivision(option.order)}
+                        disabled={isSaving}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      <span className="text-sm font-medium">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground pl-1">The case will move directly to the selected division stage; the other division is skipped.</p>
               </div>
             )}
 
