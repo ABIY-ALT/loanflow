@@ -43,7 +43,7 @@ export function ManualTransitionDialog({
   const allActiveVersionsForLoanType = useMemo(() => {
     if (!currentLoan) return [];
     return workflowDefinitions
-      .filter(def => def.loanTypeName === currentLoan.loanType) // Filter by current loan's type
+      .filter(def => def.loanTypeName === currentLoan.loanType && def.sectorId === currentLoan.sectorId)
       .flatMap(def =>
         def.versions
           .filter(v => v.isActive)

@@ -134,8 +134,18 @@ export function ReturnLoanForReworkDialog({
             />
           </div>
 
-          {/* Only show the comment-only toggle and assignee list when NOT in forced-comment mode */}
-          {!forceCommentOnly && (
+          {/* Head Office (TYPE1): auto-assign to last handler — no manual selection needed */}
+          {!forceCommentOnly && loan.submissionType === 'TYPE1' && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="text-blue-600 mt-0.5 flex-shrink-0">ℹ</div>
+              <p className="text-xs text-blue-700 font-medium">
+                The case will be automatically returned to the last person who worked on it in this department.
+              </p>
+            </div>
+          )}
+
+          {/* District / other workflows: show comment-only toggle and assignee picker */}
+          {!forceCommentOnly && loan.submissionType !== 'TYPE1' && (
             <>
               <div className="flex items-center space-x-2 py-1 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200">
                 <Checkbox

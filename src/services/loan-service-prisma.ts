@@ -245,6 +245,72 @@ async function findWorkflowAssignee(
   return { id: fallback.id, name: fallback.name, customRoleName: fallback.customRole?.name || null };
 }
 
+// Escalates to the highest-ranked active user in a department: Chief > Director > Manager > first user.
+// Used for Head Office (TYPE1) loans entering a department for the first time.
+async function findHighestAuthorityInDepartment(
+  client: Prisma.TransactionClient | typeof prisma,
+  departmentId: string,
+): Promise<{ id: string; name: string; customRoleName: string | null } | null> {
+  const users = await client.user.findMany({
+    where: { departmentId, isActive: true },
+    select: { id: true, name: true, customRole: { select: { name: true } } },
+    orderBy: { name: 'asc' },
+  });
+
+  if (users.length === 0) return null;
+
+  const authorityTiers: string[][] = [
+    ['chief', 'deputy chief'],
+    ['director'],
+    ['manager'],
+  ];
+
+  for (const tier of authorityTiers) {
+    const match = users.find((u) => roleMatches(u.customRole?.name, tier));
+    if (match) return { id: match.id, name: match.name, customRoleName: match.customRole?.name ?? null };
+  }
+
+  const fallback = users[0];
+  return { id: fallback.id, name: fallback.name, customRoleName: fallback.customRole?.name ?? null };
+}
+
+// Finds the most recent user (from loan history) who currently belongs to the given department.
+// Used by Head Office (TYPE1) loans returning to a previously-visited department, or for rework.
+// Pass excludeUserId to skip the user triggering the action (e.g. the manager doing the rework).
+async function findLastHandlerInDepartment(
+  client: Prisma.TransactionClient | typeof prisma,
+  departmentId: string,
+  history: { userId: string; timestamp: Date | string }[],
+  excludeUserId?: string,
+): Promise<{ id: string; name: string; customRoleName: string | null } | null> {
+  if (history.length === 0) return null;
+
+  const historyUserIds = [...new Set(
+    history.map((h) => h.userId).filter((uid) => uid && uid !== excludeUserId),
+  )];
+  if (historyUserIds.length === 0) return null;
+
+  const usersInDept = await client.user.findMany({
+    where: { id: { in: historyUserIds }, departmentId, isActive: true },
+    select: { id: true, name: true, customRole: { select: { name: true } } },
+  });
+
+  if (usersInDept.length === 0) return null;
+
+  const deptUserMap = new Map(usersInDept.map((u) => [u.id, u]));
+
+  const sorted = [...history]
+    .filter((h) => h.userId !== excludeUserId)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  for (const entry of sorted) {
+    const u = deptUserMap.get(entry.userId);
+    if (u) return { id: u.id, name: u.name, customRoleName: u.customRole?.name ?? null };
+  }
+
+  return null;
+}
+
 /**
  * SERVICE LAYER (Internal Logic)
  */
@@ -1866,20 +1932,33 @@ export async function updateLoanRequest(
         updatePayload.stageCompletedBy = { set: [] };
         const explicitAssigneesProvided = dataToUpdate.hasOwnProperty('assignedToUsers');
         if (isDepartmentHandover && !explicitAssigneesProvided) {
-          const autoAssignee = await findWorkflowAssignee(tx, {
-            departmentId: newStageDef.responsibleDepartmentId,
-            departmentName: newStageDef.responsibleDepartment.name,
-            stageName: newStageDef.name,
-            workflowName: newStageDef.workflowVersion.workflowDefinition.name,
-            allowedRoles: newStageDef.allowedRoles,
-            preferredUserIds: existingLoan.createdById ? [existingLoan.createdById] : [],
-          });
+          let autoAssignee: { id: string; name: string; customRoleName: string | null } | null = null;
+
+          if (existingLoan.submissionType === 'TYPE1') {
+            // Head Office workflow: if this department has been visited before, return to the
+            // last handler there; otherwise escalate to the highest authority (Chief > Director > Manager).
+            const lastHandler = await findLastHandlerInDepartment(
+              tx,
+              newStageDef.responsibleDepartmentId,
+              existingLoan.history as { userId: string; timestamp: Date }[],
+            );
+            autoAssignee = lastHandler ?? await findHighestAuthorityInDepartment(tx, newStageDef.responsibleDepartmentId);
+          } else {
+            // District or other workflows: use existing role-based assignment.
+            autoAssignee = await findWorkflowAssignee(tx, {
+              departmentId: newStageDef.responsibleDepartmentId,
+              departmentName: newStageDef.responsibleDepartment.name,
+              stageName: newStageDef.name,
+              workflowName: newStageDef.workflowVersion.workflowDefinition.name,
+              allowedRoles: newStageDef.allowedRoles,
+              preferredUserIds: existingLoan.createdById ? [existingLoan.createdById] : [],
+            });
+          }
 
           if (autoAssignee) {
             updatePayload.assignedToUsers = { set: [{ id: autoAssignee.id }] };
             updatePayload.assignedBy = { connect: { id: user.id } };
 
-            // Requirement Fix: Ensure auto-assigned users receive notifications during handover
             await createCaseAssignedNotifications(tx, {
               loanRequestId: id,
               loanNumber: existingLoan.loanNumber,
@@ -1976,6 +2055,37 @@ export async function updateLoanRequest(
       // automatically assign it back to the person who assigned it (the Director or Manager).
       if (submittedForManagerReview && !dataToUpdate.hasOwnProperty('assignedToUsers') && existingLoan.assignedById) {
         updatePayload.assignedToUsers = { set: [{ id: existingLoan.assignedById }] };
+      }
+
+      // HEAD OFFICE REWORK ENHANCEMENT:
+      // When a case is returned for rework on a TYPE1 loan, auto-assign to the last user who
+      // touched it in the current department (overriding any explicit assignee selection).
+      if (existingLoan.submissionType === 'TYPE1' && existingLoan.assignedDepartmentId) {
+        const existingHistoryIdSet = new Set((existingLoan.history || []).map((h) => h.id));
+        const isRework = (dataToUpdate.history || [])
+          .filter((h) => !existingHistoryIdSet.has(h.id))
+          .some((h) => (h.notes || '').toLowerCase().includes('returned for rework'));
+
+        if (isRework) {
+          const lastHandler = await findLastHandlerInDepartment(
+            tx,
+            existingLoan.assignedDepartmentId,
+            existingLoan.history as { userId: string; timestamp: Date }[],
+            user.id, // exclude the manager performing the rework
+          );
+          if (lastHandler) {
+            updatePayload.assignedToUsers = { set: [{ id: lastHandler.id }] };
+            updatePayload.assignedBy = { connect: { id: user.id } };
+            await createCaseAssignedNotifications(tx, {
+              loanRequestId: id,
+              loanNumber: existingLoan.loanNumber,
+              customerName: existingLoan.customer?.name,
+              assigneeIds: [lastHandler.id],
+              assignedByUserId: user.id,
+              assignedByName: user.fullName,
+            });
+          }
+        }
       }
 
       const stageTransitioned = Boolean(
