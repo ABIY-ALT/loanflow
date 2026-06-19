@@ -105,7 +105,7 @@ export default function MyValuationCases() {
   }
 
   return (
-    <div className="p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">My Valuation Cases</h1>
         <p className="text-muted-foreground mt-2">Cases assigned to you for property valuation or management.</p>
@@ -130,7 +130,7 @@ export default function MyValuationCases() {
             <TableBody>
               {cases.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No assigned cases found.</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No assigned cases found.</TableCell>
                 </TableRow>
               ) : (
                 cases.map((c) => (

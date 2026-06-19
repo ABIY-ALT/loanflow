@@ -105,7 +105,7 @@ export default function CommitteeApproval() {
   }
 
   return (
-    <div className="p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">District Committee Approval</h1>
         <p className="text-muted-foreground mt-2">Review and vote on loan applications (Type 2).</p>

@@ -12,7 +12,8 @@ import {
   getWorkflowDefinitions,
   moveLoanToStage,
   returnToDistrictAnalyst,
-  type CaseReviewRecord 
+  returnToOriginatingCRM,
+  type CaseReviewRecord
 } from '@/services/loan-service-prisma';
 import type { LoanRequest, User, WorkflowDefinition } from '@/types/loan';
 import { format, parseISO, formatISO, addDays } from 'date-fns';

@@ -92,7 +92,7 @@ export default function ValuationReviewQueue() {
   }
 
   return (
-    <div className="p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Valuation Review Queue</h1>
         <p className="text-muted-foreground mt-2">Pending reviews for property valuation reports.</p>

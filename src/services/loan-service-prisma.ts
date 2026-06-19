@@ -1183,10 +1183,11 @@ export async function returnToOriginatingCRM(
       const loan = await tx.loanRequest.findUnique({
         where: { id: loanRequestId },
         include: {
-          workflowVersion: { 
-            include: { 
-              stages: { orderBy: { order: 'asc' }, include: { responsibleDepartment: true } } 
-            } 
+          workflowVersion: {
+            include: {
+              workflowDefinition: { select: { order: true } },
+              stages: { orderBy: { order: 'asc' }, include: { responsibleDepartment: true } }
+            }
           },
           customer: { select: { name: true } },
           createdBy: true,
@@ -1196,9 +1197,46 @@ export async function returnToOriginatingCRM(
       if (!loan) throw new Error("Loan not found");
       if (!loan.createdById) throw new Error("Originating CRM/RM not found for this loan.");
 
-      // Find the first stage of the workflow (typically the submission/intake stage)
-      const targetStage = loan.workflowVersion?.stages[0];
-      if (!targetStage) throw new Error("Target stage (Intake) not found.");
+      // The case currently sits in a specialist workflow (e.g. WF-02 Valuation
+      // or WF-05 Appraisal). "Return to Originating CRM" sends it back to the RM
+      // handoff point: the immediately preceding RM/CRM workflow, landing on the
+      // stage that forwarded the case onward (e.g. WF-01's "Submit to Property
+      // Valuation"), so the originating RM resumes from where they handed off —
+      // not at the start of the workflow.
+      const currentOrder = loan.workflowVersion?.workflowDefinition?.order ?? 0;
+      const precedingWorkflow = await tx.workflowDefinition.findFirst({
+        where: {
+          sectorId: loan.sectorId,
+          order: { lt: currentOrder },
+          NOT: [
+            { name: { contains: "Appeal", mode: "insensitive" } },
+            { name: { contains: "Optional", mode: "insensitive" } },
+          ],
+        },
+        orderBy: { order: "desc" }, // the workflow immediately before the current one
+        include: {
+          versions: {
+            where: { isActive: true },
+            take: 1,
+            include: {
+              stages: { orderBy: { order: "asc" }, include: { responsibleDepartment: true } },
+            },
+          },
+        },
+      });
+
+      const precedingVersion = precedingWorkflow?.versions[0];
+      const precedingStages = precedingVersion?.stages ?? [];
+      // The handoff stage is the last stage of that RM workflow — the one whose
+      // completion forwarded the case into the specialist workflow.
+      const handoffStage = precedingStages.length
+        ? precedingStages[precedingStages.length - 1]
+        : undefined;
+      // Fall back to the current workflow's first stage when there is no
+      // preceding workflow (e.g. the single-workflow District flow).
+      const targetStage = handoffStage ?? loan.workflowVersion?.stages[0];
+      if (!targetStage) throw new Error("Target stage not found for return.");
+      const switchesWorkflow = !!precedingVersion && precedingVersion.id !== loan.workflowVersionId;
 
       const now = new Date();
       const status = isCommentOnly ? 'RETURNED_FOR_COMMENT' : 'RETURNED_FOR_REWORK';
@@ -1210,6 +1248,9 @@ export async function returnToOriginatingCRM(
       await tx.loanRequest.update({
         where: { id: loanRequestId },
         data: {
+          ...(switchesWorkflow
+            ? { workflowVersion: { connect: { id: precedingVersion!.id } } }
+            : {}),
           currentWorkflowStage: { connect: { id: targetStage.id } },
           assignedDepartment: { connect: { id: targetStage.responsibleDepartmentId } },
           stageEntryDate: now,

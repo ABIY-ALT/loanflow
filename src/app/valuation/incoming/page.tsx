@@ -95,7 +95,7 @@ export default function ValuationIncomingQueue() {
   }
 
   return (
-    <div className="p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Valuation Department Dashboard</h1>
         <p className="text-muted-foreground mt-2">Manage incoming cases and track active assignments within the Valuation Department.</p>

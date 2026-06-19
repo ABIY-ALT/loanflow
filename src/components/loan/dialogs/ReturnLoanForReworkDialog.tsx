@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { LoanRequest, User as UserType } from '@/types/loan';
 import { UNASSIGNED_DIALOG_OPTION_VALUE } from './EditLoanDetailsDialog';
 
@@ -98,7 +99,7 @@ export function ReturnLoanForReworkDialog({
         onOpenChange(open);
         if(!open) { setReworkNote(''); setReworkAssigneeIds([]); setIsCommentOnly(forceCommentOnly); }
     }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {forceCommentOnly
@@ -196,37 +197,36 @@ export function ReturnLoanForReworkDialog({
             </div>
           )}
         </div>
-        <DialogFooter className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 flex justify-start">
-            {onReturnToCRM && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleReturnToCRM}
-                disabled={isSaving || !reworkNote.trim()}
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-              >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Return to Originating CRM
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:space-x-0">
+          {onReturnToCRM && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleReturnToCRM}
+              disabled={isSaving || !reworkNote.trim()}
+              className="w-full justify-center text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 sm:w-auto"
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Return to Originating CRM
+            </Button>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:ml-auto">
             <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
+              <Button type="button" variant="outline" disabled={isSaving} className="w-full sm:w-auto">Cancel</Button>
             </DialogClose>
             <Button
               type="button"
               onClick={handleConfirm}
               disabled={isSaving || !reworkNote.trim()}
               variant="default"
-              className={
+              className={cn(
+                'w-full sm:w-auto',
                 forceCommentOnly
                   ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                   : isCommentOnly
                   ? 'bg-amber-600 hover:bg-amber-700 text-white'
                   : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
-              }
+              )}
             >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {forceCommentOnly

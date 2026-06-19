@@ -78,7 +78,7 @@ export default function AnalystReview() {
   }
 
   return (
-    <div className="p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Analyst Review Queue</h1>
         <p className="text-muted-foreground mt-2">Perform full loan analysis on cases returned from valuation.</p>

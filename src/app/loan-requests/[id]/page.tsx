@@ -12,7 +12,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from '@/lib/district-workflow';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, returnToOriginatingCRM, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
 import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
