@@ -81,10 +81,12 @@ export default function ValuationIncomingQueue() {
     }
   };
 
-  // The Director's only routing target is a Maker Manager (start of the Maker chain).
+  // The Director normally routes to a Maker Manager (start of the Maker chain), but
+  // when no Maker Manager is available the case can be assigned straight to a Maker Officer.
   const makerManagers = staff.filter(s => s.customRole?.name?.includes('Manager') && s.customRole?.name?.includes('Maker'));
+  const makerOfficers = staff.filter(s => s.customRole?.name === 'Property Valuation Officer');
 
-  const filteredStaff = makerManagers;
+  const filteredStaff = routingOption === 'OFFICER' ? makerOfficers : makerManagers;
   const getCustomerName = (loanRequest: LoanRequest) => loanRequest.customerName ?? 'N/A';
   const getSectorName = (loanRequest: LoanRequest) => loanRequest.sectorName ?? 'N/A';
   const getRequestTypeName = (loanRequest: LoanRequest) => loanRequest.requestTypeName ?? 'N/A';
@@ -233,10 +235,41 @@ export default function ValuationIncomingQueue() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Forward to Maker Manager</label>
+                <label className="text-sm font-medium">Routing</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={routingOption === 'MANAGER' ? 'default' : 'outline'}
+                    className="justify-start"
+                    onClick={() => { setRoutingOption('MANAGER'); setSelectedAssignee(''); }}
+                  >
+                    <Users className="h-4 w-4 mr-2" /> Maker Manager
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={routingOption === 'OFFICER' ? 'default' : 'outline'}
+                    className="justify-start"
+                    onClick={() => { setRoutingOption('OFFICER'); setSelectedAssignee(''); }}
+                  >
+                    <UserCheck className="h-4 w-4 mr-2" /> Officer (direct)
+                  </Button>
+                </div>
+                {routingOption === 'OFFICER' && (
+                  <p className="flex items-start gap-1 text-xs text-muted-foreground">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    Use this only when no Maker Manager is available. The case skips the manager
+                    step and starts at Valuation 01-A under the chosen officer.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {routingOption === 'OFFICER' ? 'Forward to Maker Officer' : 'Forward to Maker Manager'}
+                </label>
                 <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Maker Manager" />
+                    <SelectValue placeholder={routingOption === 'OFFICER' ? 'Select Maker Officer' : 'Select Maker Manager'} />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredStaff.map(s => (
@@ -247,7 +280,9 @@ export default function ValuationIncomingQueue() {
                   </SelectContent>
                 </Select>
                 {filteredStaff.length === 0 && (
-                  <p className="text-xs text-amber-600">No Maker Manager is available in the Valuation Department.</p>
+                  <p className="text-xs text-amber-600">
+                    No {routingOption === 'OFFICER' ? 'Maker Officer' : 'Maker Manager'} is available in the Valuation Department.
+                  </p>
                 )}
               </div>
             </div>

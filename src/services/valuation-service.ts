@@ -171,7 +171,7 @@ export async function getValuationDeptStaff(): Promise<ValuationResult<{ staff: 
 
 export async function routeValuationCase(
   queueId: string,
-  _routingOption: 'MANAGER' | 'OFFICER',
+  routingOption: 'MANAGER' | 'OFFICER',
   assigneeId: string
 ): Promise<ValuationResult<{ success: true; updated: unknown }>> {
   try {
@@ -185,8 +185,11 @@ export async function routeValuationCase(
 
     if (!queueEntry) return createErrorResult("Queue entry not found", "routeValuationCase");
 
-    // The next status is driven purely by the current status:
+    // The next status is driven by the current status (and, from PENDING, the
+    // Director's chosen routing option):
     //   PENDING                      -> ASSIGNED_TO_MANAGER          (Director picks a Maker Manager)
+    //   PENDING + OFFICER            -> ASSIGNED_TO_OFFICER          (Director assigns an Officer directly
+    //                                                                 when no Maker Manager is available)
     //   ASSIGNED_TO_MANAGER          -> ASSIGNED_TO_OFFICER          (Maker Manager picks a Maker Officer)
     //   ASSIGNED_TO_CHECKER_MANAGER  -> ASSIGNED_TO_CHECKER_OFFICER  (Checker Manager picks a Checker Officer)
     const updateData: any = { assignedToId: assigneeId };
@@ -195,10 +198,21 @@ export async function routeValuationCase(
 
     switch (queueEntry.status) {
       case "PENDING":
-        nextStatus = "ASSIGNED_TO_MANAGER";
-        routeLabel = "Maker Manager";
-        updateData.routingOption = "MANAGER";
-        updateData.makerId = assigneeId;
+        if (routingOption === "OFFICER") {
+          // Maker Manager unavailable: the Director hands the case straight to a
+          // Maker Officer. It skips ASSIGNED_TO_MANAGER and lands at Valuation 01-A,
+          // then continues through the normal Checker chain. The Director stands in
+          // as the Maker owner so a Maker Manager can still finalize later.
+          nextStatus = "ASSIGNED_TO_OFFICER";
+          routeLabel = "Maker Officer (direct)";
+          updateData.routingOption = "OFFICER";
+          updateData.makerId = user.id;
+        } else {
+          nextStatus = "ASSIGNED_TO_MANAGER";
+          routeLabel = "Maker Manager";
+          updateData.routingOption = "MANAGER";
+          updateData.makerId = assigneeId;
+        }
         break;
       case "ASSIGNED_TO_MANAGER":
         nextStatus = "ASSIGNED_TO_OFFICER";
