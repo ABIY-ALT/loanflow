@@ -1269,6 +1269,7 @@ export async function returnToOriginatingCRM(
           stageEntryDate: now,
           currentStageStatus: status,
           isReadyForManagerReview: false,
+          isReadyForValuation: false,
           assignedToUsers: { set: [{ id: loan.createdById }] },
           lastUpdatedDate: now,
           history: {
@@ -1291,6 +1292,9 @@ export async function returnToOriginatingCRM(
           createdAt: now,
         }
       });
+
+      // Clear from Valuation Queue so it disappears from the valuation dashboard
+      await tx.valuationQueue.deleteMany({ where: { loanRequestId } });
 
       await createCaseAssignedNotifications(tx, {
         loanRequestId,
