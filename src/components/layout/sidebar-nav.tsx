@@ -146,7 +146,7 @@ const navItemsConfig: NavItemConfig[] = [
   },
   {
     href: '/valuation/incoming',
-    label: 'District Valuation',
+    label: 'Valuation',
     icon: Building,
     requiredPermissions: [
       PERMISSIONS.VIEW_DISTRICT_VALUATION,

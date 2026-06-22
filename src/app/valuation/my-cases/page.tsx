@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, ClipboardEdit, Save, CheckCircle, ExternalLink } from 'lucide-react';
 import { getMyValuationCases, getValuationDeptStaff, routeValuationCase } from '@/services/valuation-service';
+import { completeValuationWork } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import {
@@ -35,7 +36,29 @@ export default function MyValuationCases() {
   const [selectedCase, setSelectedCase] = useState<ValuationQueueItem | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
   const [isRouting, setIsRouting] = useState(false);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Head Office officers prepare no report — they just mark the task completed,
+  // which advances the queue (Maker Officer -> Checker queue, Checker Officer -> review).
+  const handleMarkOfficerComplete = async (loanRequestId: string) => {
+    if (!confirm('Mark this valuation task as completed and forward it on?')) return;
+    setCompletingId(loanRequestId);
+    try {
+      const result = await completeValuationWork(loanRequestId);
+      if ('error' in result) {
+        toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Success', description: 'Valuation task marked as completed.' });
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -139,23 +162,36 @@ export default function MyValuationCases() {
                     <TableCell>{c.loanRequest.customerName}</TableCell>
                     <TableCell>{c.loanRequest.loanAmount.toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge variant={c.status === 'ASSIGNED_TO_MANAGER' ? 'default' : 'secondary'}>
+                      <Badge variant={c.status.includes('MANAGER') ? 'default' : 'secondary'}>
                         {c.status.replace(/_/g, ' ')}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        {c.status === 'ASSIGNED_TO_MANAGER' ? (
+                        {(c.status === 'ASSIGNED_TO_MANAGER' || c.status === 'ASSIGNED_TO_CHECKER_MANAGER') ? (
                           <Button size="sm" variant="outline" onClick={() => {
                             setSelectedCase(c);
                             setSelectedAssignee('');
                           }}>
-                            Assign to Officer
+                            {c.status === 'ASSIGNED_TO_CHECKER_MANAGER' ? 'Assign to Checker Officer' : 'Assign to Maker Officer'}
+                          </Button>
+                        ) : c.loanRequest.submissionType === 'TYPE1' ? (
+                          // Head Office officers prepare no report — just mark completed.
+                          <Button
+                            size="sm"
+                            onClick={() => handleMarkOfficerComplete(c.loanRequestId)}
+                            disabled={completingId === c.loanRequestId}
+                          >
+                            {completingId === c.loanRequestId
+                              ? <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                              : <CheckCircle className="h-4 w-4 mr-2" />}
+                            Mark Completed
                           </Button>
                         ) : (
-                          <Link href={`/loan-requests/${c.loanRequestId}`} passHref>
+                          // District officers prepare the valuation report / PVR.
+                          <Link href={`/valuation/report/${c.loanRequestId}`} passHref>
                             <Button size="sm">
-                              View Case <ExternalLink className="ml-2 h-4 w-4" />
+                              Open Report <ExternalLink className="ml-2 h-4 w-4" />
                             </Button>
                           </Link>
                         )}
@@ -173,9 +209,11 @@ export default function MyValuationCases() {
         <Dialog open={!!selectedCase} onOpenChange={() => setSelectedCase(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Assign to Valuation Officer</DialogTitle>
+              <DialogTitle>
+                {selectedCase.status === 'ASSIGNED_TO_CHECKER_MANAGER' ? 'Assign to Checker Officer' : 'Assign to Maker Officer'}
+              </DialogTitle>
               <DialogDescription>
-                Assigning case {selectedCase.loanRequest.loanNumber} to a field officer.
+                Assigning case {selectedCase.loanRequest.loanNumber} to a valuation officer.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">

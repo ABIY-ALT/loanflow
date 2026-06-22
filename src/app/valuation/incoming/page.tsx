@@ -81,10 +81,10 @@ export default function ValuationIncomingQueue() {
     }
   };
 
-  const managers = staff.filter(s => s.customRole?.name.includes('Manager'));
-  const officers = staff.filter(s => !s.customRole?.name.includes('Manager') && !s.customRole?.name.includes('Director'));
+  // The Director's only routing target is a Maker Manager (start of the Maker chain).
+  const makerManagers = staff.filter(s => s.customRole?.name?.includes('Manager') && s.customRole?.name?.includes('Maker'));
 
-  const filteredStaff = routingOption === 'MANAGER' ? managers : officers;
+  const filteredStaff = makerManagers;
   const getCustomerName = (loanRequest: LoanRequest) => loanRequest.customerName ?? 'N/A';
   const getSectorName = (loanRequest: LoanRequest) => loanRequest.sectorName ?? 'N/A';
   const getRequestTypeName = (loanRequest: LoanRequest) => loanRequest.requestTypeName ?? 'N/A';
@@ -144,7 +144,7 @@ export default function ValuationIncomingQueue() {
                         <TableCell>
                           <Button size="sm" onClick={() => {
                             setSelectedCase(c);
-                            setRoutingOption(managers.length > 0 ? 'MANAGER' : 'OFFICER');
+                            setRoutingOption('MANAGER');
                             setSelectedAssignee('');
                           }}>
                             Route Case <ArrowRight className="ml-2 h-4 w-4" />
@@ -233,26 +233,10 @@ export default function ValuationIncomingQueue() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Routing Option</label>
-                <Select value={routingOption} onValueChange={(val) => {
-                  setRoutingOption(val as 'MANAGER' | 'OFFICER');
-                  setSelectedAssignee('');
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Routing Option" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {managers.length > 0 && <SelectItem value="MANAGER">Forward to Division Manager</SelectItem>}
-                    <SelectItem value="OFFICER">Directly Assign to Officer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{routingOption === 'MANAGER' ? 'Select Manager' : 'Select Officer'}</label>
+                <label className="text-sm font-medium">Forward to Maker Manager</label>
                 <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
                   <SelectTrigger>
-                    <SelectValue placeholder={`Select ${routingOption === 'MANAGER' ? 'Manager' : 'Officer'}`} />
+                    <SelectValue placeholder="Select Maker Manager" />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredStaff.map(s => (
@@ -262,16 +246,10 @@ export default function ValuationIncomingQueue() {
                     ))}
                   </SelectContent>
                 </Select>
+                {filteredStaff.length === 0 && (
+                  <p className="text-xs text-amber-600">No Maker Manager is available in the Valuation Department.</p>
+                )}
               </div>
-
-              {routingOption === 'OFFICER' && officers.length > 0 && (
-                <div className="bg-blue-50 p-4 rounded-md flex items-start space-x-3">
-                  <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div className="text-sm text-blue-700">
-                    <strong>Caseload Suggestion:</strong> {[...officers].sort((a, b) => a.valuationAssignments.length - b.valuationAssignments.length)[0].name} has the lowest caseload.
-                  </div>
-                </div>
-              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedCase(null)}>Cancel</Button>

@@ -333,13 +333,13 @@ model ValuationQueue {
   id                 String      @id @default(cuid())
   loanRequestId      String      @unique
   loanRequest        LoanRequest @relation(fields: [loanRequestId], references: [id])
-  status             String // PENDING, ASSIGNED_TO_MANAGER, ASSIGNED_TO_OFFICER, COMPLETED
+  status             String // PENDING, ASSIGNED_TO_MANAGER, ASSIGNED_TO_OFFICER, ASSIGNED_TO_CHECKER_MANAGER, ASSIGNED_TO_CHECKER_OFFICER, PENDING_CHECKER_REVIEW, PENDING_FINALIZATION, COMPLETED
   routingOption      String? // MANAGER, OFFICER
   assignedToId       String?
   assignedTo         User?       @relation("ValuationAssignee", fields: [assignedToId], references: [id])
-  makerId            String? // The Manager (Maker) who assigned this to an officer
+  makerId            String? // The Manager (Maker) who routed this through the maker chain
   maker              User?       @relation("ValuationMaker", fields: [makerId], references: [id])
-  isCheckedByChecker Boolean     @default(false)
+  isCheckedByChecker Boolean     @default(false) // Deprecated: checker is now a full chain
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 }

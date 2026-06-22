@@ -4,12 +4,64 @@ import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/app/auth/actions';
 import { PERMISSIONS } from '@/lib/permissions';
 import type { ValuationQueueItem, ValuationResult, ValuationStaff } from '@/types/valuation';
+import { ACTIVE_ASSIGNMENT_STATUSES } from '@/types/valuation';
 
 import { mapPrismaLoanToAppLoan } from './utils/mappers';
 import { dedupeLoansBySubmission } from '@/lib/loan-submission-fingerprint';
 import { createCaseAssignedNotifications } from './notification-service';
 
 const VALUATION_DEPT_NAME = 'Property Valuation Department';
+
+/**
+ * Maps each ValuationQueue status to the corresponding seeded WF-02 workflow stage.
+ * Used to keep a Head Office (TYPE1) loan's currentWorkflowStage in sync with the
+ * queue state machine so pipeline / dashboard views advance naturally. TYPE2 cases
+ * stay on their single "HO Valuation Review" stage until COMPLETED and are skipped.
+ */
+const VALUATION_WF02_STAGE_BY_STATUS: Record<string, string> = {
+  PENDING: 'Valuation Maker',
+  ASSIGNED_TO_MANAGER: 'Valuation Maker',
+  ASSIGNED_TO_OFFICER: 'Valuation 01-A',
+  ASSIGNED_TO_CHECKER_MANAGER: 'Valuation Checker',
+  ASSIGNED_TO_CHECKER_OFFICER: 'Valuation 02-A',
+  PENDING_CHECKER_REVIEW: 'Valuation 02-A',
+  PENDING_FINALIZATION: 'Valuation Finalization',
+};
+
+async function syncValuationStage(tx: any, loanRequestId: string, status: string) {
+  const stageName = VALUATION_WF02_STAGE_BY_STATUS[status];
+  if (!stageName) return;
+
+  const loan = await tx.loanRequest.findUnique({
+    where: { id: loanRequestId },
+    select: {
+      submissionType: true,
+      workflowVersion: { select: { stages: { include: { responsibleDepartment: true } } } },
+    },
+  });
+
+  // Only Head Office (TYPE1) has the 5 granular WF-02 stages to mirror.
+  if (!loan || loan.submissionType !== 'TYPE1') return;
+
+  const stage = loan.workflowVersion?.stages.find((s: any) => s.name === stageName);
+  if (!stage) return;
+
+  const now = new Date();
+  await tx.loanRequest.update({
+    where: { id: loanRequestId },
+    data: {
+      currentWorkflowStage: { connect: { id: stage.id } },
+      assignedDepartment: { connect: { id: stage.responsibleDepartmentId } },
+      stageEntryDate: now,
+      stageDeadline: new Date(now.getTime() + stage.defaultTimelineDays * 24 * 60 * 60 * 1000),
+    },
+  });
+}
+
+// Role predicates based on the seeded custom-role names (see prisma/seed.ts).
+const isMakerManager = (roleName?: string | null) => !!roleName?.includes('Manager') && !!roleName?.includes('Maker');
+const isCheckerManager = (roleName?: string | null) => !!roleName?.includes('Manager') && !!roleName?.includes('Checker');
+const isDirectorRole = (roleName?: string | null) => !!roleName?.includes('Director');
 
 /**
  * Helper to map valuation queue items and their nested loans
@@ -54,10 +106,7 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
 
     const cases = await prisma.valuationQueue.findMany({
       where: {
-        status: "PENDING",
-        loanRequest: {
-          submissionType: 'TYPE2' // Queue is for District Valuation
-        }
+        status: "PENDING", // Director's incoming queue, both Head Office and District
       },
       include: {
         loanRequest: {
@@ -108,9 +157,7 @@ export async function getValuationDeptStaff(): Promise<ValuationResult<{ staff: 
         customRole: true,
         valuationAssignments: {
           where: {
-            status: {
-              in: ["ASSIGNED_TO_MANAGER", "ASSIGNED_TO_OFFICER"]
-            }
+            status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] }
           }
         }
       }
@@ -124,7 +171,7 @@ export async function getValuationDeptStaff(): Promise<ValuationResult<{ staff: 
 
 export async function routeValuationCase(
   queueId: string,
-  routingOption: 'MANAGER' | 'OFFICER',
+  _routingOption: 'MANAGER' | 'OFFICER',
   assigneeId: string
 ): Promise<ValuationResult<{ success: true; updated: unknown }>> {
   try {
@@ -138,51 +185,65 @@ export async function routeValuationCase(
 
     if (!queueEntry) return createErrorResult("Queue entry not found", "routeValuationCase");
 
-    // Logic: 
-    // 1. Director can route PENDING cases to MANAGER or OFFICER.
-    // 2. Manager (Maker) can route ASSIGNED_TO_MANAGER cases to OFFICER.
-    
-    let status = routingOption === 'MANAGER' ? "ASSIGNED_TO_MANAGER" : "ASSIGNED_TO_OFFICER";
-    
-    const updateData: any = {
-      status,
-      routingOption,
-      assignedToId: assigneeId
-    };
+    // The next status is driven purely by the current status:
+    //   PENDING                      -> ASSIGNED_TO_MANAGER          (Director picks a Maker Manager)
+    //   ASSIGNED_TO_MANAGER          -> ASSIGNED_TO_OFFICER          (Maker Manager picks a Maker Officer)
+    //   ASSIGNED_TO_CHECKER_MANAGER  -> ASSIGNED_TO_CHECKER_OFFICER  (Checker Manager picks a Checker Officer)
+    const updateData: any = { assignedToId: assigneeId };
+    let nextStatus: string;
+    let routeLabel: string;
 
-    // If a manager is assigning to an officer, they become the "Maker"
-    if (routingOption === 'OFFICER' && (user.customRoleName?.includes('Manager') || user.customRoleName?.includes('Director'))) {
-      updateData.makerId = user.id;
+    switch (queueEntry.status) {
+      case "PENDING":
+        nextStatus = "ASSIGNED_TO_MANAGER";
+        routeLabel = "Maker Manager";
+        updateData.routingOption = "MANAGER";
+        updateData.makerId = assigneeId;
+        break;
+      case "ASSIGNED_TO_MANAGER":
+        nextStatus = "ASSIGNED_TO_OFFICER";
+        routeLabel = "Maker Officer";
+        updateData.routingOption = "OFFICER";
+        if (!queueEntry.makerId) updateData.makerId = user.id;
+        break;
+      case "ASSIGNED_TO_CHECKER_MANAGER":
+        nextStatus = "ASSIGNED_TO_CHECKER_OFFICER";
+        routeLabel = "Checker Officer";
+        updateData.routingOption = "OFFICER";
+        break;
+      default:
+        return createErrorResult("Case is not in a routable state.", "routeValuationCase");
     }
-    
-    const { updated, loan } = await prisma.$transaction(async (tx) => {
+
+    updateData.status = nextStatus;
+
+    const { updated } = await prisma.$transaction(async (tx) => {
       const updatedQueue = await tx.valuationQueue.update({
         where: { id: queueId },
         data: updateData
       });
 
-      // **FIX**: Also update the loanRequest's assignedToUsers so the case is removed from incoming queue
-      // This syncs the assignment from valuationQueue to loanRequest
+      // Mirror the assignment onto the loanRequest so the case follows the assignee.
       const updatedLoan = await tx.loanRequest.update({
         where: { id: queueEntry.loanRequestId },
         data: {
-          assignedToUsers: {
-            connect: { id: assigneeId }
-          }
+          assignedToUsers: { set: [{ id: assigneeId }] }
         },
         include: { customer: true }
       });
+
+      // Keep the Head Office WF-02 stage in sync with the queue status.
+      await syncValuationStage(tx, queueEntry.loanRequestId, nextStatus);
 
       await tx.loanHistoryEntry.create({
         data: {
           loanRequestId: queueEntry.loanRequestId,
           userId: user.id,
           stageName: "Valuation Routing",
-          notes: `Case routed to ${routingOption.toLowerCase()} (${status}) and assigned to user ID ${assigneeId} by ${user.fullName}.`,
+          notes: `Case routed to ${routeLabel} by ${user.fullName}.`,
         }
       });
 
-      // Send notification to the assignee
       await createCaseAssignedNotifications(tx, {
         loanRequestId: updatedLoan.id,
         loanNumber: updatedLoan.loanNumber,
@@ -228,20 +289,20 @@ export async function getMyValuationCases(): Promise<ValuationResult<{ cases: Va
       user.permissions.includes(PERMISSIONS.MANAGE_USERS);
     if (!canView) return createErrorResult("Unauthorized", "getMyValuationCases");
 
-    // For testing/Admin: Show everything in the department if admin
-    // Otherwise show only what's assigned to the specific user
-    const where: any = {
-      status: {
-        in: ["ASSIGNED_TO_MANAGER", "ASSIGNED_TO_OFFICER"]
-      },
-      loanRequest: {
-        submissionType: 'TYPE2' // "My Valuation" workspace is for District cases
-      }
-    };
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
-    if (!user.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
-      where.assignedToId = user.id;
+    // A user sees:
+    //   - cases directly assigned to them that are in an active assignment status
+    //   - if they are a Checker Manager (or admin), the unassigned Checker-Manager queue
+    const orConditions: any[] = [
+      { assignedToId: user.id, status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] } },
+    ];
+
+    if (isCheckerManager(user.customRoleName) || isAdmin) {
+      orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER" });
     }
+
+    const where: any = { OR: orConditions };
 
     const cases = await prisma.valuationQueue.findMany({
       where,
@@ -287,32 +348,46 @@ export async function submitValuationReport(queueId: string, reportData: any) {
 
     if (!queueEntry) return createErrorResult("Queue entry not found", "submitValuationReport");
 
-    // Workflow: Officer -> Manager (Maker) -> Director
-    let nextStatus = "PENDING_MANAGER_REVIEW";
-    
-    await prisma.valuationQueue.update({
-      where: { id: queueId },
-      data: {
-        status: nextStatus,
-        assignedToId: null, // Requirement Fix: Clear queue assignment
-      }
-    });
+    // Officer submissions advance per current status:
+    //   ASSIGNED_TO_OFFICER          -> ASSIGNED_TO_CHECKER_MANAGER  (hand to the Checker queue)
+    //   ASSIGNED_TO_CHECKER_OFFICER  -> PENDING_CHECKER_REVIEW       (Checker Manager final review)
+    let nextStatus: string;
+    let notes: string;
 
-    await prisma.loanRequest.update({
-      where: { id: queueEntry.loanRequestId },
-      data: {
-        assignedToUsers: { set: [] }, // Clear officer assignment
-        currentStageStatus: "Pending Manager Review"
-      }
-    });
+    if (queueEntry.status === "ASSIGNED_TO_OFFICER") {
+      nextStatus = "ASSIGNED_TO_CHECKER_MANAGER";
+      notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker queue.`;
+    } else if (queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER") {
+      nextStatus = "PENDING_CHECKER_REVIEW";
+      notes = `Verification completed by ${user.fullName}. Pending Checker Manager review.`;
+    } else {
+      return createErrorResult("Case is not in a state that can be submitted by an officer.", "submitValuationReport");
+    }
 
-    await prisma.loanHistoryEntry.create({
-      data: {
-        loanRequestId: queueEntry.loanRequestId,
-        userId: user.id,
-        stageName: "Valuation Report Submission",
-        notes: `Valuation report submitted by ${user.fullName}. Pending manager review.`,
-      }
+    await prisma.$transaction(async (tx) => {
+      await tx.valuationQueue.update({
+        where: { id: queueId },
+        data: {
+          status: nextStatus,
+          assignedToId: null, // Clear per-step assignment; case becomes a queue item
+        }
+      });
+
+      await tx.loanRequest.update({
+        where: { id: queueEntry.loanRequestId },
+        data: { assignedToUsers: { set: [] } }
+      });
+
+      await syncValuationStage(tx, queueEntry.loanRequestId, nextStatus);
+
+      await tx.loanHistoryEntry.create({
+        data: {
+          loanRequestId: queueEntry.loanRequestId,
+          userId: user.id,
+          stageName: "Valuation Report Submission",
+          notes,
+        }
+      });
     });
 
     return { success: true };
@@ -333,36 +408,31 @@ export async function approveValuationReport(queueId: string) {
     if (!queueEntry) return createErrorResult("Queue entry not found", "approveValuationReport");
 
     // Workflow transitions:
-    // PENDING_MANAGER_REVIEW -> PENDING_DIRECTOR_REVIEW (Requires Maker approval)
-    // PENDING_DIRECTOR_REVIEW -> COMPLETED (Requires Director approval)
-    
+    //   PENDING_CHECKER_REVIEW -> PENDING_FINALIZATION  (Checker Manager approves the verification)
+    //   PENDING_FINALIZATION   -> COMPLETED             (Maker Manager finalizes the valuation)
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
     let nextStatus = queueEntry.status;
     let notes = "";
 
-    if (queueEntry.status === "PENDING_MANAGER_REVIEW") {
-      // Any manager or someone with promote permission can approve for Director review
-      const isManager = user.customRoleName?.includes('Manager') || user.customRoleName?.includes('Director');
-      const hasPermission = user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
-      const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
-
-      if (!isManager && !hasPermission && !isAdmin) {
-        return createErrorResult("Only a Manager or authorized personnel can approve this report for Director review.", "approveValuationReport");
+    if (queueEntry.status === "PENDING_CHECKER_REVIEW") {
+      const allowed = isCheckerManager(user.customRoleName) || user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE) || isAdmin;
+      if (!allowed) {
+        return createErrorResult("Only a Checker Manager can approve the verification.", "approveValuationReport");
       }
-
-      nextStatus = "PENDING_DIRECTOR_REVIEW";
-      notes = `Valuation report approved by ${user.fullName}. Sent to Director review.`;
-    } else if (queueEntry.status === "PENDING_DIRECTOR_REVIEW") {
-      // Only Director or Admin can perform final approval
-      const isDirector = user.customRoleName?.includes('Director');
-      const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
-
-      if (!isDirector && !isAdmin) {
-        return createErrorResult("Only a Department Director can perform the final valuation approval.", "approveValuationReport");
+      nextStatus = "PENDING_FINALIZATION";
+      notes = `Verification approved by ${user.fullName}. Sent to the Maker Manager for finalization.`;
+    } else if (queueEntry.status === "PENDING_FINALIZATION") {
+      const allowed = isMakerManager(user.customRoleName) || isAdmin;
+      if (!allowed) {
+        return createErrorResult("Only the Maker Manager can finalize the valuation.", "approveValuationReport");
       }
-
       nextStatus = "COMPLETED";
-      notes = `Valuation report approved by Director (${user.fullName}). Valuation completed.`;
+      notes = `Valuation finalized by ${user.fullName}. Valuation completed.`;
+    } else {
+      return createErrorResult("Case is not in a state that can be approved.", "approveValuationReport");
     }
+
+    await syncValuationStage(prisma, queueEntry.loanRequestId, nextStatus);
 
     await prisma.valuationQueue.update({
       where: { id: queueId },
@@ -524,41 +594,6 @@ export async function approveValuationReport(queueId: string) {
   }
 }
 
-export async function checkValuationReport(queueId: string) {
-  try {
-    const { user } = await getCurrentUser();
-    if (!user) return createErrorResult("Unauthorized", "checkValuationReport");
-
-    const queueEntry = await prisma.valuationQueue.findUnique({
-      where: { id: queueId }
-    });
-
-    if (!queueEntry) return createErrorResult("Queue entry not found", "checkValuationReport");
-
-    if (queueEntry.status !== "PENDING_MANAGER_REVIEW") {
-      return createErrorResult("Report is not in a state that can be checked by a Checker.", "checkValuationReport");
-    }
-
-    await prisma.valuationQueue.update({
-      where: { id: queueId },
-      data: { isCheckedByChecker: true }
-    });
-
-    await prisma.loanHistoryEntry.create({
-      data: {
-        loanRequestId: queueEntry.loanRequestId,
-        userId: user.id,
-        stageName: "Valuation Check",
-        notes: `Valuation report checked and verified by Checker (${user.fullName}).`,
-      }
-    });
-
-    return { success: true };
-  } catch (e: any) {
-    return createErrorResult(e.message, "checkValuationReport");
-  }
-}
-
 export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
   try {
     const { user } = await getCurrentUser();
@@ -567,7 +602,7 @@ export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ c
     const cases = await prisma.valuationQueue.findMany({
       where: {
         status: {
-          in: ["ASSIGNED_TO_MANAGER", "ASSIGNED_TO_OFFICER", "PENDING_MANAGER_REVIEW", "PENDING_DIRECTOR_REVIEW", "COMPLETED"]
+          in: [...ACTIVE_ASSIGNMENT_STATUSES, "PENDING_CHECKER_REVIEW", "PENDING_FINALIZATION", "COMPLETED"]
         }
       },
       include: {
@@ -609,27 +644,19 @@ export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "getValuationReviewQueue");
 
-    const isChecker = user.customRoleName?.includes('Checker');
-    const isDirector = user.customRoleName?.includes('Director');
-    const isManager = user.customRoleName?.includes('Manager');
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+    const canPromote = user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
 
     const orConditions: any[] = [];
 
-    // Managers/Makers see cases in PENDING_MANAGER_REVIEW
-    // If they have promote permission, they can act as a reviewer
-    if (isManager || isAdmin || user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE)) {
-      orConditions.push({ status: "PENDING_MANAGER_REVIEW" });
+    // Checker Managers do the final verification review.
+    if (isCheckerManager(user.customRoleName) || isAdmin || canPromote) {
+      orConditions.push({ status: "PENDING_CHECKER_REVIEW" });
     }
 
-    // Directors see cases in PENDING_DIRECTOR_REVIEW
-    if (isDirector || isAdmin) {
-      orConditions.push({ status: "PENDING_DIRECTOR_REVIEW" });
-    }
-
-    // Checkers can see cases in PENDING_MANAGER_REVIEW to mark as checked
-    if (isChecker && !orConditions.some(c => c.status === "PENDING_MANAGER_REVIEW")) {
-      orConditions.push({ status: "PENDING_MANAGER_REVIEW" });
+    // Maker Managers finalize the valuation.
+    if (isMakerManager(user.customRoleName) || isAdmin) {
+      orConditions.push({ status: "PENDING_FINALIZATION" });
     }
 
     if (orConditions.length === 0) return { cases: [] };

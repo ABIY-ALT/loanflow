@@ -13,7 +13,7 @@ import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, returnToOriginatingCRM, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
-import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward } from 'lucide-react';
+import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -839,8 +839,49 @@ export default function LoanDetailPage() {
     userPermissions.has(PERMISSIONS.DISTRIBUTE_TO_DISTRICT_APPROVAL) &&
     canDistributeToDistrictApproval(loan);
 
+  // While a case is being processed by the Property Valuation Department, all advancement
+  // happens through the dedicated /valuation workspace (Maker/Checker routing). Hide the
+  // generic stage-completion / promote controls here to keep a single source of truth.
+  const isInValuationWorkspace =
+    !loan.isTerminalStage &&
+    !loan.isValuationCompleted &&
+    (loan.assignedDepartment || '').toLowerCase().includes('valuation');
+
+  // Surface the District Analyst's comment so reviewers see it without opening history.
+  // Prefer the recommendation sent to the manager (lafData), else the latest saved remark.
+  const analystComment = (() => {
+    const rec = loan.lafData?.analystRecommendation;
+    if (rec && String(rec).trim()) {
+      return { text: String(rec).trim(), by: 'District Analyst' };
+    }
+    const fromHistory = [...(loan.history || [])]
+      .reverse()
+      .find((h) => h.notes?.startsWith('Analyst Remark:'));
+    if (fromHistory?.notes) {
+      return {
+        text: fromHistory.notes.replace(/^Analyst Remark:\s*/, '').trim(),
+        by: fromHistory.userName || 'District Analyst',
+      };
+    }
+    return null;
+  })();
+
   return (
     <div className="space-y-6">
+      {isInValuationWorkspace && (
+        <Alert className="border-blue-500 bg-blue-50 text-blue-900 shadow-sm">
+          <Building className="h-5 w-5 text-blue-600" />
+          <AlertTitle className="font-bold text-blue-800">In Property Valuation</AlertTitle>
+          <AlertDescription className="text-blue-700 font-medium">
+            This case is being processed by the Property Valuation Department. Routing and
+            completion are handled in the{' '}
+            <a href="/valuation/incoming" className="underline font-semibold hover:text-blue-900">
+              Valuation workspace
+            </a>
+            .
+          </AlertDescription>
+        </Alert>
+      )}
       {loan.submissionType === 'TYPE2' && Number(loan.loanAmount) > 20000000 && (
         <Alert variant="destructive" className="border-orange-500 bg-orange-50 text-orange-900 shadow-sm">
           <AlertCircle className="h-5 w-5 text-orange-600" />
@@ -872,7 +913,7 @@ export default function LoanDetailPage() {
         onSkipPvr={handleSkipPvr}
         isSkippingPvr={isSkippingPvr}
         isSaving={isSaving} 
-        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)}
+        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct && !isInValuationWorkspace)}
         canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)}
         requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
         assignMovesStage={isWf05RoutingStage}
@@ -918,6 +959,15 @@ export default function LoanDetailPage() {
                 ) : ( loan.currentStageStatus && <Badge variant="secondary">{loan.currentStageStatus}</Badge> )}
                 {loan.isUrgent && <Badge variant="destructive" className="animate-pulse">URGENT</Badge>}
                 {loan.isReadyForManagerReview && !loan.isTerminalStage && <Badge variant="outline" className="border-orange-500 bg-orange-50 text-orange-700">Awaiting Manager Review</Badge>}
+                {analystComment && (
+                  <div className="flex items-start gap-1.5 max-w-xs text-left bg-indigo-50 border border-indigo-200 rounded-md px-2.5 py-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-indigo-600 mt-0.5 shrink-0" />
+                    <p className="text-xs">
+                      <span className="font-semibold text-indigo-800">{analystComment.by} commented:</span>{' '}
+                      <span className="text-indigo-900 whitespace-pre-wrap break-words">{analystComment.text}</span>
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
         </CardHeader>

@@ -98,3 +98,99 @@ body {
     font-feature-settings: "rlig" 1,"calt" 1; /* Enable common ligatures and contextual alternates */
   }
 }
+
+/*
+ * Applied to the #pdf-content element only while html2canvas captures it for PDF export.
+ * html2canvas ignores @media print, so these rules expand horizontally-scrollable tables
+ * (shadcn <Table> wraps in .overflow-auto) so every column is captured, not just the
+ * visible viewport.
+ */
+.exporting-pdf .overflow-auto,
+.exporting-pdf .overflow-x-auto {
+  overflow: visible !important;
+}
+.exporting-pdf table {
+  width: 100% !important;
+}
+.exporting-pdf th,
+.exporting-pdf td {
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Print isolation for printable documents (LAF, PVR, Valuation Report, Customer Summary).
+ * Every page renders inside the app shell (sidebar + header). When printing a document we
+ * must show ONLY the #pdf-content container, otherwise the sidebar/nav print alongside it
+ * and the document is pushed out of alignment. Scoped via :has(#pdf-content) so it only
+ * affects pages that actually contain a printable document.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body:has(#pdf-content) * {
+    visibility: hidden !important;
+  }
+
+  body:has(#pdf-content) #pdf-content,
+  body:has(#pdf-content) #pdf-content * {
+    visibility: visible !important;
+  }
+
+  body:has(#pdf-content) #pdf-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Keep logical blocks and tables from splitting across page boundaries. */
+  #pdf-content .pdf-section,
+  #pdf-content .avoid-page-break,
+  #pdf-content table,
+  #pdf-content tr,
+  #pdf-content thead,
+  #pdf-content tbody {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Show every column of horizontally-scrollable tables instead of clipping
+     them behind a scrollbar (shadcn <Table> wraps in .overflow-auto). */
+  #pdf-content .overflow-auto,
+  #pdf-content .overflow-x-auto {
+    overflow: visible !important;
+  }
+  #pdf-content table {
+    width: 100% !important;
+  }
+  #pdf-content th,
+  #pdf-content td {
+    white-space: normal !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  /* Keep input values from colliding with their underline (bottom border). */
+  #pdf-content input {
+    height: auto !important;
+    min-height: 1.6em !important;
+    line-height: 1.4 !important;
+    padding-bottom: 4px !important;
+  }
+
+  /* Preserve background colours / badges in print. */
+  body:has(#pdf-content) * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

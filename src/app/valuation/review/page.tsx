@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, Eye, ArrowRight } from 'lucide-react';
-import { approveValuationReport, checkValuationReport, getValuationReviewQueue } from '@/services/valuation-service';
+import { approveValuationReport, getValuationReviewQueue } from '@/services/valuation-service';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -67,26 +67,6 @@ export default function ValuationReviewQueue() {
     }
   };
 
-  const handleCheck = async () => {
-    if (!selectedCase) return;
-    setIsProcessing(true);
-    try {
-      const result = await checkValuationReport(selectedCase.id);
-      if ('error' in result) {
-        toast({ title: "Error", description: result.error, variant: "destructive" });
-      } else {
-        toast({ title: "Success", description: "Valuation marked as checked." });
-        setSelectedCase(null);
-        fetchData();
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unexpected error";
-      toast({ title: "Error", description: message, variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -101,7 +81,7 @@ export default function ValuationReviewQueue() {
       <Card>
         <CardHeader>
           <CardTitle>Reports Awaiting Review</CardTitle>
-          <CardDescription>Review and approve valuation reports before returning to district.</CardDescription>
+          <CardDescription>Review and approve valuation reports before returning to the originating workflow.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -127,9 +107,6 @@ export default function ValuationReviewQueue() {
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <Badge variant="outline">{c.status.replace(/_/g, ' ')}</Badge>
-                        {c.isCheckedByChecker && (
-                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-[10px] py-0 h-4">Checked</Badge>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell>{c.assignedTo?.name}</TableCell>
@@ -160,11 +137,6 @@ export default function ValuationReviewQueue() {
                   <p><strong>Applicant:</strong> {getCustomerName(selectedCase.loanRequest)}</p>
                   <p><strong>Loan Amount:</strong> {selectedCase.loanRequest.loanAmount.toLocaleString()} ETB</p>
                   <p><strong>Valuation Status:</strong> {selectedCase.status.replace(/_/g, ' ')}</p>
-                  {selectedCase.isCheckedByChecker && (
-                    <p className="text-green-600 flex items-center gap-1 font-medium">
-                      <CheckCircle2 className="h-4 w-4" /> Checked by Checker
-                    </p>
-                  )}
                </div>
                <div className="space-y-2">
                   <h4 className="font-bold">Officer Findings</h4>
@@ -184,24 +156,27 @@ export default function ValuationReviewQueue() {
             </div>
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setSelectedCase(null)}>Cancel</Button>
-              
-              {/* Checker Action */}
-              {user?.customRoleName?.includes('Checker') && selectedCase.status === "PENDING_MANAGER_REVIEW" && !selectedCase.isCheckedByChecker && (
-                <Button onClick={handleCheck} disabled={isProcessing} className="bg-blue-600 hover:bg-blue-700">
-                  {isProcessing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                  Mark as Checked
-                </Button>
-              )}
 
-              {/* Manager/Director Approval */}
-              {(
-                (selectedCase.status === "PENDING_MANAGER_REVIEW" && (user?.customRoleName?.includes('Manager') || user?.customRoleName?.includes('Director') || user?.permissions.includes('PROMOTE_LOAN_STAGE'))) ||
-                (selectedCase.status === "PENDING_DIRECTOR_REVIEW" && (user?.customRoleName?.includes('Director') || user?.permissions.includes('PROMOTE_LOAN_STAGE'))) ||
-                (user?.permissions.includes('MANAGE_USERS')) // Admin
+              {/* Checker Manager: approve the verification and send to finalization */}
+              {selectedCase.status === "PENDING_CHECKER_REVIEW" && (
+                (user?.customRoleName?.includes('Manager') && user?.customRoleName?.includes('Checker')) ||
+                user?.permissions.includes('PROMOTE_LOAN_STAGE') ||
+                user?.permissions.includes('MANAGE_USERS')
               ) && (
                 <Button onClick={handleApprove} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
                   {isProcessing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                  {selectedCase.status === "PENDING_MANAGER_REVIEW" ? "Approve & Send to Director" : "Final Approval"}
+                  Approve Verification
+                </Button>
+              )}
+
+              {/* Maker Manager: finalize the valuation */}
+              {selectedCase.status === "PENDING_FINALIZATION" && (
+                (user?.customRoleName?.includes('Manager') && user?.customRoleName?.includes('Maker')) ||
+                user?.permissions.includes('MANAGE_USERS')
+              ) && (
+                <Button onClick={handleApprove} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
+                  {isProcessing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                  Finalize Valuation
                 </Button>
               )}
             </DialogFooter>

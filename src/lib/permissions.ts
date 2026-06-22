@@ -96,7 +96,7 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_OVERDUE_TASKS_REPORT: "Can view the page listing all overdue loan tasks.",
   VIEW_REPORTS: "Can view the main reports page and its sub-reports.",
   VIEW_DISTRICT_DASHBOARD: "Can view the District Dashboard with analytics, CRM performance, and loan summaries.",
-  VIEW_DISTRICT_VALUATION: "Can access the District Valuation queue and valuation review.",
+  VIEW_DISTRICT_VALUATION: "Can access the Valuation queue and valuation review.",
   TERMINATE_LOAN_PROCESS: "Can terminate a loan process at any stage, ending all activities.",
   MANUAL_STAGE_TRANSITION: "Can manually move a loan to any stage of any workflow, overriding the standard sequence.",
   MANAGE_SETTINGS_WORKFLOWS: "Can access settings to define and manage loan workflow definitions and versions.",
@@ -149,9 +149,9 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: PermissionCateg
     ],
   },
   {
-    name: "District Valuation (Sidebar)",
+    name: "Valuation (Sidebar)",
     permissions: [
-      { permission: "VIEW_DISTRICT_VALUATION", label: "District Valuation - access valuation queues and review" },
+      { permission: "VIEW_DISTRICT_VALUATION", label: "Valuation - access valuation queues and review" },
       { permission: "VIEW_MY_VALUATION_CASES", label: "My Valuation - assigned valuation cases" },
     ],
   },

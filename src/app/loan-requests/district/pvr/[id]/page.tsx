@@ -9,8 +9,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { ValuationRequisitionForm } from '@/components/loan/forms/ValuationRequisitionForm';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { exportElementToPDF } from '@/lib/pdf-export';
 
 export default function PVRPage() {
   const { id } = useParams();
@@ -73,26 +72,9 @@ export default function PVRPage() {
   // Skip is available via the main loan header; not shown on the PVR page.
 
   const handleExportPDF = async () => {
-    const element = document.getElementById('pvr-content');
-    if (!element) return;
     setIsExporting(true);
     try {
-      // Using scale 2 for high quality, scroll to top first to capture everything
-      window.scrollTo(0, 0);
-      const canvas = await html2canvas(element, { 
-        scale: 2, 
-        useCORS: true, 
-        backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: element.offsetWidth
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`PVR-${loan?.loanNumber || 'Export'}.pdf`);
+      await exportElementToPDF('pdf-content', `PVR-${loan?.loanNumber || 'Export'}.pdf`);
     } catch (err) {
       toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
     } finally {
@@ -122,7 +104,7 @@ export default function PVRPage() {
         </div>
       </div>
 
-      <div id="pvr-content" className="bg-white rounded-lg shadow-sm border overflow-hidden">
+      <div id="pdf-content" className="bg-white rounded-lg shadow-sm border overflow-hidden">
         {/* Determine if read only based on stage order or if it's already finalized */}
         {(() => {
           const currentStage = loan.workflowVersion?.stages?.find((s: any) => s.id === loan.currentStageId);
@@ -139,13 +121,6 @@ export default function PVRPage() {
         })()}
       </div>
 
-      <style jsx global>{`
-        @media print {
-          .print\:hidden { display: none !important; }
-          body { background: white !important; padding: 0 !important; }
-          #pvr-content { box-shadow: none !important; border: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

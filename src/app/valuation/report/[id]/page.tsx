@@ -14,8 +14,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { PERMISSIONS } from '@/lib/permissions';
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { exportElementToPDF } from '@/lib/pdf-export';
 
 export default function ValuationReportPage() {
   const { id } = useParams();
@@ -95,19 +94,7 @@ export default function ValuationReportPage() {
     toast({ title: "Generating PDF", description: "Preparing Valuation Report..." });
     
     try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Valuation-${loan.loanNumber || 'Export'}.pdf`);
-      
+      await exportElementToPDF('pdf-content', `Valuation-${loan.loanNumber || 'Export'}.pdf`);
       toast({ title: "Success", description: "Valuation Report exported successfully." });
     } catch (err) {
       console.error(err);

@@ -817,11 +817,20 @@ export async function submitType2ToValuation(loanRequestId: string) {
           assignedToUsers: { set: [] }, // Clear CRM assignment as it's now with Valuation
           lastUpdatedDate: now,
           history: {
-            create: {
-              userId: user.id,
-              stageName: "HO Valuation Review",
-              notes: `Case forwarded to Property Valuation Department. CRM finalized PVR.`,
-            }
+            // The "Forward to Valuation" entry records the sending CRM so the case returns
+            // to them (not the loan creator) when valuation completes.
+            create: [
+              {
+                userId: user.id,
+                stageName: "HO Valuation Review",
+                notes: `Case forwarded to Property Valuation Department. CRM finalized PVR.`,
+              },
+              {
+                userId: user.id,
+                stageName: "Forward to Valuation",
+                notes: `Case forwarded to the Valuation Department by ${user.fullName}.`,
+              },
+            ]
           }
         }
       });
@@ -1534,37 +1543,70 @@ export async function completeValuationWork(loanRequestId: string) {
     await prisma.$transaction(async (tx) => {
       const queueEntry = await tx.valuationQueue.findUnique({
         where: { loanRequestId },
-        include: { assignedTo: { include: { customRole: true } } }
       });
 
       if (!queueEntry) throw new Error("Valuation queue entry not found");
 
-      let nextStatus = "PENDING_MANAGER_REVIEW";
+      // Officer submissions advance per current status:
+      //   ASSIGNED_TO_OFFICER          -> ASSIGNED_TO_CHECKER_MANAGER  (hand to the Checker queue)
+      //   ASSIGNED_TO_CHECKER_OFFICER  -> PENDING_CHECKER_REVIEW       (Checker Manager final review)
+      let nextStatus: string;
+      let nextStageName: string;
+      let notes: string;
+      if (queueEntry.status === "ASSIGNED_TO_OFFICER") {
+        nextStatus = "ASSIGNED_TO_CHECKER_MANAGER";
+        nextStageName = "Valuation Checker";
+        notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker queue.`;
+      } else if (queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER") {
+        nextStatus = "PENDING_CHECKER_REVIEW";
+        nextStageName = "Valuation 02-A";
+        notes = `Verification completed by ${user.fullName}. Pending Checker Manager review.`;
+      } else {
+        throw new Error("Case is not in a state that can be submitted by an officer.");
+      }
 
       await tx.valuationQueue.update({
         where: { id: queueEntry.id },
         data: {
           status: nextStatus,
-          assignedToId: null, // Requirement Fix: Clear queue assignment so it's not "with" the officer anymore
-          isCheckedByChecker: false // Reset checker flag just in case
+          assignedToId: null, // Clear per-step assignment; case becomes a queue item
         }
       });
 
-      return await tx.loanRequest.update({
-        where: { id: loanRequestId },
-        data: {
-          isReadyForManagerReview: true,
-          currentStageStatus: 'Pending Manager Review',
-          lastUpdatedDate: new Date(),
-          assignedToUsers: { set: [] }, // Clear officer assignment after completion
-          history: {
-            create: {
-              userId: user.id,
-              stageName: "Valuation Completed",
-              notes: `Valuation work completed and submitted for final review by ${user.fullName}.`,
-            }
+      const data: any = {
+        lastUpdatedDate: new Date(),
+        assignedToUsers: { set: [] }, // Clear officer assignment after completion
+        history: {
+          create: {
+            userId: user.id,
+            stageName: "Valuation Completed",
+            notes,
           }
         }
+      };
+
+      // Keep the Head Office (TYPE1) WF-02 stage in sync with the queue status.
+      const loan = await tx.loanRequest.findUnique({
+        where: { id: loanRequestId },
+        select: {
+          submissionType: true,
+          workflowVersion: { select: { stages: { include: { responsibleDepartment: true } } } },
+        },
+      });
+      if (loan?.submissionType === 'TYPE1') {
+        const stage = loan.workflowVersion?.stages.find((s: any) => s.name === nextStageName);
+        if (stage) {
+          const now = new Date();
+          data.currentWorkflowStage = { connect: { id: stage.id } };
+          data.assignedDepartment = { connect: { id: stage.responsibleDepartmentId } };
+          data.stageEntryDate = now;
+          data.stageDeadline = addDays(now, stage.defaultTimelineDays);
+        }
+      }
+
+      return await tx.loanRequest.update({
+        where: { id: loanRequestId },
+        data,
       });
     });
 
@@ -2023,20 +2065,35 @@ export async function updateLoanRequest(
         const workflowCode = getWorkflowCodeFromName(newStageDef.workflowVersion.workflowDefinition.name);
         const isValuationWorkflow = workflowCode === 2 || workflowCode === 4 || normalizeRoutingName(newStageDef.responsibleDepartment.name).includes('valuation');
         if (isValuationWorkflow) {
-          const assigneeId = updatePayload.assignedToUsers?.set?.[0]?.id;
+          // The case enters the unified valuation flow at the Director's incoming queue
+          // (status PENDING). It is NOT auto-assigned to an officer here — the Director
+          // routes it onward via the /valuation workspace. Clear any officer assignment
+          // and reset prior routing so re-entry starts clean.
+          updatePayload.assignedToUsers = { set: [] };
+          updatePayload.isReadyForValuation = true;
+          updatePayload.isValuationCompleted = false;
           await tx.valuationQueue.upsert({
             where: { loanRequestId: id },
             update: {
-              status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
-              assignedToId: assigneeId || null,
-              routingOption: assigneeId ? 'OFFICER' : null,
+              status: 'PENDING',
+              assignedToId: null,
+              routingOption: null,
+              makerId: null,
               isCheckedByChecker: false,
             },
             create: {
               loanRequestId: id,
-              status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
-              assignedToId: assigneeId || null,
-              routingOption: assigneeId ? 'OFFICER' : null,
+              status: 'PENDING',
+            },
+          });
+          // Record the sender so the case returns to them when valuation completes
+          // (the completion logic looks up the latest "Forward to Valuation" event).
+          await tx.loanHistoryEntry.create({
+            data: {
+              loanRequestId: id,
+              userId: user.id,
+              stageName: "Forward to Valuation",
+              notes: `Case forwarded to the Valuation Department by ${user.fullName}.`,
             },
           });
         }
@@ -2348,21 +2405,32 @@ export async function moveLoanToStage(loanRequestId: string, nextStageId: string
     const workflowCode = getWorkflowCodeFromName(nextStage.workflowVersion.workflowDefinition.name);
     const isValuationWorkflow = workflowCode === 2 || workflowCode === 4 || normalizeRoutingName(nextStage.responsibleDepartment.name).includes('valuation');
     if (isValuationWorkflow) {
-      const assigneeId = updateData.assignedToUsers?.set?.[0]?.id;
+      // Enter the unified valuation flow at the Director's incoming queue (PENDING).
+      // Not auto-assigned to an officer — the Director routes it via the /valuation workspace.
+      updateData.assignedToUsers = { set: [] };
+      updateData.isReadyForValuation = true;
+      updateData.isValuationCompleted = false;
       updateData.valuationQueue = {
         upsert: {
           update: {
-            status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
-            assignedToId: assigneeId || null,
-            routingOption: assigneeId ? 'OFFICER' : null,
+            status: 'PENDING',
+            assignedToId: null,
+            routingOption: null,
+            makerId: null,
             isCheckedByChecker: false,
           },
           create: {
-            status: assigneeId ? 'ASSIGNED_TO_OFFICER' : 'PENDING',
-            assignedToId: assigneeId || null,
-            routingOption: assigneeId ? 'OFFICER' : null,
+            status: 'PENDING',
           },
         },
+      };
+      // Record the sender so the case returns to them when valuation completes
+      // (the completion logic looks up the latest "Forward to Valuation" event).
+      updateData.history = {
+        create: [
+          { user: { connect: { id: user.id } }, stageName: nextStage.name, timestamp: now, notes: `Moved to ${nextStage.name}` },
+          { user: { connect: { id: user.id } }, stageName: "Forward to Valuation", timestamp: now, notes: `Case forwarded to the Valuation Department by ${user.fullName}.` },
+        ],
       };
     }
 

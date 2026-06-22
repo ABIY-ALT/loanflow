@@ -12,8 +12,7 @@ import { getLoanRequestById, updateLAF, submitType2ToValuation, submitDistrictLa
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { exportElementToPDF } from '@/lib/pdf-export';
 import { cn } from '@/lib/utils';
 import { canAnalystSubmitToFinalManager, isAnalystReturnedFromManager } from '@/lib/district-workflow';
 import { NIB_LOGO_SRC } from '@/lib/brand';
@@ -167,39 +166,11 @@ export default function LAFPage() {
   };
 
   const handleExportPDF = async () => {
-    const sections = document.querySelectorAll<HTMLElement>('#pdf-content .pdf-section');
-    if (!sections.length) return;
-
     setIsExporting(true);
     toast({ title: "Generating PDF", description: "Preparing LAF document..." });
 
     try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      let isFirstPage = true;
-
-      for (const section of Array.from(sections)) {
-        const canvas = await html2canvas(section, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-        });
-        const imgData = canvas.toDataURL('image/png');
-        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        while (heightLeft > 0) {
-          if (!isFirstPage) pdf.addPage();
-          isFirstPage = false;
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-          heightLeft -= pdfHeight;
-          position = heightLeft - imgHeight;
-        }
-      }
-
-      pdf.save(`LAF-${loan?.loanNumber || 'Export'}.pdf`);
+      await exportElementToPDF('pdf-content', `LAF-${loan?.loanNumber || 'Export'}.pdf`);
       toast({ title: "Success", description: "LAF exported successfully." });
     } catch (err) {
       toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
