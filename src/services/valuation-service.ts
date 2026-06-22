@@ -85,9 +85,13 @@ function dedupeValuationCases(items: ValuationQueueItem[]) {
 }
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  console.error(`[ValuationService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[ValuationService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[ValuationService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
-}
+};
 
 export async function getIncomingValuationCases(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
   try {

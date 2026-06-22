@@ -7,7 +7,11 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getCurrentUser } from '@/app/auth/actions';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  console.error(`[BranchService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[BranchService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[BranchService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 

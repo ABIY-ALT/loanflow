@@ -5,7 +5,11 @@ import { getCurrentUser } from '@/app/auth/actions';
 import { PERMISSIONS } from '@/lib/permissions';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  console.error(`[CRMService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[CRMService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[CRMService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 

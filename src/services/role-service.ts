@@ -40,9 +40,12 @@ interface RoleServiceResult<T> {
 }
 
 const createErrorResult = <T>(message: string, context?: string, originalError?: any): RoleServiceResult<T> => {
-  const genericMessage = 'An unexpected error occurred in the role service.';
-  console.error(`[RoleService:${context || 'Unknown'}] Error: ${message}`, originalError);
-  return { error: genericMessage };
+  if (originalError !== undefined) {
+    console.error(`[RoleService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[RoleService:${context || 'Unknown'}] Error: ${message}`);
+  }
+  return { error: message };
 };
 
 const hasPermission = async (): Promise<boolean> => {

@@ -53,7 +53,11 @@ import { safeJsonParse, mapPrismaUserToAppUser, mapPrismaLoanToAppLoan } from '.
 const DISTRICT_WORKFLOW_ID = 'wf-district-specialized';
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[PrismaService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 
@@ -3098,20 +3102,10 @@ export async function getIncomingCasesCount(): Promise<{ count?: number, error?:
 
     const prismaLoans = await prisma.loanRequest.findMany({
       where: districtFilter ? { AND: [baseWhere, districtFilter] } : baseWhere,
-      select: { id: true, submissionId: true },
-    });
-    
-    const uniqueIds = new Set();
-    const deduped = prismaLoans.filter(loan => {
-       if (loan.submissionId) {
-         if (uniqueIds.has(loan.submissionId)) return false;
-         uniqueIds.add(loan.submissionId);
-         return true;
-       }
-       return true;
+      select: { id: true },
     });
 
-    return { count: deduped.length };
+    return { count: prismaLoans.length };
   } catch (e: any) {
     return createErrorResult("Failed to fetch incoming cases count.", "getIncomingCasesCount", e);
   }

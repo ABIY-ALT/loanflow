@@ -12,7 +12,11 @@ import { releaseSubmissionDedupForLoan } from '@/services/loan-submission-guard'
 const COMMITTEE_LIMIT = 20000000; // 20 million
 
 const createErrorResult = (message: string, context?: string, originalError?: any): { error: string } => {
-  console.error(`[CommitteeService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[CommitteeService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[CommitteeService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 

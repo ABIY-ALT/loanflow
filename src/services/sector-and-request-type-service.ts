@@ -23,7 +23,11 @@ interface ServiceResult<T> {
 }
 
 const createErrorResult = <T>(message: string, context?: string, originalError?: any): ServiceResult<T> => {
-  console.error(`[ConfigService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[SectorAndRequestTypeService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[SectorAndRequestTypeService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 

@@ -4,7 +4,11 @@ import { getCurrentUser } from '@/app/auth/actions';
 import { formatISO } from 'date-fns';
 
 const createErrorResult = (message: string, context?: string, originalError?: unknown): { error: string } => {
-  console.error(`[NotificationService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  if (originalError !== undefined) {
+    console.error(`[NotificationService:${context || 'Unknown'}] Error: ${message}`, originalError);
+  } else {
+    console.error(`[NotificationService:${context || 'Unknown'}] Error: ${message}`);
+  }
   return { error: message };
 };
 
