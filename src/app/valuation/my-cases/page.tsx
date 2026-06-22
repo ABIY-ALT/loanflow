@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ClipboardEdit, Save, CheckCircle, ExternalLink } from 'lucide-react';
+import { Loader2, ClipboardEdit, Save, CheckCircle, ExternalLink, Undo2 } from 'lucide-react';
 import { getMyValuationCases, getValuationDeptStaff, routeValuationCase } from '@/services/valuation-service';
-import { completeValuationWork } from '@/services/loan-service-prisma';
+import { completeValuationWork, returnToOriginatingCRM } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import {
@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import type { ValuationQueueItem, ValuationStaff } from '@/types/valuation';
 
 export default function MyValuationCases() {
@@ -37,6 +38,9 @@ export default function MyValuationCases() {
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
   const [isRouting, setIsRouting] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [returnCaseId, setReturnCaseId] = useState<string | null>(null);
+  const [returnRemark, setReturnRemark] = useState('');
+  const [isReturning, setIsReturning] = useState(false);
   const { toast } = useToast();
 
   // Head Office officers prepare no report — they just mark the task completed,
@@ -57,6 +61,27 @@ export default function MyValuationCases() {
       toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setCompletingId(null);
+    }
+  };
+
+  const handleReturnToCRM = async () => {
+    if (!returnCaseId) return;
+    setIsReturning(true);
+    try {
+      const result = await returnToOriginatingCRM(returnCaseId, returnRemark);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case returned to Originating CRM successfully." });
+        setReturnCaseId(null);
+        setReturnRemark('');
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unexpected error";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setIsReturning(false);
     }
   };
 
@@ -195,6 +220,17 @@ export default function MyValuationCases() {
                             </Button>
                           </Link>
                         )}
+                        {c.loanRequest.submissionType === 'TYPE1' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                            onClick={() => setReturnCaseId(c.loanRequestId)}
+                            title="Return to Center CRM"
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -238,6 +274,36 @@ export default function MyValuationCases() {
               <Button onClick={handleRoute} disabled={isRouting || !selectedAssignee}>
                 {isRouting ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
                 Confirm Assignment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {returnCaseId && (
+        <Dialog open={!!returnCaseId} onOpenChange={(open) => {
+          if (!open) { setReturnCaseId(null); setReturnRemark(''); }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Return Case to Originating CRM</DialogTitle>
+              <DialogDescription>
+                Provide a remark explaining why this case is being returned to the CRM.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Textarea 
+                placeholder="Enter your remark here..."
+                value={returnRemark}
+                onChange={(e) => setReturnRemark(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setReturnCaseId(null); setReturnRemark(''); }} disabled={isReturning}>Cancel</Button>
+              <Button onClick={handleReturnToCRM} disabled={isReturning || !returnRemark.trim()}>
+                {isReturning ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Undo2 className="h-4 w-4 mr-2" />}
+                Return to CRM
               </Button>
             </DialogFooter>
           </DialogContent>

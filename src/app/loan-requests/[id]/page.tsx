@@ -868,20 +868,6 @@ export default function LoanDetailPage() {
 
   return (
     <div className="space-y-6">
-      {isInValuationWorkspace && (
-        <Alert className="border-blue-500 bg-blue-50 text-blue-900 shadow-sm">
-          <Building className="h-5 w-5 text-blue-600" />
-          <AlertTitle className="font-bold text-blue-800">In Property Valuation</AlertTitle>
-          <AlertDescription className="text-blue-700 font-medium">
-            This case is being processed by the Property Valuation Department. Routing and
-            completion are handled in the{' '}
-            <a href="/valuation/incoming" className="underline font-semibold hover:text-blue-900">
-              Valuation workspace
-            </a>
-            .
-          </AlertDescription>
-        </Alert>
-      )}
       {loan.submissionType === 'TYPE2' && Number(loan.loanAmount) > 20000000 && (
         <Alert variant="destructive" className="border-orange-500 bg-orange-50 text-orange-900 shadow-sm">
           <AlertCircle className="h-5 w-5 text-orange-600" />
@@ -913,7 +899,7 @@ export default function LoanDetailPage() {
         onSkipPvr={handleSkipPvr}
         isSkippingPvr={isSkippingPvr}
         isSaving={isSaving} 
-        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct && !isInValuationWorkspace)}
+        isActionableStage={!!(!loan.isTerminalStage && canCurrentUserAct)}
         canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)}
         requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
         assignMovesStage={isWf05RoutingStage}
