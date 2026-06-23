@@ -1312,6 +1312,110 @@ export async function returnToOriginatingCRM(
   }
 }
 
+/**
+ * "Rework — one step back": returns the case to the immediately preceding stage
+ * within the SAME workflow version (currentOrder - 1), re-opening it for that
+ * stage's responsible department. Sign-offs on the current stage are cleared.
+ * When the previous stage is in the same department, the supplied assignees are
+ * kept; otherwise the assignment is cleared so the previous department picks it up.
+ */
+export async function returnToPreviousStage(
+  loanRequestId: string,
+  note: string,
+  assigneeIds: string[] = []
+) {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "returnToPreviousStage");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const loan = await tx.loanRequest.findUnique({
+        where: { id: loanRequestId },
+        include: {
+          workflowVersion: {
+            include: {
+              stages: { orderBy: { order: 'asc' }, include: { responsibleDepartment: true } },
+            },
+          },
+          customer: { select: { name: true } },
+        },
+      });
+
+      if (!loan) throw new Error("Loan not found");
+      const stages = loan.workflowVersion?.stages ?? [];
+      const currentIndex = stages.findIndex((s) => s.id === loan.currentStageId);
+      if (currentIndex === -1) throw new Error("Current stage not found in workflow.");
+      if (currentIndex === 0) {
+        // No earlier stage in this workflow — caller should use Return to Originating CRM.
+        return { atFirstStage: true as const };
+      }
+
+      const previousStage = stages[currentIndex - 1];
+      const sameDepartment = previousStage.responsibleDepartmentId === loan.assignedDepartmentId;
+      const keepAssignees = sameDepartment && assigneeIds.length > 0;
+      const now = new Date();
+
+      await tx.loanRequest.update({
+        where: { id: loanRequestId },
+        data: {
+          currentWorkflowStage: { connect: { id: previousStage.id } },
+          assignedDepartment: { connect: { id: previousStage.responsibleDepartmentId } },
+          stageEntryDate: now,
+          currentStageStatus: 'RETURNED_FOR_REWORK',
+          isReadyForManagerReview: false,
+          stageCompletedBy: { set: [] },
+          assignedToUsers: keepAssignees
+            ? { set: assigneeIds.map((id) => ({ id })) }
+            : { set: [] },
+          lastUpdatedDate: now,
+          history: {
+            create: {
+              userId: user.id,
+              stageName: previousStage.name,
+              notes: `Returned one step back to "${previousStage.name}" for rework: ${note}`,
+            },
+          },
+        },
+      });
+
+      await tx.caseReviewHistory.create({
+        data: {
+          loanRequest: { connect: { id: loanRequestId } },
+          performedBy: { connect: { id: user.id } },
+          action: 'REWORKED',
+          comment: note,
+          createdAt: now,
+        },
+      });
+
+      const notifyIds = keepAssignees ? assigneeIds : [];
+      if (notifyIds.length > 0) {
+        await createCaseAssignedNotifications(tx, {
+          loanRequestId,
+          loanNumber: loan.loanNumber,
+          customerName: loan.customer?.name,
+          assigneeIds: notifyIds,
+          assignedByUserId: user.id,
+          assignedByName: user.fullName,
+        });
+      }
+
+      return { atFirstStage: false as const, previousStageName: previousStage.name };
+    });
+
+    if (result.atFirstStage) {
+      return createErrorResult(
+        "This case is already at the first stage of its workflow. Use 'Return to Originating CRM' instead.",
+        "returnToPreviousStage"
+      );
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult(e.message, "returnToPreviousStage");
+  }
+}
+
 export async function returnToDistrictAnalyst(
   loanRequestId: string,
   note: string,

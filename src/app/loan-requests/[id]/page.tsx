@@ -12,7 +12,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from '@/lib/district-workflow';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, returnToOriginatingCRM, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
+import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, returnToOriginatingCRM, returnToPreviousStage, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
 import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1141,23 +1141,16 @@ export default function LoanDetailPage() {
                return;
             }
           } else {
-            const h: LoanHistoryEntry = { 
-              id: `rw-${Date.now()}`, 
-              stageName: currentStageDef?.name || 'N/A', 
-              timestamp: formatISO(new Date()), 
-              userId: currentUser?.id || 'sys', 
-              userName: currentUser?.fullName || 'sys', 
-              notes: `Returned for rework: ${note}` 
-            }; 
-            await recordCaseReview({ loanRequestId: loan.id, action: 'REWORKED', comment: note }); 
-            await handleLocalAndUpdateService({ 
-              assignedToUsers: users.filter(u => assigneeIds.includes(u.id)), 
-              stageCompletedBy: [], 
-              isReadyForManagerReview: false, 
-              history: [...loan.history, h] 
-            }, "Returned for rework."); 
+            // Rework = one step back: move the case to the previous workflow stage.
+            const result = await returnToPreviousStage(loan.id, note, assigneeIds);
+            if ('error' in result) {
+              toast({ title: "Error", description: result.error, variant: "destructive" });
+              return;
+            }
+            toast({ title: "Returned for rework", description: "Case moved one step back to the previous stage." });
+            await fetchLoanData();
           }
-          setIsReturnForReworkDialogOpen(false); 
+          setIsReturnForReworkDialogOpen(false);
           router.refresh();
         }} 
         onReturnToCRM={handleReturnToCRM}
