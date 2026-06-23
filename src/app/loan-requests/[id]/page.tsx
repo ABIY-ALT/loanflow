@@ -354,8 +354,50 @@ export default function LoanDetailPage() {
     }
   };
 
+  // Mandatory document gate: a stage cannot be completed/promoted until every
+  // requirement configured as mandatory on that stage is satisfied — checkboxes
+  // must be ticked (VERIFIED) and uploads must have a file attached.
+  const getUnfulfilledMandatoryDocs = useCallback(
+    (stage: WorkflowStageDefinition | null) => {
+      if (!stage) return [];
+      return stage.documentRequirements.filter((req) => {
+        if (!req.isMandatory) return false;
+        const doc = loan?.documents.find((d) => d.requirementId === req.id);
+        if (req.type === DocumentRequirementType.CHECKBOX) {
+          return doc?.status !== AppLoanDocumentStatus.VERIFIED;
+        }
+        return !doc?.filePath;
+      });
+    },
+    [loan]
+  );
+
+  const ensureMandatoryDocsFulfilled = useCallback(
+    (stage: WorkflowStageDefinition | null) => {
+      const missing = getUnfulfilledMandatoryDocs(stage);
+      if (missing.length === 0) return true;
+      const toTick = missing
+        .filter((r) => r.type === DocumentRequirementType.CHECKBOX)
+        .map((r) => r.name);
+      const toUpload = missing
+        .filter((r) => r.type !== DocumentRequirementType.CHECKBOX)
+        .map((r) => r.name);
+      const parts: string[] = [];
+      if (toTick.length) parts.push(`tick "${toTick.join('", "')}"`);
+      if (toUpload.length) parts.push(`upload "${toUpload.join('", "')}"`);
+      toast({
+        title: 'Required documents incomplete',
+        description: `You must ${parts.join(' and ')} before completing this stage.`,
+        variant: 'destructive',
+      });
+      return false;
+    },
+    [getUnfulfilledMandatoryDocs, toast]
+  );
+
   const handleMarkStageComplete = async () => {
     if (!loan || !currentStageDef || !currentUser) return;
+    if (!ensureMandatoryDocsFulfilled(currentStageDef)) return;
 
     const canMarkStageComplete = userPermissions.has(PERMISSIONS.MARK_STAGE_COMPLETE);
     const canDirectPromote = hasDirectApprovePermission;
@@ -444,6 +486,8 @@ export default function LoanDetailPage() {
     const idx = currentWorkflowVersion.stages.findIndex(s => s.id === loan.currentStageId);
     if (idx === -1) return;
     if (targetStage && targetStage.order <= currentStageDef.order) return;
+    // Block leaving the current stage while mandatory checkboxes/uploads are unmet.
+    if (!ensureMandatoryDocsFulfilled(currentStageDef)) return;
     const actionText = targetStage
       ? `Assigned & Routed by ${currentUser.customRoleName}`
       : isDirect ? `Completed & Promoted by ${currentUser.customRoleName}` : `Approved & Promoted by Manager`;
