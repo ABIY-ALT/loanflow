@@ -80,6 +80,13 @@ interface LoanDocumentsManagerProps {
     checked: boolean
   ) => Promise<void>;
   isSavingGlobal: boolean;
+  /**
+   * Optional stage whose documents/checkboxes are shown read-only as a
+   * reference (e.g. the appraisal officer's final-stage output displayed at the
+   * "Submit Loan Decision Letter to Customer" stage). Nothing here is editable.
+   */
+  referenceStage?: WorkflowStageDefinition | null;
+  referenceTitle?: string;
 }
 
 export function LoanDocumentsManager({
@@ -89,6 +96,8 @@ export function LoanDocumentsManager({
   onVerifyDocument,
   onCheckboxChange,
   isSavingGlobal,
+  referenceStage,
+  referenceTitle,
 }: LoanDocumentsManagerProps) {
   const [isVerifyingDoc, setIsVerifyingDoc] = useState<string | null>(null);
 
@@ -340,6 +349,87 @@ export function LoanDocumentsManager({
         </p>
       )}
       </div>
+
+      {referenceStage && referenceStage.documentRequirements.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-1 flex items-center">
+            <FileText className="mr-2 h-5 w-5 text-primary" />
+            {referenceTitle || `Reference: ${referenceStage.name}`}
+          </h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Read-only. Submitted at the{' '}
+            <span className="font-semibold">{referenceStage.name}</span> stage.
+          </p>
+          <ul className="space-y-3">
+            {referenceStage.documentRequirements.map((req) => {
+              const uploadedDoc = loan.documents.find(
+                (d) => d.requirementId === req.id
+              );
+              const status = uploadedDoc ? uploadedDoc.status : 'Missing';
+              const isChecked =
+                uploadedDoc?.status === LoanDocumentStatus.VERIFIED;
+
+              if (req.type === DocumentRequirementType.CHECKBOX) {
+                return (
+                  <li
+                    key={req.id}
+                    className="flex items-center justify-between p-3 border rounded-md bg-muted/30"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Checkbox checked={isChecked} disabled />
+                      <Label className="font-medium text-muted-foreground">
+                        {req.name}
+                      </Label>
+                    </div>
+                    <Badge variant={isChecked ? 'default' : 'outline'} className={isChecked ? 'bg-green-100 text-green-700 border-green-300' : ''}>
+                      {isChecked ? 'Confirmed' : 'Not Confirmed'}
+                    </Badge>
+                  </li>
+                );
+              }
+
+              return (
+                <li
+                  key={req.id}
+                  className="flex items-center justify-between p-3 border rounded-md bg-muted/30"
+                >
+                  <div className="flex items-center">
+                    {getDocumentStatusIcon(status)}
+                    <span className="ml-2 font-medium text-muted-foreground">
+                      {req.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {status !== 'Missing' && (
+                      <Badge variant={getDocumentBadgeVariant(status)}>
+                        {status}
+                      </Badge>
+                    )}
+                    {uploadedDoc?.filePath ? (
+                      <a
+                        href={`/api/downloads/${uploadedDoc.filePath}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="ghost" size="icon">
+                          <Download className="h-4 w-4" />
+                          <span className="sr-only">
+                            Download {uploadedDoc.name}
+                          </span>
+                        </Button>
+                      </a>
+                    ) : (
+                      <Badge variant="outline" className="text-xs border-dashed">
+                        Not Uploaded
+                      </Badge>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

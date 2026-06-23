@@ -125,6 +125,26 @@ export default function LoanDetailPage() {
     return workflowDefinitions.find(def => def.id === currentWorkflowVersion.workflowDefinitionId) || null;
   }, [currentWorkflowVersion, workflowDefinitions]);
 
+  // At the "Submit Loan Decision Letter to Customer" stage, surface the
+  // appraisal officer's final-stage output ("Submit to Appraisal Officer") as a
+  // read-only reference. The same loan carries those documents in loan.documents,
+  // so we locate the matching appraisal stage definition to label/render them.
+  const appraisalReferenceStage = useMemo(() => {
+    if (!loan || currentStageDef?.name !== 'Submit Loan Decision Letter to Customer') return null;
+    const appraisalStages = workflowDefinitions
+      .flatMap(def => def.versions)
+      .flatMap(v => v.stages)
+      .filter(s => s.name === 'Submit to Appraisal Officer');
+    if (appraisalStages.length === 0) return null;
+    const docReqIds = new Set(loan.documents.map(d => d.requirementId).filter(Boolean));
+    // Prefer the appraisal stage this loan actually acted on (its requirement
+    // ids appear in loan.documents); otherwise fall back to any definition.
+    return (
+      appraisalStages.find(s => s.documentRequirements.some(r => docReqIds.has(r.id))) ||
+      appraisalStages[0]
+    );
+  }, [loan, currentStageDef, workflowDefinitions]);
+
   const getWorkflowCode = useCallback((name?: string | null) => {
     if (!name) return null;
     const match = name.match(/WF-(\d{1,2})/i);
@@ -1003,7 +1023,7 @@ export default function LoanDetailPage() {
             
             {!isCrmPvrStage && (
               <TabsContent value="documents" className="p-6">
-                <LoanDocumentsManager loan={loan} currentStageDef={currentStageDef} isSavingGlobal={isSaving} onVerifyDocument={async d => { await handleLocalAndUpdateService({ documents: loan.documents.map(x => x.id === d ? { ...x, status: AppLoanDocumentStatus.VERIFIED } : x) }, "Verified."); }} onCheckboxChange={canCurrentUserAct ? handleDocumentCheckboxChange : undefined} onOpenUploadDialog={r => { setCurrentDocumentRequirementToUpload(r); setIsUploadDocDialogOpen(true); }}/>
+                <LoanDocumentsManager loan={loan} currentStageDef={currentStageDef} isSavingGlobal={isSaving} onVerifyDocument={async d => { await handleLocalAndUpdateService({ documents: loan.documents.map(x => x.id === d ? { ...x, status: AppLoanDocumentStatus.VERIFIED } : x) }, "Verified."); }} onCheckboxChange={canCurrentUserAct ? handleDocumentCheckboxChange : undefined} onOpenUploadDialog={r => { setCurrentDocumentRequirementToUpload(r); setIsUploadDocDialogOpen(true); }} referenceStage={appraisalReferenceStage} referenceTitle="Appraisal Committee Output"/>
               </TabsContent>
             )}
 
