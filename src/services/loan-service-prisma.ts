@@ -559,25 +559,45 @@ async function getLoanRequestsInternal(user: User): Promise<{ loans?: LoanReques
         ]
       };
 
+      const isManager = userPermissions.has(PERMISSIONS.VIEW_MANAGER_REVIEW_QUEUE);
+
       if (user.departmentId) {
         if (user.districtId) {
           // District Users see their department cases OR any District-scoped Type 2 cases 
           // (They'll be further filtered by districtBranchNames below)
-          whereClause = {
-            OR: [
-              { assignedDepartmentId: user.departmentId },
-              { submissionType: 'TYPE2' },
-              userContextFilter
-            ]
-          };
+          if (isManager) {
+            whereClause = {
+              OR: [
+                { assignedDepartmentId: user.departmentId },
+                { submissionType: 'TYPE2' },
+                userContextFilter
+              ]
+            };
+          } else {
+            whereClause = {
+              OR: [
+                { assignedDepartmentId: user.departmentId },
+                { assignedToUsers: { some: { id: user.id } } }
+              ]
+            };
+          }
         } else {
           // Standard users see only their department or cases they are direct participants in
-          whereClause = {
-            OR: [
-              { assignedDepartmentId: user.departmentId },
-              userContextFilter
-            ]
-          };
+          if (isManager) {
+            whereClause = {
+              OR: [
+                { assignedDepartmentId: user.departmentId },
+                userContextFilter
+              ]
+            };
+          } else {
+            whereClause = {
+              OR: [
+                { assignedDepartmentId: user.departmentId },
+                { assignedToUsers: { some: { id: user.id } } }
+              ]
+            };
+          }
         }
       } else {
         whereClause = userContextFilter;
