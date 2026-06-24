@@ -208,7 +208,7 @@ export function LoanDetailHeader({
           <div className="flex flex-wrap gap-2 items-center">
             {/* Staff mark complete */}
             {isActionableStage &&
-              (isAdmin || isCurrentUserAssigned) &&
+              (isAdmin || isCurrentUserAssigned || canDirectPromote) &&
               !loan.isReadyForManagerReview &&
               (canMarkStageComplete || canDirectPromote) && (
                 <Button
@@ -409,7 +409,7 @@ export function LoanDetailHeader({
           )}
           {isActionableStage &&
             !assignMovesStage &&
-            (isAdmin || isCurrentUserAssigned) &&
+            (isAdmin || isCurrentUserAssigned || canDirectPromote) &&
             !loan.isReadyForManagerReview &&
             (canMarkStageComplete || canDirectPromote) && (
               <Button

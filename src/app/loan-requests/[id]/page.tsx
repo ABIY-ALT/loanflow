@@ -230,6 +230,14 @@ export default function LoanDetailPage() {
       return true;
     }
 
+    // A case returned one step back for rework lands on the previous stage with
+    // its assignees cleared. Let a department manager (promote/assign rights) act
+    // on it even if that stage's allowedRoles don't list their role, so the
+    // rework/promote isn't stranded after the return.
+    if (loan.currentStageStatus === 'RETURNED_FOR_REWORK' && isManagerInDept) {
+      return true;
+    }
+
     if (isAssigned || isManagerInDept) {
       return hasAllowedRole;
     }
