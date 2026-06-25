@@ -169,6 +169,16 @@ export const mapPrismaLoanToAppLoan = (
     valuationReportData: safeJsonParse(prismaLoan.valuationReportData, undefined),
     isReadyForValuation: prismaLoan.isReadyForValuation,
     isValuationCompleted: prismaLoan.isValuationCompleted,
+    valuationQueue: (prismaLoan as any).valuationQueue
+      ? {
+          id: (prismaLoan as any).valuationQueue.id,
+          status: (prismaLoan as any).valuationQueue.status,
+          assignedToId: (prismaLoan as any).valuationQueue.assignedToId ?? null,
+          makerId: (prismaLoan as any).valuationQueue.makerId ?? null,
+          makerOfficerId: (prismaLoan as any).valuationQueue.makerOfficerId ?? null,
+          makerOfficerName: (prismaLoan as any).valuationQueue.makerOfficer?.name ?? null,
+        }
+      : null,
     history: prismaLoan.history?.map((h) => ({
       id: h.id,
       userId: h.userId,

@@ -70,6 +70,7 @@ export default function ValuationReviewQueue() {
   const [reviewCase, setReviewCase] = useState<ValuationQueueItem | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isReworkingToOfficer, setIsReworkingToOfficer] = useState(false);
+  const [reworkReason, setReworkReason] = useState('');
 
   // Return to CRM
   const [returnCaseId, setReturnCaseId] = useState<string | null>(null);
@@ -152,14 +153,19 @@ export default function ValuationReviewQueue() {
 
   const handleReworkToMakerOfficer = async () => {
     if (!reviewCase) return;
+    if (!reworkReason.trim()) {
+      toast({ title: 'Reason required', description: 'Enter why this case is being reworked.', variant: 'destructive' });
+      return;
+    }
     setIsReworkingToOfficer(true);
     try {
-      const result = await reworkToMakerOfficer(reviewCase.id);
+      const result = await reworkToMakerOfficer(reviewCase.id, reworkReason);
       if ('error' in result) {
         toast({ title: 'Error', description: result.error, variant: 'destructive' });
       } else {
         toast({ title: 'Success', description: 'Case reworked to Maker Officer.' });
         setReviewCase(null);
+        setReworkReason('');
         fetchData();
       }
     } catch (err: unknown) {
@@ -423,7 +429,7 @@ export default function ValuationReviewQueue() {
 
       {/* ── Review Dialog (PENDING_CHECKER_REVIEW / PENDING_FINALIZATION) ── */}
       {reviewCase && (
-        <Dialog open={!!reviewCase} onOpenChange={() => setReviewCase(null)}>
+        <Dialog open={!!reviewCase} onOpenChange={(open) => { if (!open) { setReviewCase(null); setReworkReason(''); } }}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
@@ -458,16 +464,28 @@ export default function ValuationReviewQueue() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground italic">Full history is available in the case Audit Trail.</p>
+
+              {reviewCase.status === 'PENDING_CHECKER_REVIEW' && reviewCase.makerOfficerId && (isCheckerMgr || isAdmin) && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Rework reason <span className="text-muted-foreground">(required to rework to Maker Officer)</span></label>
+                  <Textarea
+                    placeholder="State why this case is being reworked to the Maker Officer..."
+                    value={reworkReason}
+                    onChange={(e) => setReworkReason(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              )}
             </div>
 
             <DialogFooter className="gap-2 flex-wrap">
-              <Button variant="outline" onClick={() => setReviewCase(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setReviewCase(null); setReworkReason(''); }}>Cancel</Button>
 
               {/* Checker Manager: Rework to Maker Officer */}
               {reviewCase.status === 'PENDING_CHECKER_REVIEW' && reviewCase.makerOfficerId && (isCheckerMgr || isAdmin) && (
                 <Button
                   onClick={handleReworkToMakerOfficer}
-                  disabled={isReworkingToOfficer || isApproving}
+                  disabled={isReworkingToOfficer || isApproving || !reworkReason.trim()}
                   variant="outline"
                   className="border-orange-300 text-orange-700 hover:bg-orange-50"
                 >

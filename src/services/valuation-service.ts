@@ -599,6 +599,7 @@ export async function approveValuationReport(queueId: string) {
 /**
  * Valuation-specific rework: send a case directly back to the Maker Officer (Maker 01 A).
  * Available only in the Valuation Workflow from:
+ *   - ASSIGNED_TO_CHECKER_MANAGER (Checker Manager — on first receipt, before assigning a Checker Officer)
  *   - ASSIGNED_TO_CHECKER_OFFICER (Checker Officer stage)
  *   - PENDING_CHECKER_REVIEW      (Checker Manager Final Review stage)
  *
@@ -608,10 +609,16 @@ export async function approveValuationReport(queueId: string) {
  */
 export async function reworkToMakerOfficer(
   queueId: string,
+  reason?: string,
 ): Promise<ValuationResult<{ success: true }>> {
   try {
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "reworkToMakerOfficer");
+
+    const reworkReason = (reason ?? '').trim();
+    if (!reworkReason) {
+      return createErrorResult("A reason is required to rework the case to the Maker Officer.", "reworkToMakerOfficer");
+    }
 
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
@@ -638,10 +645,10 @@ export async function reworkToMakerOfficer(
 
     if (!canRework) return createErrorResult("You are not authorized to rework to the Maker Officer.", "reworkToMakerOfficer");
 
-    const allowedStatuses = ["ASSIGNED_TO_CHECKER_OFFICER", "PENDING_CHECKER_REVIEW"];
+    const allowedStatuses = ["ASSIGNED_TO_CHECKER_MANAGER", "ASSIGNED_TO_CHECKER_OFFICER", "PENDING_CHECKER_REVIEW"];
     if (!allowedStatuses.includes(queueEntry.status)) {
       return createErrorResult(
-        "Rework to Maker Officer is only available from the Checker Officer or Checker Manager Final Review stage.",
+        "Rework to Maker Officer is only available from the Checker Manager, Checker Officer, or Checker Manager Final Review stage.",
         "reworkToMakerOfficer",
       );
     }
@@ -680,7 +687,7 @@ export async function reworkToMakerOfficer(
           loanRequestId: queueEntry.loanRequestId,
           userId: user.id,
           stageName: "Valuation Rework",
-          notes: `Case reworked directly to Maker Officer (${officerName}) by ${user.fullName} for corrections. Normal Checker chain resumes after resubmission.`,
+          notes: `Case reworked directly to Maker Officer (${officerName}) by ${user.fullName}. Reason: ${reworkReason}. Normal Checker chain resumes after resubmission.`,
         },
       });
 

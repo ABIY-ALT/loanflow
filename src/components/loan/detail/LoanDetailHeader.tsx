@@ -51,6 +51,9 @@ interface LoanDetailHeaderProps {
   // promote button is replaced by guidance pointing at the Assign action.
   assignMovesStage?: boolean;
   hasOutstandingInfoRequest?: boolean;
+  // In-flight WF-02 valuation case: generic stage-complete / manager-promote
+  // actions are suppressed because the ValuationActionPanel drives progression.
+  isValuationFlow?: boolean;
 }
 
 export function LoanDetailHeader({
@@ -75,6 +78,7 @@ export function LoanDetailHeader({
   canPromote,
   requiresApproval,
   assignMovesStage,
+  isValuationFlow = false,
 }: LoanDetailHeaderProps) {
   const { user: currentUser } = useAuth();
   const router = useRouter();
@@ -119,7 +123,7 @@ export function LoanDetailHeader({
     (isAdmin || userPermissions.has(PERMISSIONS.SKIP_PVR_AND_VALUATION)) &&
     isDistrict &&
     (
-      [2, 3].includes(loan.currentStageOrder) ||
+      [2, 3].includes(loan.currentStageOrder ?? -1) ||
       (currentStageName || '').toLowerCase().includes('pvr') ||
       (currentStageName || '').toLowerCase().includes('valuation')
     );
@@ -211,6 +215,7 @@ export function LoanDetailHeader({
           <div className="flex flex-wrap gap-2 items-center">
             {/* Staff mark complete */}
             {isActionableStage &&
+              !isValuationFlow &&
               (isAdmin || isCurrentUserAssigned || canDirectPromote) &&
               !loan.isReadyForManagerReview &&
               (canMarkStageComplete || canDirectPromote) && (
@@ -251,7 +256,7 @@ export function LoanDetailHeader({
               )}
 
             {/* Manager approval */}
-            {isActionableStage && loan.isReadyForManagerReview && canApprove && (
+            {isActionableStage && !isValuationFlow && loan.isReadyForManagerReview && canApprove && (
               <>
                 <Button
                   onClick={onManagerPromoteLoan}

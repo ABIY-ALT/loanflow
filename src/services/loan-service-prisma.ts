@@ -1694,7 +1694,7 @@ export async function completeValuationWork(loanRequestId: string) {
         notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker queue.`;
       } else if (queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER") {
         nextStatus = "PENDING_CHECKER_REVIEW";
-        nextStageName = "Valuation 02-A";
+        nextStageName = "Valuation Checker 01-A";
         notes = `Verification completed by ${user.fullName}. Pending Checker Manager review.`;
       } else {
         throw new Error("Case is not in a state that can be submitted by an officer.");
@@ -1969,6 +1969,7 @@ export async function getLoanRequestById(id: string): Promise<{ loan?: LoanReque
         },
         assignedDepartment: true,
         assignedBy: true,
+        valuationQueue: { include: { makerOfficer: { select: { name: true } } } },
         history: { include: { user: { include: { department: true, customRole: true } } }, orderBy: { timestamp: 'desc' } },
         documents: { include: { requirement: true }, orderBy: { createdAt: 'asc' } },
       },

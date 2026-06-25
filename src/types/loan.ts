@@ -223,6 +223,14 @@ export interface LoanRequest {
   valuationReportData?: any;
   isReadyForValuation?: boolean;
   isValuationCompleted?: boolean;
+  valuationQueue?: {
+    id: string;
+    status: string;
+    assignedToId?: string | null;
+    makerId?: string | null;
+    makerOfficerId?: string | null;
+    makerOfficerName?: string | null;
+  } | null;
   committeeDecisions: {
     id: string;
     decision: 'APPROVE' | 'REJECT';

@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dialog';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
+import { ValuationActionPanel } from '@/components/loan/detail/ValuationActionPanel';
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
 import { LoanInfoDisplay } from '@/components/loan/detail/LoanInfoDisplay';
 import { LoanDocumentsManager } from '@/components/loan/detail/LoanDocumentsManager';
@@ -1005,7 +1006,15 @@ export default function LoanDetailPage() {
         requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
         assignMovesStage={isWf05RoutingStage}
         hasOutstandingInfoRequest={hasOutstandingInfoRequest}
+        isValuationFlow={!!loan.isReadyForValuation && !loan.isValuationCompleted}
       />
+      {loan.isReadyForValuation && loan.valuationQueue && currentUser && (
+        <ValuationActionPanel
+          loan={loan}
+          currentUser={currentUser}
+          onActionComplete={fetchLoanData}
+        />
+      )}
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -1027,7 +1036,7 @@ export default function LoanDetailPage() {
                 </div>
                 {/* Skip PVR button: visible in main loan header for permitted users when at PVR/Valuation stages */}
                 {currentUser?.permissions?.includes(PERMISSIONS.SKIP_PVR_AND_VALUATION) && loan.submissionType === 'TYPE2' && (
-                  [2,3].includes(loan.currentStageOrder) || (currentStageDef?.name || '').toLowerCase().includes('pvr') || (currentStageDef?.name || '').toLowerCase().includes('valuation')
+                  [2,3].includes(loan.currentStageOrder ?? -1) || (currentStageDef?.name || '').toLowerCase().includes('pvr') || (currentStageDef?.name || '').toLowerCase().includes('valuation')
                 ) && (
                   <div className="mt-2">
                     <Button

@@ -47,6 +47,7 @@ export default function MyValuationCases() {
   const [returnRemark, setReturnRemark] = useState('');
   const [isReturning, setIsReturning] = useState(false);
   const [reworkQueueId, setReworkQueueId] = useState<string | null>(null);
+  const [reworkReason, setReworkReason] = useState('');
   const [isReworking, setIsReworking] = useState(false);
 
   const fetchData = async () => {
@@ -99,12 +100,13 @@ export default function MyValuationCases() {
     if (!reworkQueueId) return;
     setIsReworking(true);
     try {
-      const result = await reworkToMakerOfficer(reworkQueueId);
+      const result = await reworkToMakerOfficer(reworkQueueId, reworkReason);
       if ('error' in result) {
         toast({ title: 'Error', description: result.error, variant: 'destructive' });
       } else {
         toast({ title: 'Success', description: 'Case reworked to Maker Officer.' });
         setReworkQueueId(null);
+        setReworkReason('');
         fetchData();
       }
     } catch (err: unknown) {
@@ -289,7 +291,7 @@ export default function MyValuationCases() {
 
       {/* ── Rework to Maker Officer Dialog ── */}
       {reworkQueueId && (
-        <Dialog open={!!reworkQueueId} onOpenChange={(open) => { if (!open) setReworkQueueId(null); }}>
+        <Dialog open={!!reworkQueueId} onOpenChange={(open) => { if (!open) { setReworkQueueId(null); setReworkReason(''); } }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Rework to Maker Officer</DialogTitle>
@@ -298,10 +300,17 @@ export default function MyValuationCases() {
                 After the officer resubmits, the normal Checker chain resumes.
               </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground py-2">The rework action will be recorded in the workflow history.</p>
+            <div className="py-4">
+              <Textarea
+                placeholder="Reason for rework (required)..."
+                value={reworkReason}
+                onChange={(e) => setReworkReason(e.target.value)}
+                rows={4}
+              />
+            </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setReworkQueueId(null)} disabled={isReworking}>Cancel</Button>
-              <Button onClick={handleReworkToMakerOfficer} disabled={isReworking} className="bg-orange-600 hover:bg-orange-700">
+              <Button variant="outline" onClick={() => { setReworkQueueId(null); setReworkReason(''); }} disabled={isReworking}>Cancel</Button>
+              <Button onClick={handleReworkToMakerOfficer} disabled={isReworking || !reworkReason.trim()} className="bg-orange-600 hover:bg-orange-700">
                 {isReworking ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
                 Rework to Maker Officer
               </Button>
