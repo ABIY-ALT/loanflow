@@ -1690,11 +1690,11 @@ export async function completeValuationWork(loanRequestId: string) {
       let notes: string;
       if (queueEntry.status === "ASSIGNED_TO_OFFICER") {
         nextStatus = "ASSIGNED_TO_CHECKER_MANAGER";
-        nextStageName = "Valuation Checker";
-        notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker queue.`;
+        nextStageName = "Checker Manager";
+        notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker Manager.`;
       } else if (queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER") {
         nextStatus = "PENDING_CHECKER_REVIEW";
-        nextStageName = "Valuation Checker 01-A";
+        nextStageName = "Checker Manager Review";
         notes = `Verification completed by ${user.fullName}. Pending Checker Manager review.`;
       } else {
         throw new Error("Case is not in a state that can be submitted by an officer.");
@@ -1711,6 +1711,7 @@ export async function completeValuationWork(loanRequestId: string) {
       const data: any = {
         lastUpdatedDate: new Date(),
         assignedToUsers: { set: [] }, // Clear officer assignment after completion
+        isReadyForManagerReview: false, // Make sure it doesn't show up in Manager Review Queue
         history: {
           create: {
             userId: user.id,

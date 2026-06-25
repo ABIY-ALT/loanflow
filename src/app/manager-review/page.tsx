@@ -101,6 +101,9 @@ export function ManagerReviewQueuePage({
           const isDistrictQueue = defaultTab === 'district';
 
           const filtered = (loansResult.loans as LoanRequest[]).filter(l => {
+            // EXCLUDE VALUATION CASES entirely from Manager Review Queue!
+            if (l.isReadyForValuation) return false;
+            
             if (!(l.isReadyForManagerReview || l.isTerminalStage)) return false;
 
             if (isDistrictQueue) {

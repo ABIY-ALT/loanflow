@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dialog';
 
 import { LoanDetailHeader } from '@/components/loan/detail/LoanDetailHeader';
-import { ValuationActionPanel } from '@/components/loan/detail/ValuationActionPanel';
+
 import { LoanProgressDisplay } from '@/components/loan/detail/LoanProgressDisplay';
 import { LoanInfoDisplay } from '@/components/loan/detail/LoanInfoDisplay';
 import { LoanDocumentsManager } from '@/components/loan/detail/LoanDocumentsManager';
@@ -1029,13 +1029,7 @@ export default function LoanDetailPage() {
         hasOutstandingInfoRequest={hasOutstandingInfoRequest}
         isValuationFlow={!!loan.isReadyForValuation && !loan.isValuationCompleted}
       />
-      {loan.isReadyForValuation && loan.valuationQueue && currentUser && (
-        <ValuationActionPanel
-          loan={loan}
-          currentUser={currentUser}
-          onActionComplete={fetchLoanData}
-        />
-      )}
+
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
