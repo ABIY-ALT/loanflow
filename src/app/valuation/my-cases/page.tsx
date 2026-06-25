@@ -10,13 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Loader2, ExternalLink, Undo2, RotateCcw, Eye,
+  Loader2, ExternalLink, Undo2, RotateCcw, Eye, CheckCircle2,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  getMyValuationCases, getMyCompletedValuationCases, reworkToMakerOfficer, reworkBackOneStage
+  getMyValuationCases, getMyCompletedValuationCases, reworkToMakerOfficer, reworkBackOneStage,
 } from '@/services/valuation-service';
-import { returnToOriginatingCRM } from '@/services/loan-service-prisma';
+import { returnToOriginatingCRM, completeValuationWork } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -30,28 +30,66 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ValuationQueueItem } from '@/types/valuation';
 import { valuationStageLabel } from '@/lib/valuation-stage-labels';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Role & Permission Guide for this page
+// ─────────────────────────────────────────────────────────────────────────────
+// ACCESS:
+//   Permission required → VIEW_MY_VALUATION_CASES
+//   Roles that typically hold this permission:
+//     • Property Valuation Officer  (Maker 01-A — ASSIGNED_TO_OFFICER)
+//     • Property Valuation Checker Officer (Checker 01-A — ASSIGNED_TO_CHECKER_OFFICER)
+//
+// ACTIONS PER STATUS:
+//   ASSIGNED_TO_OFFICER (TYPE1 only):
+//     • [✓ Mark Completed]  — forwards case to Checker Manager queue
+//     • [View Loan]         — read the loan details
+//     • [↩ Return to CRM]  — return the case to originating CRM (TYPE1 only)
+//
+//   ASSIGNED_TO_CHECKER_OFFICER:
+//     • [✓ Mark Completed]  — forwards case to Checker Manager final review
+//     • [View Loan]         — read the loan details
+//     • [↩ Back One Stage]  — rework back to ASSIGNED_TO_CHECKER_MANAGER
+//     • [↺ Return to Maker] — rework directly back to the original Maker Officer
+//     • [↩ Return to CRM]  — return the case to originating CRM (TYPE1 only)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function MyValuationCases() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
+  // ── Access guard ────────────────────────────────────────────────────────────
   const canViewPage = useMemo(
     () => currentUser?.permissions.includes(PERMISSIONS.VIEW_MY_VALUATION_CASES),
     [currentUser],
   );
 
+  // ── Data ────────────────────────────────────────────────────────────────────
   const [cases, setCases] = useState<ValuationQueueItem[]>([]);
   const [myCases, setMyCases] = useState<ValuationQueueItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Dialog state ────────────────────────────────────────────────────────────
+  // Mark Completed
+  const [completeCase, setCompleteCase] = useState<ValuationQueueItem | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  // Return to CRM
   const [returnCaseId, setReturnCaseId] = useState<string | null>(null);
   const [returnRemark, setReturnRemark] = useState('');
   const [isReturning, setIsReturning] = useState(false);
+
+  // Rework to Maker Officer
   const [reworkQueueId, setReworkQueueId] = useState<string | null>(null);
-  const [reworkBackOneQueueId, setReworkBackOneQueueId] = useState<string | null>(null);
-  const [reworkReason, setReworkReason] = useState('');
   const [isReworking, setIsReworking] = useState(false);
+
+  // Rework Back One Stage
+  const [reworkBackOneQueueId, setReworkBackOneQueueId] = useState<string | null>(null);
   const [isReworkingBackOne, setIsReworkingBackOne] = useState(false);
 
+  // Shared rework reason
+  const [reworkReason, setReworkReason] = useState('');
+
+  // ── Fetch ───────────────────────────────────────────────────────────────────
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -77,6 +115,31 @@ export default function MyValuationCases() {
     else if (!authLoading) setIsLoading(false);
   }, [authLoading, canViewPage]);
 
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  /** Mark Completed — TYPE1 only. Advances queue to ASSIGNED_TO_CHECKER_MANAGER
+   *  (from ASSIGNED_TO_OFFICER) or PENDING_CHECKER_REVIEW (from ASSIGNED_TO_CHECKER_OFFICER). */
+  const handleMarkCompleted = async () => {
+    if (!completeCase) return;
+    setIsCompleting(true);
+    try {
+      const result = await completeValuationWork(completeCase.loanRequestId);
+      if ('error' in result) {
+        toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Completed', description: 'Case forwarded to Checker Manager queue.' });
+        setCompleteCase(null);
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  /** Return case to the originating CRM (TYPE1 Head Office cases only). */
   const handleReturnToCRM = async () => {
     if (!returnCaseId) return;
     setIsReturning(true);
@@ -98,6 +161,8 @@ export default function MyValuationCases() {
     }
   };
 
+  /** Rework directly to the original Maker Officer — skips Checker Manager re-assignment.
+   *  Available to: Checker Officer (ASSIGNED_TO_CHECKER_OFFICER) */
   const handleReworkToMakerOfficer = async () => {
     if (!reworkQueueId) return;
     setIsReworking(true);
@@ -119,6 +184,8 @@ export default function MyValuationCases() {
     }
   };
 
+  /** Rework back one stage in the valuation queue.
+   *  Available to: Checker Officer (ASSIGNED_TO_CHECKER_OFFICER) */
   const handleReworkBackOneStage = async () => {
     if (!reworkBackOneQueueId) return;
     setIsReworkingBackOne(true);
@@ -140,6 +207,7 @@ export default function MyValuationCases() {
     }
   };
 
+  // ── Render guards ───────────────────────────────────────────────────────────
   if (authLoading || isLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -154,6 +222,13 @@ export default function MyValuationCases() {
     );
   }
 
+  // TYPE1 officer-stage cases that can be marked completed
+  const completableCases = cases.filter(
+    (c) => c.loanRequest.submissionType === 'TYPE1' &&
+           (c.status === 'ASSIGNED_TO_OFFICER' || c.status === 'ASSIGNED_TO_CHECKER_OFFICER'),
+  );
+
+  // ── UI ──────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <div className="mb-8">
@@ -176,9 +251,27 @@ export default function MyValuationCases() {
         {/* ── Active Cases ── */}
         <TabsContent value="active">
           <Card>
-            <CardHeader>
-              <CardTitle>Active Assignments</CardTitle>
-              <CardDescription>Cases currently assigned to you. Complete your work to advance the case.</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle>Active Assignments</CardTitle>
+                <CardDescription>Cases currently assigned to you. Select a case and mark it completed to advance to the next stage.</CardDescription>
+              </div>
+              {/* Mark Completed — shown only when there is at least one completable TYPE1 case */}
+              {completableCases.length > 0 && (
+                <div className="flex flex-col gap-2 shrink-0">
+                  {completableCases.map((c) => (
+                    <Button
+                      key={c.id}
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                      onClick={() => setCompleteCase(c)}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Mark Completed — {c.loanRequest.loanNumber}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <Table>
@@ -211,22 +304,17 @@ export default function MyValuationCases() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2 flex-wrap">
-                            {c.loanRequest.submissionType === 'TYPE2' && (
-                              <Link href={`/valuation/report/${c.loanRequestId}`} passHref>
-                                <Button size="sm">
-                                  Open Report <ExternalLink className="ml-2 h-4 w-4" />
-                                </Button>
-                              </Link>
-                            )}
+                            {/* Primary action: view the loan */}
                             <Link href={`/loan-requests/${c.loanRequest.id}`} passHref>
                               <Button size="sm" variant="outline">
                                 View Loan <Eye className="ml-1.5 h-3.5 w-3.5" />
                               </Button>
                             </Link>
 
-                            {/* Checker Officer rework options */}
+                            {/* Checker Officer (ASSIGNED_TO_CHECKER_OFFICER) rework icons */}
                             {c.status === 'ASSIGNED_TO_CHECKER_OFFICER' && (
                               <>
+                                {/* Back one stage → ASSIGNED_TO_CHECKER_MANAGER */}
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -237,6 +325,7 @@ export default function MyValuationCases() {
                                   <Undo2 className="h-4 w-4" />
                                 </Button>
 
+                                {/* Return directly to Maker Officer (only if one was recorded) */}
                                 {c.makerOfficerId && (
                                   <Button
                                     size="sm"
@@ -251,6 +340,7 @@ export default function MyValuationCases() {
                               </>
                             )}
 
+                            {/* Return to CRM — TYPE1 Head Office cases only */}
                             {c.loanRequest.submissionType === 'TYPE1' && (
                               <Button
                                 size="sm"
@@ -325,6 +415,43 @@ export default function MyValuationCases() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── Mark Completed Dialog ── */}
+      {completeCase && (
+        <Dialog open={!!completeCase} onOpenChange={(open) => { if (!open) setCompleteCase(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                Mark Valuation Work as Completed
+              </DialogTitle>
+              <DialogDescription>
+                Case <strong>{completeCase.loanRequest.loanNumber}</strong> — {completeCase.loanRequest.customerName}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-3 text-sm">
+              <div className="p-3 bg-muted rounded-md grid grid-cols-2 gap-2">
+                <p><strong>Stage:</strong> {valuationStageLabel(completeCase.status)}</p>
+                <p><strong>Amount:</strong> {Number(completeCase.loanRequest.loanAmount).toLocaleString()} ETB</p>
+                <p><strong>CRM:</strong> {completeCase.loanRequest.createdBy?.fullName ?? '—'}</p>
+                <p><strong>Branch:</strong> {completeCase.loanRequest.customerBranch ?? '—'}</p>
+              </div>
+              <p className="text-muted-foreground">
+                {completeCase.status === 'ASSIGNED_TO_OFFICER'
+                  ? 'Marking this case as completed will forward it to the Checker Manager queue for assignment of a Checker Officer (Valuation Checker 01-A).'
+                  : 'Marking this case as completed will forward it to the Checker Manager for final review.'}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCompleteCase(null)} disabled={isCompleting}>Cancel</Button>
+              <Button onClick={handleMarkCompleted} disabled={isCompleting} className="bg-green-600 hover:bg-green-700">
+                {isCompleting ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                Confirm — Mark Completed
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── Rework to Valuation Officer (Maker 01-A) Dialog ── */}
       {reworkQueueId && (
