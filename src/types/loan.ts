@@ -154,6 +154,7 @@ export interface LoanHistoryEntry {
   userName: string;
   userRole?: string;
   userDepartment?: string;
+  userPhone?: string;
   stageName: string;
   timestamp: string; // ISO date string
   notes?: string;

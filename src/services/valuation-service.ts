@@ -12,6 +12,22 @@ import { createCaseAssignedNotifications } from './notification-service';
 
 const VALUATION_DEPT_NAME = 'Property Valuation Department';
 
+/** Shared Prisma include for ValuationQueue → loanRequest relations used across all queue queries. */
+const LOAN_INCLUDE = {
+  customer: true,
+  sector: { include: { parent: true } },
+  requestType: true,
+  assignedToUsers: { include: { department: true, customRole: true } },
+  stageCompletedBy: { include: { department: true, customRole: true } },
+  currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
+  workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
+  assignedDepartment: true,
+  assignedBy: true,
+  createdBy: true, // CRM who submitted the loan — used for CRM Name / Phone columns
+  history: { include: { user: { include: { department: true, customRole: true } } } },
+  documents: { include: { requirement: true } },
+} as const;
+
 /**
  * Maps each ValuationQueue status to the corresponding seeded WF-02 workflow stage.
  * Used to keep a Head Office (TYPE1) loan's currentWorkflowStage in sync with the
@@ -19,13 +35,13 @@ const VALUATION_DEPT_NAME = 'Property Valuation Department';
  * stay on their single "HO Valuation Review" stage until COMPLETED and are skipped.
  */
 const VALUATION_WF02_STAGE_BY_STATUS: Record<string, string> = {
-  PENDING: 'Valuation Maker',
-  ASSIGNED_TO_MANAGER: 'Valuation Maker',
-  ASSIGNED_TO_OFFICER: 'Valuation 01-A',
-  ASSIGNED_TO_CHECKER_MANAGER: 'Valuation Checker',
-  ASSIGNED_TO_CHECKER_OFFICER: 'Valuation 02-A',
-  PENDING_CHECKER_REVIEW: 'Valuation 02-A',
-  PENDING_FINALIZATION: 'Valuation Finalization',
+  PENDING:                    'Valuation Director',
+  ASSIGNED_TO_MANAGER:        'Valuation Maker',
+  ASSIGNED_TO_OFFICER:        'Valuation 01-A',
+  ASSIGNED_TO_CHECKER_MANAGER:'Valuation Checker',
+  ASSIGNED_TO_CHECKER_OFFICER:'Valuation Checker 01-A',
+  PENDING_CHECKER_REVIEW:     'Valuation Checker 01-A',
+  PENDING_FINALIZATION:       'Valuation Finalization',
 };
 
 async function syncValuationStage(tx: any, loanRequestId: string, status: string) {
@@ -113,25 +129,9 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
         status: "PENDING", // Director's incoming queue, both Head Office and District
       },
       include: {
-        loanRequest: {
-          include: {
-            customer: true,
-            sector: { include: { parent: true } },
-            requestType: true,
-            assignedToUsers: { include: { department: true, customRole: true } },
-            stageCompletedBy: { include: { department: true, customRole: true } },
-            currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-            workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
-            assignedDepartment: true,
-            assignedBy: true,
-            history: { include: { user: { include: { department: true, customRole: true } } } },
-            documents: { include: { requirement: true } },
-          }
-        }
+        loanRequest: { include: LOAN_INCLUDE }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
 
     const mapped = cases.map(mapValuationQueueItem);
@@ -211,6 +211,7 @@ export async function routeValuationCase(
           routeLabel = "Maker Officer (direct)";
           updateData.routingOption = "OFFICER";
           updateData.makerId = user.id;
+          updateData.makerOfficerId = assigneeId; // store for rework-to-officer routing
         } else {
           nextStatus = "ASSIGNED_TO_MANAGER";
           routeLabel = "Maker Manager";
@@ -223,6 +224,7 @@ export async function routeValuationCase(
         routeLabel = "Maker Officer";
         updateData.routingOption = "OFFICER";
         if (!queueEntry.makerId) updateData.makerId = user.id;
+        updateData.makerOfficerId = assigneeId; // store for rework-to-officer routing
         break;
       case "ASSIGNED_TO_CHECKER_MANAGER":
         nextStatus = "ASSIGNED_TO_CHECKER_OFFICER";
@@ -309,42 +311,24 @@ export async function getMyValuationCases(): Promise<ValuationResult<{ cases: Va
 
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
 
-    // A user sees:
-    //   - cases directly assigned to them that are in an active assignment status
-    //   - if they are a Checker Manager (or admin), the unassigned Checker-Manager queue
-    const orConditions: any[] = [
-      { assignedToId: user.id, status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] } },
-    ];
-
-    if (isCheckerManager(user.customRoleName) || isAdmin) {
-      orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER" });
-    }
-
-    const where: any = { OR: orConditions };
+    // My Valuation shows only officer-stage cases directly assigned to the current user.
+    // Manager-stage cases (ASSIGNED_TO_MANAGER, ASSIGNED_TO_CHECKER_MANAGER) are
+    // handled in the Valuation Review page instead.
+    const officerStatuses = ["ASSIGNED_TO_OFFICER", "ASSIGNED_TO_CHECKER_OFFICER"];
+    const where: any = {
+      assignedToId: user.id,
+      status: { in: officerStatuses },
+    };
+    // Admins see all officer-stage cases regardless of assignee.
+    if (isAdmin) delete where.assignedToId;
 
     const cases = await prisma.valuationQueue.findMany({
       where,
       include: {
-        loanRequest: {
-          include: {
-            customer: true,
-            sector: { include: { parent: true } },
-            requestType: true,
-            assignedToUsers: { include: { department: true, customRole: true } },
-            stageCompletedBy: { include: { department: true, customRole: true } },
-            currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-            workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
-            assignedDepartment: true,
-            assignedBy: true,
-            history: { include: { user: { include: { department: true, customRole: true } } } },
-            documents: { include: { requirement: true } },
-          }
-        },
-        assignedTo: true
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: true,
       },
-      orderBy: {
-        updatedAt: 'desc'
-      }
+      orderBy: { updatedAt: 'desc' }
     });
 
     const mapped = cases.map(mapValuationQueueItem);
@@ -612,6 +596,111 @@ export async function approveValuationReport(queueId: string) {
   }
 }
 
+/**
+ * Valuation-specific rework: send a case directly back to the Maker Officer (Maker 01 A).
+ * Available only in the Valuation Workflow from:
+ *   - ASSIGNED_TO_CHECKER_OFFICER (Checker Officer stage)
+ *   - PENDING_CHECKER_REVIEW      (Checker Manager Final Review stage)
+ *
+ * The case is re-assigned to the officer stored in makerOfficerId and the queue
+ * status reverts to ASSIGNED_TO_OFFICER so the officer sees it in their queue again.
+ * After the officer re-completes the work the normal Checker chain resumes.
+ */
+export async function reworkToMakerOfficer(
+  queueId: string,
+): Promise<ValuationResult<{ success: true }>> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "reworkToMakerOfficer");
+
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+    const queueEntry = await prisma.valuationQueue.findUnique({
+      where: { id: queueId },
+      include: {
+        makerOfficer: true,
+        loanRequest: { select: { loanNumber: true, customer: { select: { name: true } } } },
+      },
+    });
+
+    if (!queueEntry) return createErrorResult("Queue entry not found", "reworkToMakerOfficer");
+
+    // Allow: admins, Checker Managers, users with RETURN_LOAN_FOR_REWORK, or the
+    // Checker Officer who is directly assigned to this case (ASSIGNED_TO_CHECKER_OFFICER).
+    const isAssignedCheckerOfficer =
+      queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER" && queueEntry.assignedToId === user.id;
+
+    const canRework =
+      isAdmin ||
+      user.permissions.includes(PERMISSIONS.RETURN_LOAN_FOR_REWORK) ||
+      isCheckerManager(user.customRoleName) ||
+      isAssignedCheckerOfficer;
+
+    if (!canRework) return createErrorResult("You are not authorized to rework to the Maker Officer.", "reworkToMakerOfficer");
+
+    const allowedStatuses = ["ASSIGNED_TO_CHECKER_OFFICER", "PENDING_CHECKER_REVIEW"];
+    if (!allowedStatuses.includes(queueEntry.status)) {
+      return createErrorResult(
+        "Rework to Maker Officer is only available from the Checker Officer or Checker Manager Final Review stage.",
+        "reworkToMakerOfficer",
+      );
+    }
+
+    if (!queueEntry.makerOfficerId) {
+      return createErrorResult(
+        "No Maker Officer is recorded for this case. The case may have been created before this feature was added.",
+        "reworkToMakerOfficer",
+      );
+    }
+
+    const officerName = queueEntry.makerOfficer?.name ?? "the assigned Maker Officer";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.valuationQueue.update({
+        where: { id: queueId },
+        data: {
+          status: "ASSIGNED_TO_OFFICER",
+          assignedToId: queueEntry.makerOfficerId,
+        },
+      });
+
+      // Reassign the loan to the Maker Officer so they see it in their queue.
+      await tx.loanRequest.update({
+        where: { id: queueEntry.loanRequestId },
+        data: {
+          assignedToUsers: { set: [{ id: queueEntry.makerOfficerId! }] },
+        },
+      });
+
+      // Sync WF-02 stage back to Valuation 01-A (Maker Officer stage).
+      await syncValuationStage(tx, queueEntry.loanRequestId, "ASSIGNED_TO_OFFICER");
+
+      await tx.loanHistoryEntry.create({
+        data: {
+          loanRequestId: queueEntry.loanRequestId,
+          userId: user.id,
+          stageName: "Valuation Rework",
+          notes: `Case reworked directly to Maker Officer (${officerName}) by ${user.fullName} for corrections. Normal Checker chain resumes after resubmission.`,
+        },
+      });
+
+      await createCaseAssignedNotifications(tx, {
+        loanRequestId: queueEntry.loanRequestId,
+        loanNumber: queueEntry.loanRequest.loanNumber ?? "",
+        customerName: queueEntry.loanRequest.customer?.name ?? undefined,
+        assigneeIds: [queueEntry.makerOfficerId!],
+        assignedByUserId: user.id,
+        assignedByName: user.fullName,
+      });
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult(e.message, "reworkToMakerOfficer");
+  }
+}
+
+/** Director's "Active Assignments" tab — all non-PENDING valuation cases for oversight. */
 export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
   try {
     const { user } = await getCurrentUser();
@@ -624,30 +713,10 @@ export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ c
         }
       },
       include: {
-        loanRequest: {
-          include: {
-            customer: true,
-            sector: { include: { parent: true } },
-            requestType: true,
-            assignedToUsers: { include: { department: true, customRole: true } },
-            stageCompletedBy: { include: { department: true, customRole: true } },
-            currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-            workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
-            assignedDepartment: true,
-            assignedBy: true,
-            history: { include: { user: { include: { department: true, customRole: true } } } },
-            documents: { include: { requirement: true } },
-          }
-        },
-        assignedTo: {
-          include: {
-            customRole: true
-          }
-        }
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: { include: { customRole: true } },
       },
-      orderBy: {
-        updatedAt: 'desc'
-      }
+      orderBy: { updatedAt: 'desc' }
     });
 
     const mapped = cases.map(mapValuationQueueItem);
@@ -657,58 +726,115 @@ export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ c
   }
 }
 
+/**
+ * Valuation Review Queue — stage-scoped per role:
+ *   Maker Manager  → ASSIGNED_TO_MANAGER (assign to officer) + PENDING_FINALIZATION (final approval)
+ *   Checker Manager → ASSIGNED_TO_CHECKER_MANAGER (assign to officer) + PENDING_CHECKER_REVIEW (final review)
+ */
 export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
   try {
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "getValuationReviewQueue");
 
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
-    const canPromote = user.permissions.includes(PERMISSIONS.PROMOTE_LOAN_STAGE);
-
     const orConditions: any[] = [];
 
-    // Checker Managers do the final verification review.
-    if (isCheckerManager(user.customRoleName) || isAdmin || canPromote) {
-      orConditions.push({ status: "PENDING_CHECKER_REVIEW" });
+    if (isMakerManager(user.customRoleName) || isAdmin) {
+      orConditions.push({ status: "ASSIGNED_TO_MANAGER" });
+      orConditions.push({ status: "PENDING_FINALIZATION" });
     }
 
-    // Maker Managers finalize the valuation.
-    if (isMakerManager(user.customRoleName) || isAdmin) {
-      orConditions.push({ status: "PENDING_FINALIZATION" });
+    if (isCheckerManager(user.customRoleName) || isAdmin) {
+      orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER" });
+      orConditions.push({ status: "PENDING_CHECKER_REVIEW" });
     }
 
     if (orConditions.length === 0) return { cases: [] };
 
     const cases = await prisma.valuationQueue.findMany({
-      where: {
-        OR: orConditions
-      },
+      where: { OR: orConditions },
       include: {
-        loanRequest: {
-          include: {
-            customer: true,
-            sector: { include: { parent: true } },
-            requestType: true,
-            assignedToUsers: { include: { department: true, customRole: true } },
-            stageCompletedBy: { include: { department: true, customRole: true } },
-            currentWorkflowStage: { include: { responsibleDepartment: true, documentRequirements: true } },
-            workflowVersion: { include: { workflowDefinition: { include: { sector: { include: { parent: true } }, department: true } } } },
-            assignedDepartment: true,
-            assignedBy: true,
-            history: { include: { user: { include: { department: true, customRole: true } } } },
-            documents: { include: { requirement: true } },
-          }
-        },
-        assignedTo: true
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: true,
+        makerOfficer: true,
       },
-      orderBy: {
-        updatedAt: 'asc'
-      }
+      orderBy: { updatedAt: 'asc' }
     });
 
     const mapped = cases.map(mapValuationQueueItem);
     return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getValuationReviewQueue");
+  }
+}
+
+/**
+ * "Assigned By Me" tab on the Valuation Review page.
+ * Returns all ValuationQueue entries for cases where the current user created a
+ * "Valuation Routing" history entry (i.e., they assigned someone in the queue flow).
+ */
+export async function getMyAssignedValuationCases(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "getMyAssignedValuationCases");
+
+    const routingHistory = await prisma.loanHistoryEntry.findMany({
+      where: { userId: user.id, stageName: "Valuation Routing" },
+      select: { loanRequestId: true },
+      distinct: ['loanRequestId'],
+    });
+
+    const loanRequestIds = routingHistory.map(h => h.loanRequestId);
+    if (loanRequestIds.length === 0) return { cases: [] };
+
+    const cases = await prisma.valuationQueue.findMany({
+      where: { loanRequestId: { in: loanRequestIds } },
+      include: {
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: { include: { customRole: true } },
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
+  } catch (e: any) {
+    return createErrorResult(e.message, "getMyAssignedValuationCases");
+  }
+}
+
+/**
+ * "My Cases" tab on the My Valuation page (officer history).
+ * Returns all ValuationQueue entries for cases where the current officer has a
+ * "Valuation Completed" history entry (i.e., they previously submitted work).
+ * Visible in read-only mode so officers can track cases that have moved on.
+ */
+export async function getMyCompletedValuationCases(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "getMyCompletedValuationCases");
+
+    const completedHistory = await prisma.loanHistoryEntry.findMany({
+      where: { userId: user.id, stageName: "Valuation Completed" },
+      select: { loanRequestId: true },
+      distinct: ['loanRequestId'],
+    });
+
+    const loanRequestIds = completedHistory.map(h => h.loanRequestId);
+    if (loanRequestIds.length === 0) return { cases: [] };
+
+    const cases = await prisma.valuationQueue.findMany({
+      where: { loanRequestId: { in: loanRequestIds } },
+      include: {
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: { include: { customRole: true } },
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
+  } catch (e: any) {
+    return createErrorResult(e.message, "getMyCompletedValuationCases");
   }
 }

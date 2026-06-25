@@ -36,6 +36,8 @@ export interface ValuationQueueItem {
   status: ValuationQueueStatus;
   routingOption?: 'MANAGER' | 'OFFICER' | null;
   makerId?: string | null;
+  makerOfficerId?: string | null;
+  makerOfficer?: ValuationAssignee | null;
   assignedToId?: string | null;
   assignedTo?: ValuationAssignee | null;
   isCheckedByChecker?: boolean;

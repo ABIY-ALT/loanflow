@@ -603,7 +603,13 @@ async function main() {
       } else if (wf.name === 'WF-02 – Valuation') {
         const wf02Stages = [
           {
-            name: 'Valuation Maker', order: 0, timeline: 2, weight: 1,
+            name: 'Valuation Director', order: 0, timeline: 1, weight: 1,
+            roles: ['Director'],
+            docs: [],
+          },
+          {
+            name: 'Valuation Maker', order: 1, timeline: 2, weight: 1,
+            roles: ['Manager, Property Valuation (Maker)'],
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -612,7 +618,8 @@ async function main() {
             ],
           },
           {
-            name: 'Valuation 01-A', order: 1, timeline: 8, weight: 10,
+            name: 'Valuation 01-A', order: 2, timeline: 8, weight: 10,
+            roles: ['Property Valuation Officer'],
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -621,7 +628,8 @@ async function main() {
             ],
           },
           {
-            name: 'Valuation Checker', order: 2, timeline: 2, weight: 1,
+            name: 'Valuation Checker', order: 3, timeline: 2, weight: 1,
+            roles: ['Manager, Property Valuation (Checker)'],
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -630,7 +638,8 @@ async function main() {
             ],
           },
           {
-            name: 'Valuation 02-A', order: 3, timeline: 2, weight: 10,
+            name: 'Valuation Checker 01-A', order: 4, timeline: 2, weight: 10,
+            roles: ['Property Valuation Officer'],
             docs: [
               { name: 'Requesting Form', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
               { name: 'LHC / Title Certificate / Declaration / PI / CI', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
@@ -639,7 +648,8 @@ async function main() {
             ],
           },
           {
-            name: 'Valuation Finalization', order: 4, timeline: 1, weight: 10,
+            name: 'Valuation Finalization', order: 5, timeline: 1, weight: 10,
+            roles: ['Manager, Property Valuation (Maker)'],
             docs: [
               { name: 'Property Estimation Result', isMandatory: true, type: DocumentRequirementType.CHECKBOX },
             ],
@@ -653,6 +663,7 @@ async function main() {
               order: stageInfo.order,
               defaultTimelineDays: stageInfo.timeline,
               percentageWeight: stageInfo.weight,
+              allowedRoles: JSON.stringify(stageInfo.roles ?? []),
               workflowVersion: { connect: { id: workflowVersion.id } },
               responsibleDepartment: { connect: { id: responsibleDepartment.id } },
               availableStatuses: JSON.stringify({ [responsibleDepartment.name]: ['Initiated', 'In Progress', 'Completed', 'Pending', 'Not Visited', 'Returned'] }),

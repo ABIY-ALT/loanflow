@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowRight, UserCheck, Users, Info, Undo2 } from 'lucide-react';
+import { Loader2, ArrowRight, UserCheck, Users, Info, Undo2, Eye, Phone, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { getIncomingValuationCases, getValuationDeptStaff, routeValuationCase, getValuationCasesByAssigner } from '@/services/valuation-service';
 import { returnToOriginatingCRM } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +23,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import type { ValuationQueueItem, ValuationStaff } from '@/types/valuation';
 import type { LoanRequest } from '@/types/loan';
+import { valuationStageLabel } from '@/lib/valuation-stage-labels';
+
+function CrmCell({ loan }: { loan: LoanRequest }) {
+  const name = loan.createdBy?.fullName || '—';
+  const phone = loan.createdBy?.phoneNumber;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-sm font-medium">{name}</span>
+      {phone && (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Phone className="h-3 w-3" />{phone}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function ValuationIncomingQueue() {
   const [cases, setCases] = useState<ValuationQueueItem[]>([]);
@@ -29,6 +46,7 @@ export default function ValuationIncomingQueue() {
   const [staff, setStaff] = useState<ValuationStaff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCase, setSelectedCase] = useState<ValuationQueueItem | null>(null);
+  const [viewCase, setViewCase] = useState<ValuationQueueItem | null>(null);
   const [routingOption, setRoutingOption] = useState<'MANAGER' | 'OFFICER'>('OFFICER');
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
   const [isRouting, setIsRouting] = useState(false);
@@ -62,9 +80,7 @@ export default function ValuationIncomingQueue() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const handleRoute = async () => {
     if (!selectedCase || !selectedAssignee) return;
@@ -107,16 +123,9 @@ export default function ValuationIncomingQueue() {
     }
   };
 
-  // The Director normally routes to a Maker Manager (start of the Maker chain), but
-  // when no Maker Manager is available the case can be assigned straight to a Maker Officer.
   const makerManagers = staff.filter(s => s.customRole?.name?.includes('Manager') && s.customRole?.name?.includes('Maker'));
   const makerOfficers = staff.filter(s => s.customRole?.name === 'Property Valuation Officer');
-
   const filteredStaff = routingOption === 'OFFICER' ? makerOfficers : makerManagers;
-  const getCustomerName = (loanRequest: LoanRequest) => loanRequest.customerName ?? 'N/A';
-  const getSectorName = (loanRequest: LoanRequest) => loanRequest.sectorName ?? 'N/A';
-  const getRequestTypeName = (loanRequest: LoanRequest) => loanRequest.requestTypeName ?? 'N/A';
-  const formatLoanAmount = (loanRequest: LoanRequest) => Number(loanRequest.loanAmount ?? 0).toLocaleString();
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -132,12 +141,13 @@ export default function ValuationIncomingQueue() {
       <Tabs defaultValue="incoming" className="space-y-6">
         <TabsList>
           <TabsTrigger value="incoming">
-            Incoming Queue 
+            Incoming Queue
             {cases.length > 0 && <Badge className="ml-2 bg-amber-500">{cases.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="assigned">Active Assignments</TabsTrigger>
         </TabsList>
 
+        {/* ── Incoming Queue ── */}
         <TabsContent value="incoming">
           <Card>
             <CardHeader>
@@ -148,40 +158,50 @@ export default function ValuationIncomingQueue() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Loan Number</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Amount (ETB)</TableHead>
+                    <TableHead>Case Number</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>CRM / Phone</TableHead>
+                    <TableHead>Branch</TableHead>
                     <TableHead>Submitted Date</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Action</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cases.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No incoming cases found.</TableCell>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No incoming cases found.</TableCell>
                     </TableRow>
                   ) : (
                     cases.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">{c.loanRequest.loanNumber}</TableCell>
-                        <TableCell>{getCustomerName(c.loanRequest)}</TableCell>
-                        <TableCell>{formatLoanAmount(c.loanRequest)}</TableCell>
+                        <TableCell>{c.loanRequest.customerName ?? '—'}</TableCell>
+                        <TableCell><CrmCell loan={c.loanRequest} /></TableCell>
+                        <TableCell>{c.loanRequest.customerBranch ?? '—'}</TableCell>
                         <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
-                        <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
+                        <TableCell><Badge variant="outline">{valuationStageLabel(c.status)}</Badge></TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Button size="sm" onClick={() => {
                               setSelectedCase(c);
                               setRoutingOption('MANAGER');
                               setSelectedAssignee('');
                             }}>
-                              Route Case <ArrowRight className="ml-2 h-4 w-4" />
+                              Assign <ArrowRight className="ml-2 h-4 w-4" />
                             </Button>
+                            <Button size="sm" variant="outline" onClick={() => setViewCase(c)} title="Quick view">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Link href={`/loan-requests/${c.loanRequest.id}`} passHref>
+                              <Button size="sm" variant="ghost" title="View full loan">
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
                             {c.loanRequest.submissionType === 'TYPE1' && (
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 className="text-amber-600 border-amber-200 hover:bg-amber-50"
                                 onClick={() => setReturnCaseId(c.loanRequestId)}
                                 title="Return to Center CRM"
@@ -200,6 +220,7 @@ export default function ValuationIncomingQueue() {
           </Card>
         </TabsContent>
 
+        {/* ── Active Assignments ── */}
         <TabsContent value="assigned">
           <Card>
             <CardHeader>
@@ -210,37 +231,50 @@ export default function ValuationIncomingQueue() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Loan Number</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Sector</TableHead>
-                    <TableHead>Assigned To</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Current Status</TableHead>
+                    <TableHead>Case Number</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>CRM / Phone</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead>Current Stage</TableHead>
+                    <TableHead>Current Assigned User</TableHead>
                     <TableHead>Last Update</TableHead>
+                    <TableHead>View</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {assignedCases.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No active assignments found.</TableCell>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No active assignments found.</TableCell>
                     </TableRow>
                   ) : (
                     assignedCases.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">{c.loanRequest.loanNumber}</TableCell>
-                        <TableCell>{getCustomerName(c.loanRequest)}</TableCell>
-                        <TableCell>{getSectorName(c.loanRequest)}</TableCell>
+                        <TableCell>{c.loanRequest.customerName ?? '—'}</TableCell>
+                        <TableCell><CrmCell loan={c.loanRequest} /></TableCell>
+                        <TableCell>{c.loanRequest.customerBranch ?? '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{valuationStageLabel(c.status)}</Badge>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <UserCheck className="h-3 w-3 text-muted-foreground" />
                             {c.assignedTo?.name || 'Unassigned'}
                           </div>
                         </TableCell>
-                        <TableCell>{c.assignedTo?.customRole?.name || 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{c.status.replace(/_/g, ' ')}</Badge>
-                        </TableCell>
                         <TableCell>{new Date(c.updatedAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setViewCase(c)} title="Quick view">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Link href={`/loan-requests/${c.loanRequest.id}`} passHref>
+                              <Button size="sm" variant="ghost" title="View full loan details">
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -251,25 +285,50 @@ export default function ValuationIncomingQueue() {
         </TabsContent>
       </Tabs>
 
+      {/* ── Read-only View Dialog ── */}
+      {viewCase && (
+        <Dialog open={!!viewCase} onOpenChange={() => setViewCase(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Case Details — {viewCase.loanRequest.loanNumber}</DialogTitle>
+              <DialogDescription>Read-only overview of this valuation case.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4 text-sm">
+              <div className="grid grid-cols-2 gap-3 p-4 bg-muted rounded-md">
+                <div><span className="font-medium text-muted-foreground">Customer</span><p className="font-semibold mt-0.5">{viewCase.loanRequest.customerName}</p></div>
+                <div><span className="font-medium text-muted-foreground">Branch</span><p className="font-semibold mt-0.5">{viewCase.loanRequest.customerBranch ?? '—'}</p></div>
+                <div><span className="font-medium text-muted-foreground">CRM</span><p className="font-semibold mt-0.5">{viewCase.loanRequest.createdBy?.fullName ?? '—'}</p></div>
+                <div><span className="font-medium text-muted-foreground">CRM Phone</span><p className="font-semibold mt-0.5">{viewCase.loanRequest.createdBy?.phoneNumber ?? '—'}</p></div>
+                <div><span className="font-medium text-muted-foreground">Loan Amount</span><p className="font-semibold mt-0.5">{Number(viewCase.loanRequest.loanAmount).toLocaleString()} ETB</p></div>
+                <div><span className="font-medium text-muted-foreground">Submitted</span><p className="font-semibold mt-0.5">{new Date(viewCase.createdAt).toLocaleDateString()}</p></div>
+                <div><span className="font-medium text-muted-foreground">Current Stage</span><p className="mt-0.5"><Badge variant="outline">{valuationStageLabel(viewCase.status)}</Badge></p></div>
+                <div><span className="font-medium text-muted-foreground">Assigned To</span><p className="font-semibold mt-0.5">{viewCase.assignedTo?.name ?? 'Unassigned'}</p></div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewCase(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Route / Assign Dialog ── */}
       {selectedCase && (
         <Dialog open={!!selectedCase} onOpenChange={() => setSelectedCase(null)}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Route Valuation Case</DialogTitle>
-              <DialogDescription>
-                Assigning: {selectedCase.loanRequest.loanNumber}
-              </DialogDescription>
+              <DialogDescription>Assigning: {selectedCase.loanRequest.loanNumber}</DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
-              {/* Case Summary Preview */}
               <div className="p-4 bg-muted rounded-md space-y-2 text-xs">
                 <h4 className="font-bold uppercase text-muted-foreground">Case Summary</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  <p><strong>Customer:</strong> {getCustomerName(selectedCase.loanRequest)}</p>
-                  <p><strong>Amount:</strong> {formatLoanAmount(selectedCase.loanRequest)} ETB</p>
-                  <p><strong>Sector:</strong> {getSectorName(selectedCase.loanRequest)}</p>
-                  <p><strong>Type:</strong> {getRequestTypeName(selectedCase.loanRequest)}</p>
+                  <p><strong>Customer:</strong> {selectedCase.loanRequest.customerName ?? '—'}</p>
+                  <p><strong>Amount:</strong> {Number(selectedCase.loanRequest.loanAmount).toLocaleString()} ETB</p>
+                  <p><strong>CRM:</strong> {selectedCase.loanRequest.createdBy?.fullName ?? '—'}</p>
+                  <p><strong>Branch:</strong> {selectedCase.loanRequest.customerBranch ?? '—'}</p>
                 </div>
               </div>
 
@@ -325,6 +384,7 @@ export default function ValuationIncomingQueue() {
                 )}
               </div>
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedCase(null)}>Cancel</Button>
               <Button onClick={handleRoute} disabled={isRouting || !selectedAssignee}>
@@ -336,6 +396,7 @@ export default function ValuationIncomingQueue() {
         </Dialog>
       )}
 
+      {/* ── Return to CRM Dialog ── */}
       {returnCaseId && (
         <Dialog open={!!returnCaseId} onOpenChange={(open) => {
           if (!open) { setReturnCaseId(null); setReturnRemark(''); }
@@ -348,7 +409,7 @@ export default function ValuationIncomingQueue() {
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <Textarea 
+              <Textarea
                 placeholder="Enter your remark here..."
                 value={returnRemark}
                 onChange={(e) => setReturnRemark(e.target.value)}

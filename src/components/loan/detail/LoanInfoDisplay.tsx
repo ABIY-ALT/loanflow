@@ -46,7 +46,9 @@ export function LoanInfoDisplay({ loan, assignedUsers = [], assignedDepartment }
       <InfoItem icon={Info} label="Loan Purpose" value={loan.loanPurpose} />
       <InfoItem icon={Calendar} label="Date Submitted" value={formattedSubmittedDate} />
       <InfoItem icon={Mail} label="Customer Email" value={loan.customerEmail} />
-      <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
+      {!loan.isReadyForValuation && (
+        <InfoItem icon={Phone} label="Customer Phone" value={loan.customerPhone} />
+      )}
       <InfoItem icon={Building} label="Responsible Department" value={assignedDepartment || 'N/A'} />
       {loan.isValuationCompleted && (
         <InfoItem icon={Landmark} label="Valuation Estimate" value={valuationData?.estimatedValue ? `${valuationData.estimatedValue} ETB` : 'N/A'} />

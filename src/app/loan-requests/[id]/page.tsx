@@ -86,6 +86,11 @@ export default function LoanDetailPage() {
   const isAdmin = useMemo(() => userPermissions.has(PERMISSIONS.MANAGE_USERS), [userPermissions]);
   const isAssigned = useMemo(() => loan?.assignedToUsers.some(u => u.id === currentUser?.id), [loan, currentUser]);
   const isCreator = useMemo(() => loan?.createdById === currentUser?.id, [loan, currentUser]);
+  const hasOutstandingInfoRequest = useMemo(
+    () => (loan?.history || []).some(h => h.requiredFulfilment && !h.isFulfilled),
+    [loan],
+  );
+
   const hasHistoryInvolvement = useMemo(() => {
     if (!loan || !currentUser) return false;
     return (loan.history || []).some(h => h.userId === currentUser.id);
@@ -238,6 +243,19 @@ export default function LoanDetailPage() {
       return true;
     }
 
+    // After a rework or comment-return, the assignee list is often cleared by the
+    // routing logic (especially on cross-department reworks where there is no
+    // specific previous assignee to restore). Any user in the active department
+    // whose role matches the stage's allowedRoles can act — they are the intended
+    // recipient of the rework even without an explicit assignment.
+    if (
+      (loan.currentStageStatus === 'RETURNED_FOR_REWORK' ||
+        loan.currentStageStatus === 'RETURNED_FOR_COMMENT') &&
+      hasAllowedRole
+    ) {
+      return true;
+    }
+
     if (isAssigned || isManagerInDept) {
       return hasAllowedRole;
     }
@@ -251,8 +269,19 @@ export default function LoanDetailPage() {
     if (isCreator) return true;
     if (isAssigned) return true;
     if (isManagerInDept) return true;
+    // Anyone in the active department must be able to see the full case during
+    // rework — otherwise the action buttons are gated behind a restricted view
+    // before canCurrentUserAct is even evaluated.
+    if (
+      isInActiveDept &&
+      (loan.currentStageStatus === 'RETURNED_FOR_REWORK' ||
+        loan.currentStageStatus === 'RETURNED_FOR_COMMENT')
+    ) return true;
+    // A previous handler who appeared in the loan's history keeps read access
+    // even after the case moves to a different department.
+    if (hasHistoryInvolvement) return true;
     return false;
-  }, [currentUser, loan, isAdmin, isCreator, isAssigned, isManagerInDept]);
+  }, [currentUser, loan, isAdmin, isCreator, isAssigned, isManagerInDept, isInActiveDept, hasHistoryInvolvement]);
 
   const getSectorWorkflowSequence = useCallback((sectorId?: string | null) => {
     if (!sectorId) return [] as WorkflowDefinition[];
@@ -975,6 +1004,7 @@ export default function LoanDetailPage() {
         canPromote={userPermissions.has(PERMISSIONS.PROMOTE_LOAN_STAGE)}
         requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
         assignMovesStage={isWf05RoutingStage}
+        hasOutstandingInfoRequest={hasOutstandingInfoRequest}
       />
       <Card className="shadow-lg">
         <CardHeader className="bg-muted/30 p-6">

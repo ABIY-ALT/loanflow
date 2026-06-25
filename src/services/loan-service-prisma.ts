@@ -1347,6 +1347,9 @@ export async function returnToPreviousStage(
   try {
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "returnToPreviousStage");
+    if (!user.permissions.includes(PERMISSIONS.RETURN_LOAN_FOR_REWORK)) {
+      return createErrorResult("You do not have permission to return a loan for rework.", "returnToPreviousStage");
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const loan = await tx.loanRequest.findUnique({
@@ -3124,6 +3127,9 @@ export async function getIncomingLoanRequests(): Promise<{ loans?: LoanRequest[]
       assignedDepartmentId: user.departmentId,
       isReadyForManagerReview: false,
       isTerminalStage: false,
+      // Valuation cases are managed exclusively through the /valuation workspace.
+      // Exclude them here so they don't appear in the general incoming queue.
+      isReadyForValuation: { not: true },
     };
 
     // Logic Fix: If the current user has assignment permissions (Director/Chief/Manager),
@@ -3211,6 +3217,7 @@ export async function getIncomingCasesCount(): Promise<{ count?: number, error?:
       assignedDepartmentId: user.departmentId,
       isReadyForManagerReview: false,
       isTerminalStage: false,
+      isReadyForValuation: { not: true },
     };
 
     if (user.permissions.includes(PERMISSIONS.ASSIGN_LOAN_TO_STAFF)) {

@@ -175,6 +175,7 @@ export const mapPrismaLoanToAppLoan = (
       userName: h.user?.name || (h.userId === 'system-prisma' ? 'System Process' : 'Unknown User'),
       userRole: h.user?.customRole?.name || undefined,
       userDepartment: h.user?.department?.name || undefined,
+      userPhone: h.user?.phoneNumber || undefined,
       stageName: h.stageName,
       timestamp: formatISO(new Date(h.timestamp)),
       notes: h.notes || undefined,

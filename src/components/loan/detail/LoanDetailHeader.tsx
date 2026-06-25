@@ -17,6 +17,7 @@ import {
   FileText,
   SearchCheck,
   SkipForward,
+  AlertCircle,
 } from 'lucide-react';
 import type { LoanRequest } from '@/types/loan';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -49,6 +50,7 @@ interface LoanDetailHeaderProps {
   // WF-05 routing stages: the stage moves when staff is assigned, so the
   // promote button is replaced by guidance pointing at the Assign action.
   assignMovesStage?: boolean;
+  hasOutstandingInfoRequest?: boolean;
 }
 
 export function LoanDetailHeader({
@@ -67,6 +69,7 @@ export function LoanDetailHeader({
   onOpenDistributeDialog,
   onSkipPvr,
   isSkippingPvr,
+  hasOutstandingInfoRequest = false,
   isSaving,
   isActionableStage,
   canPromote,
@@ -212,8 +215,9 @@ export function LoanDetailHeader({
               !loan.isReadyForManagerReview &&
               (canMarkStageComplete || canDirectPromote) && (
                 <Button
-                  onClick={onMarkStageComplete}
-                  disabled={isSaving || hasCurrentUserCompleted}
+                  onClick={hasOutstandingInfoRequest ? undefined : onMarkStageComplete}
+                  disabled={isSaving || hasCurrentUserCompleted || hasOutstandingInfoRequest}
+                  title={hasOutstandingInfoRequest ? 'An info request must be resolved before this stage can be completed.' : undefined}
                   className={cn(
                     canDirectPromote
                       ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -223,7 +227,9 @@ export function LoanDetailHeader({
                   )}
                 >
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {hasCurrentUserCompleted ? (
+                  {hasOutstandingInfoRequest ? (
+                    <AlertCircle className="mr-2 h-4 w-4" />
+                  ) : hasCurrentUserCompleted ? (
                     <BadgeCheck className="mr-2 h-4 w-4" />
                   ) : canDirectPromote ? (
                     <ArrowRight className="mr-2 h-4 w-4" />
@@ -232,7 +238,9 @@ export function LoanDetailHeader({
                   ) : (
                     <CheckSquare className="mr-2 h-4 w-4" />
                   )}
-                  {hasCurrentUserCompleted
+                  {hasOutstandingInfoRequest
+                    ? 'Info Request Pending'
+                    : hasCurrentUserCompleted
                     ? 'Part Submitted'
                     : canDirectPromote
                     ? 'Approve & Promote'
@@ -413,8 +421,9 @@ export function LoanDetailHeader({
             !loan.isReadyForManagerReview &&
             (canMarkStageComplete || canDirectPromote) && (
               <Button
-                onClick={onMarkStageComplete}
-                disabled={isSaving || hasCurrentUserCompleted}
+                onClick={hasOutstandingInfoRequest ? undefined : onMarkStageComplete}
+                disabled={isSaving || hasCurrentUserCompleted || hasOutstandingInfoRequest}
+                title={hasOutstandingInfoRequest ? 'An info request must be resolved before this stage can be completed.' : undefined}
                 className={cn(
                   canDirectPromote
                     ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -424,7 +433,9 @@ export function LoanDetailHeader({
                 )}
               >
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {hasCurrentUserCompleted ? (
+                {hasOutstandingInfoRequest ? (
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                ) : hasCurrentUserCompleted ? (
                   <BadgeCheck className="mr-2 h-4 w-4" />
                 ) : canDirectPromote ? (
                   <ArrowRight className="mr-2 h-4 w-4" />
@@ -433,7 +444,9 @@ export function LoanDetailHeader({
                 ) : (
                   <CheckSquare className="mr-2 h-4 w-4" />
                 )}
-                {hasCurrentUserCompleted
+                {hasOutstandingInfoRequest
+                  ? 'Info Request Pending'
+                  : hasCurrentUserCompleted
                   ? 'Part Submitted'
                   : canDirectPromote
                   ? 'Approve & Promote'

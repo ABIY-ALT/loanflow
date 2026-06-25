@@ -40,8 +40,9 @@ model User {
 
   // Type 2 Enhancements
   crmMappings          BranchCRMMapping[]
-  valuationAssignments ValuationQueue[]    @relation("ValuationAssignee")
-  valuationMakedCases  ValuationQueue[]    @relation("ValuationMaker")
+  valuationAssignments    ValuationQueue[]    @relation("ValuationAssignee")
+  valuationMakedCases     ValuationQueue[]    @relation("ValuationMaker")
+  valuationMakerOfficerCases ValuationQueue[] @relation("ValuationMakerOfficer")
   committeeDecisions   CommitteeDecision[]
   notifications        Notification[]
 
@@ -339,6 +340,8 @@ model ValuationQueue {
   assignedTo         User?       @relation("ValuationAssignee", fields: [assignedToId], references: [id])
   makerId            String? // The Manager (Maker) who routed this through the maker chain
   maker              User?       @relation("ValuationMaker", fields: [makerId], references: [id])
+  makerOfficerId     String? // The specific Maker Officer assigned for valuation (preserved for rework-to-officer routing)
+  makerOfficer       User?       @relation("ValuationMakerOfficer", fields: [makerOfficerId], references: [id])
   isCheckedByChecker Boolean     @default(false) // Deprecated: checker is now a full chain
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
