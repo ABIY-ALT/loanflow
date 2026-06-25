@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  getMyValuationCases, getMyCompletedValuationCases, reworkToMakerOfficer,
+  getMyValuationCases, getMyCompletedValuationCases, reworkToMakerOfficer, reworkBackOneStage
 } from '@/services/valuation-service';
 import { returnToOriginatingCRM } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
@@ -47,8 +47,10 @@ export default function MyValuationCases() {
   const [returnRemark, setReturnRemark] = useState('');
   const [isReturning, setIsReturning] = useState(false);
   const [reworkQueueId, setReworkQueueId] = useState<string | null>(null);
+  const [reworkBackOneQueueId, setReworkBackOneQueueId] = useState<string | null>(null);
   const [reworkReason, setReworkReason] = useState('');
   const [isReworking, setIsReworking] = useState(false);
+  const [isReworkingBackOne, setIsReworkingBackOne] = useState(false);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -104,7 +106,7 @@ export default function MyValuationCases() {
       if ('error' in result) {
         toast({ title: 'Error', description: result.error, variant: 'destructive' });
       } else {
-        toast({ title: 'Success', description: 'Case reworked to Maker Officer.' });
+        toast({ title: 'Success', description: 'Case reworked to Valuation Officer (Maker 01-A).' });
         setReworkQueueId(null);
         setReworkReason('');
         fetchData();
@@ -114,6 +116,27 @@ export default function MyValuationCases() {
       toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setIsReworking(false);
+    }
+  };
+
+  const handleReworkBackOneStage = async () => {
+    if (!reworkBackOneQueueId) return;
+    setIsReworkingBackOne(true);
+    try {
+      const result = await reworkBackOneStage(reworkBackOneQueueId, reworkReason);
+      if ('error' in result) {
+        toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Success', description: 'Case reworked back one stage.' });
+        setReworkBackOneQueueId(null);
+        setReworkReason('');
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally {
+      setIsReworkingBackOne(false);
     }
   };
 
@@ -201,17 +224,31 @@ export default function MyValuationCases() {
                               </Button>
                             </Link>
 
-                            {/* Checker Officer can rework directly to Maker Officer */}
-                            {c.status === 'ASSIGNED_TO_CHECKER_OFFICER' && c.makerOfficerId && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-orange-600 border-orange-200 hover:bg-orange-50"
-                                onClick={() => setReworkQueueId(c.id)}
-                                title="Rework to Maker Officer"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </Button>
+                            {/* Checker Officer rework options */}
+                            {c.status === 'ASSIGNED_TO_CHECKER_OFFICER' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                                  onClick={() => setReworkBackOneQueueId(c.id)}
+                                  title="Back One Stage"
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </Button>
+
+                                {c.makerOfficerId && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                                    onClick={() => setReworkQueueId(c.id)}
+                                    title="Return to Valuation Officer (Maker 01-A)"
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </>
                             )}
 
                             {c.loanRequest.submissionType === 'TYPE1' && (
@@ -289,14 +326,14 @@ export default function MyValuationCases() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Rework to Maker Officer Dialog ── */}
+      {/* ── Rework to Valuation Officer (Maker 01-A) Dialog ── */}
       {reworkQueueId && (
         <Dialog open={!!reworkQueueId} onOpenChange={(open) => { if (!open) { setReworkQueueId(null); setReworkReason(''); } }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Rework to Maker Officer</DialogTitle>
+              <DialogTitle>Rework to Valuation Officer (Maker 01-A)</DialogTitle>
               <DialogDescription>
-                This will send the case directly back to the assigned Valuation Maker Officer for corrections.
+                This will send the case directly back to the assigned Valuation Officer for corrections.
                 After the officer resubmits, the normal Checker chain resumes.
               </DialogDescription>
             </DialogHeader>
@@ -312,7 +349,36 @@ export default function MyValuationCases() {
               <Button variant="outline" onClick={() => { setReworkQueueId(null); setReworkReason(''); }} disabled={isReworking}>Cancel</Button>
               <Button onClick={handleReworkToMakerOfficer} disabled={isReworking || !reworkReason.trim()} className="bg-orange-600 hover:bg-orange-700">
                 {isReworking ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-                Rework to Maker Officer
+                Rework to Valuation Officer (Maker 01-A)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Rework Back One Stage Dialog ── */}
+      {reworkBackOneQueueId && (
+        <Dialog open={!!reworkBackOneQueueId} onOpenChange={(open) => { if (!open) { setReworkBackOneQueueId(null); setReworkReason(''); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rework Back One Stage</DialogTitle>
+              <DialogDescription>
+                This will send the case back one stage in the valuation workflow.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Textarea
+                placeholder="Reason for rework (required)..."
+                value={reworkReason}
+                onChange={(e) => setReworkReason(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setReworkBackOneQueueId(null); setReworkReason(''); }} disabled={isReworkingBackOne}>Cancel</Button>
+              <Button onClick={handleReworkBackOneStage} disabled={isReworkingBackOne || !reworkReason.trim()} className="bg-orange-600 hover:bg-orange-700">
+                {isReworkingBackOne ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Undo2 className="h-4 w-4 mr-2" />}
+                Rework Back One Stage
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -21,6 +21,7 @@ import {
   getValuationDeptStaff,
   routeValuationCase,
   reworkToMakerOfficer,
+  reworkBackOneStage,
 } from '@/services/valuation-service';
 import { returnToOriginatingCRM } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
@@ -70,6 +71,7 @@ export default function ValuationReviewQueue() {
   const [reviewCase, setReviewCase] = useState<ValuationQueueItem | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isReworkingToOfficer, setIsReworkingToOfficer] = useState(false);
+  const [isReworkingBackOne, setIsReworkingBackOne] = useState(false);
   const [reworkReason, setReworkReason] = useState('');
 
   // Return to CRM
@@ -173,6 +175,31 @@ export default function ValuationReviewQueue() {
       toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setIsReworkingToOfficer(false);
+    }
+  };
+
+  const handleReworkBackOneStage = async () => {
+    if (!reviewCase) return;
+    if (!reworkReason.trim()) {
+      toast({ title: 'Reason required', description: 'Enter why this case is being reworked.', variant: 'destructive' });
+      return;
+    }
+    setIsReworkingBackOne(true);
+    try {
+      const result = await reworkBackOneStage(reviewCase.id, reworkReason);
+      if ('error' in result) {
+        toast({ title: 'Error', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Success', description: 'Case reworked back one stage.' });
+        setReviewCase(null);
+        setReworkReason('');
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally {
+      setIsReworkingBackOne(false);
     }
   };
 
@@ -465,11 +492,11 @@ export default function ValuationReviewQueue() {
               )}
               <p className="text-xs text-muted-foreground italic">Full history is available in the case Audit Trail.</p>
 
-              {reviewCase.status === 'PENDING_CHECKER_REVIEW' && reviewCase.makerOfficerId && (isCheckerMgr || isAdmin) && (
+              {reviewCase.status === 'PENDING_CHECKER_REVIEW' && (isCheckerMgr || isAdmin) && (
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Rework reason <span className="text-muted-foreground">(required to rework to Maker Officer)</span></label>
+                  <label className="text-sm font-medium">Rework reason <span className="text-muted-foreground">(required to rework)</span></label>
                   <Textarea
-                    placeholder="State why this case is being reworked to the Maker Officer..."
+                    placeholder="State why this case is being reworked..."
                     value={reworkReason}
                     onChange={(e) => setReworkReason(e.target.value)}
                     rows={3}
@@ -481,24 +508,40 @@ export default function ValuationReviewQueue() {
             <DialogFooter className="gap-2 flex-wrap">
               <Button variant="outline" onClick={() => { setReviewCase(null); setReworkReason(''); }}>Cancel</Button>
 
-              {/* Checker Manager: Rework to Maker Officer */}
-              {reviewCase.status === 'PENDING_CHECKER_REVIEW' && reviewCase.makerOfficerId && (isCheckerMgr || isAdmin) && (
+              {/* Checker Manager: Rework options */}
+              {reviewCase.status === 'PENDING_CHECKER_REVIEW' && (isCheckerMgr || isAdmin) && (
+                <>
+                  <Button
+                    onClick={handleReworkBackOneStage}
+                    disabled={isReworkingBackOne || isApproving || isReworkingToOfficer || !reworkReason.trim()}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                  >
+                    {isReworkingBackOne
+                      ? <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      : <Undo2 className="h-4 w-4 mr-2" />}
+                    Back One Stage
+                  </Button>
+
+                  {reviewCase.makerOfficerId && (
                 <Button
                   onClick={handleReworkToMakerOfficer}
-                  disabled={isReworkingToOfficer || isApproving || !reworkReason.trim()}
+                  disabled={isReworkingToOfficer || isApproving || isReworkingBackOne || !reworkReason.trim()}
                   variant="outline"
                   className="border-orange-300 text-orange-700 hover:bg-orange-50"
                 >
                   {isReworkingToOfficer
                     ? <Loader2 className="animate-spin h-4 w-4 mr-2" />
                     : <RotateCcw className="h-4 w-4 mr-2" />}
-                  Rework to Maker Officer
+                  Return to Valuation Officer (Maker 01-A)
                 </Button>
+              )}
+                </>
               )}
 
               {/* Checker Manager: Approve verification */}
               {reviewCase.status === 'PENDING_CHECKER_REVIEW' && (isCheckerMgr || isAdmin) && (
-                <Button onClick={handleApprove} disabled={isApproving || isReworkingToOfficer} className="bg-green-600 hover:bg-green-700">
+                <Button onClick={handleApprove} disabled={isApproving || isReworkingToOfficer || isReworkingBackOne} className="bg-green-600 hover:bg-green-700">
                   {isApproving
                     ? <Loader2 className="animate-spin h-4 w-4 mr-2" />
                     : <CheckCircle2 className="h-4 w-4 mr-2" />}

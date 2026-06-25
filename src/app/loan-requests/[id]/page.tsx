@@ -13,6 +13,7 @@ import { canAnalystSubmitToFinalManager, canDistributeToDistrictApproval } from 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getLoanRequestById, updateLoanRequest, getWorkflowDefinitions, recordCaseReview, approveDistrictAnalyst, returnToDistrictAnalyst, returnToOriginatingCRM, returnToPreviousStage, distributeToCommittee, skipPVRAndValuation } from '@/services/loan-service-prisma';
+import { reworkToMakerOfficer } from '@/services/valuation-service';
 import { Loader2, AlertCircle, LayoutDashboard, Clock, Building, User, ClipboardList, Info as InfoIcon, FileText, SearchCheck, ArrowLeft, StickyNote, ArrowRight, SkipForward, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -737,6 +738,26 @@ export default function LoanDetailPage() {
     }
   };
 
+  const handleReturnToMakerOfficer = async (note: string) => {
+    if (!loan || !loan.valuationQueue) return;
+    setIsSaving(true);
+    try {
+      const result = await reworkToMakerOfficer(loan.valuationQueue.id, note);
+      
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Case returned to Valuation Officer (Maker 01-A) successfully." });
+        setIsReturnForReworkDialogOpen(false);
+        await fetchLoanData();
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAssignLoan = async (assignedUserIds: string[], targetStageOrder?: number) => {
     const selectedUsers = users.filter(u => assignedUserIds.includes(u.id));
 
@@ -1201,6 +1222,7 @@ export default function LoanDetailPage() {
           router.refresh();
         }} 
         onReturnToCRM={handleReturnToCRM}
+        onReturnToMakerOfficer={loan.valuationQueue ? handleReturnToMakerOfficer : undefined}
         isSaving={isSaving} 
       />
 

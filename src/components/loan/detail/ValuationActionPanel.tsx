@@ -9,7 +9,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CheckCircle2, RotateCcw, Undo2, ClipboardCheck, Gavel } from 'lucide-react';
+import { Loader2, CheckCircle2, RotateCcw, ClipboardCheck, Gavel } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PERMISSIONS } from '@/lib/permissions';
 import { valuationStageLabel } from '@/lib/valuation-stage-labels';
@@ -17,7 +17,7 @@ import {
   approveValuationReport,
   reworkToMakerOfficer,
 } from '@/services/valuation-service';
-import { completeValuationWork, returnToOriginatingCRM } from '@/services/loan-service-prisma';
+import { completeValuationWork } from '@/services/loan-service-prisma';
 
 interface ValuationActionPanelProps {
   loan: LoanRequest;
@@ -46,8 +46,6 @@ const isCheckerManager = (roleName?: string) =>
 export function ValuationActionPanel({ loan, currentUser, onActionComplete }: ValuationActionPanelProps) {
   const { toast } = useToast();
   const [pending, setPending] = useState<string | null>(null);
-  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
-  const [returnRemark, setReturnRemark] = useState('');
   const [reworkDialogOpen, setReworkDialogOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState('');
 
@@ -65,7 +63,7 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
 
   // Which actions are available for this user at the current queue status.
   const actions = useMemo(() => {
-    if (!queue || !status) return { complete: false, approve: false, finalize: false, reworkOfficer: false, returnCrm: false };
+    if (!queue || !status) return { complete: false, approve: false, finalize: false, reworkOfficer: false };
 
     const complete =
       (status === 'ASSIGNED_TO_OFFICER' || status === 'ASSIGNED_TO_CHECKER_OFFICER') &&
@@ -83,21 +81,12 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
         (status === 'ASSIGNED_TO_CHECKER_OFFICER' && (isAssignedOfficer || isAdmin)) ||
         (status === 'PENDING_CHECKER_REVIEW' && (checkerMgr || isAdmin)));
 
-    // Return to originating CRM is a bail-out for stages that do NOT offer the
-    // direct Maker-Officer rework (i.e. not the checker stages). When the
-    // Maker-Officer rework is available, that is the rework path instead of CRM.
-    const returnCrm =
-      loan.submissionType === 'TYPE1' &&
-      status !== 'COMPLETED' &&
-      !reworkOfficer &&
-      (isAssignedOfficer || checkerMgr || makerMgr || isAdmin);
-
-    return { complete, approve, finalize, reworkOfficer, returnCrm };
-  }, [queue, status, isAssignedOfficer, isAdmin, checkerMgr, makerMgr, loan.submissionType]);
+    return { complete, approve, finalize, reworkOfficer };
+  }, [queue, status, isAssignedOfficer, isAdmin, checkerMgr, makerMgr]);
 
   // Hide the panel entirely when there is nothing for this user to do.
   const hasAnyAction =
-    actions.complete || actions.approve || actions.finalize || actions.reworkOfficer || actions.returnCrm;
+    actions.complete || actions.approve || actions.finalize || actions.reworkOfficer;
 
   if (!queue || !status || loan.isValuationCompleted || status === 'COMPLETED') return null;
   if (!isInValuationDept && !isAdmin) return null;
@@ -135,15 +124,9 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
   };
 
   const handleReworkOfficer = () => {
-    run('reworkOfficer', () => reworkToMakerOfficer(queue.id, reworkReason), 'Case reworked to the Maker Officer.');
+    run('reworkOfficer', () => reworkToMakerOfficer(queue.id, reworkReason), 'Case reworked to the Valuation Officer (Maker 01-A).');
     setReworkDialogOpen(false);
     setReworkReason('');
-  };
-
-  const handleReturnCrm = () => {
-    run('returnCrm', () => returnToOriginatingCRM(loan.id, returnRemark), 'Case returned to the originating CRM.');
-    setReturnDialogOpen(false);
-    setReturnRemark('');
   };
 
   return (
@@ -213,19 +196,7 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
               {pending === 'reworkOfficer'
                 ? <Loader2 className="animate-spin h-4 w-4 mr-2" />
                 : <RotateCcw className="h-4 w-4 mr-2" />}
-              Rework to Maker Officer
-            </Button>
-          )}
-
-          {actions.returnCrm && (
-            <Button
-              onClick={() => setReturnDialogOpen(true)}
-              disabled={!!pending}
-              variant="outline"
-              className="border-amber-300 text-amber-700 hover:bg-amber-50"
-            >
-              <Undo2 className="h-4 w-4 mr-2" />
-              Rework to Previous CRM/User
+              Rework to Valuation Officer (Maker 01-A)
             </Button>
           )}
         </div>
@@ -237,9 +208,9 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rework to Maker Officer</DialogTitle>
+            <DialogTitle>Rework to Valuation Officer (Maker 01-A)</DialogTitle>
             <DialogDescription>
-              The case is sent directly back to the Maker Officer (Valuation Maker 01-A)
+              The case is sent directly back to the Valuation Officer (Maker 01-A)
               {queue.makerOfficerName ? ` — ${queue.makerOfficerName}` : ''} for corrections.
               State why it is being reworked.
             </DialogDescription>
@@ -266,40 +237,7 @@ export function ValuationActionPanel({ loan, currentUser, onActionComplete }: Va
               className="bg-orange-600 hover:bg-orange-700 text-white"
             >
               {pending === 'reworkOfficer' ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RotateCcw className="h-4 w-4 mr-2" />}
-              Rework to Maker Officer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Return to CRM Dialog ── */}
-      <Dialog open={returnDialogOpen} onOpenChange={(open) => {
-        if (!open) { setReturnDialogOpen(false); setReturnRemark(''); }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Return Case to Originating CRM</DialogTitle>
-            <DialogDescription>Provide a remark explaining why this case is being returned.</DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Enter your remark here..."
-              value={returnRemark}
-              onChange={(e) => setReturnRemark(e.target.value)}
-              rows={4}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => { setReturnDialogOpen(false); setReturnRemark(''); }}
-              disabled={pending === 'returnCrm'}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleReturnCrm} disabled={pending === 'returnCrm' || !returnRemark.trim()}>
-              {pending === 'returnCrm' ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Undo2 className="h-4 w-4 mr-2" />}
-              Return to CRM
+              Rework to Valuation Officer (Maker 01-A)
             </Button>
           </DialogFooter>
         </DialogContent>

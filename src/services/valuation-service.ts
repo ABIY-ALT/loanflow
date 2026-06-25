@@ -35,13 +35,13 @@ const LOAN_INCLUDE = {
  * stay on their single "HO Valuation Review" stage until COMPLETED and are skipped.
  */
 const VALUATION_WF02_STAGE_BY_STATUS: Record<string, string> = {
-  PENDING:                    'Valuation Director',
-  ASSIGNED_TO_MANAGER:        'Valuation Maker',
-  ASSIGNED_TO_OFFICER:        'Valuation 01-A',
-  ASSIGNED_TO_CHECKER_MANAGER:'Valuation Checker',
-  ASSIGNED_TO_CHECKER_OFFICER:'Valuation Checker 01-A',
-  PENDING_CHECKER_REVIEW:     'Valuation Checker 01-A',
-  PENDING_FINALIZATION:       'Valuation Finalization',
+  PENDING: 'Valuation Department Director',
+  ASSIGNED_TO_MANAGER: 'Valuation Maker Manager',
+  ASSIGNED_TO_OFFICER: 'Valuation 01-A',
+  ASSIGNED_TO_CHECKER_MANAGER: 'Checker Manager',
+  ASSIGNED_TO_CHECKER_OFFICER: 'Valuation Checker 01-A',
+  PENDING_CHECKER_REVIEW: 'Checker Manager Review',
+  PENDING_FINALIZATION: 'Valuation Maker Manager (Final Valuation Stage)',
 };
 
 async function syncValuationStage(tx: any, loanRequestId: string, status: string) {
@@ -367,12 +367,15 @@ export async function submitValuationReport(queueId: string, reportData: any) {
     }
 
     await prisma.$transaction(async (tx) => {
+      // Keep makerOfficerId if we're submitting from ASSIGNED_TO_OFFICER
+      const updateData: any = {
+        status: nextStatus,
+        assignedToId: null, // Clear per-step assignment; case becomes a queue item
+      };
+
       await tx.valuationQueue.update({
         where: { id: queueId },
-        data: {
-          status: nextStatus,
-          assignedToId: null, // Clear per-step assignment; case becomes a queue item
-        }
+        data: updateData
       });
 
       await tx.loanRequest.update({
@@ -707,18 +710,169 @@ export async function reworkToMakerOfficer(
   }
 }
 
-/** Director's "Active Assignments" tab — all non-PENDING valuation cases for oversight. */
+/**
+ * Valuation-specific rework: send a case back one stage in the workflow.
+ * Available from:
+ *   - PENDING_CHECKER_REVIEW → ASSIGNED_TO_CHECKER_OFFICER
+ *   - ASSIGNED_TO_CHECKER_OFFICER → ASSIGNED_TO_CHECKER_MANAGER
+ *   - ASSIGNED_TO_CHECKER_MANAGER → ASSIGNED_TO_OFFICER
+ *   - ASSIGNED_TO_OFFICER → ASSIGNED_TO_MANAGER
+ *   - ASSIGNED_TO_MANAGER → PENDING
+ */
+export async function reworkBackOneStage(
+  queueId: string,
+  reason?: string,
+): Promise<ValuationResult<{ success: true }>> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "reworkBackOneStage");
+
+    const reworkReason = (reason ?? '').trim();
+    if (!reworkReason) {
+      return createErrorResult("A reason is required to rework the case back one stage.", "reworkBackOneStage");
+    }
+
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+    const queueEntry = await prisma.valuationQueue.findUnique({
+      where: { id: queueId },
+      include: {
+        loanRequest: { select: { loanNumber: true, customer: { select: { name: true } } } },
+        assignedTo: true,
+      },
+    });
+
+    if (!queueEntry) return createErrorResult("Queue entry not found", "reworkBackOneStage");
+
+    // Allow: admins, Checker Managers, users with RETURN_LOAN_FOR_REWORK, or the
+    // Checker Officer who is directly assigned to this case.
+    const isAssignedCheckerOfficer =
+      queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER" && queueEntry.assignedToId === user.id;
+
+    const canRework =
+      isAdmin ||
+      user.permissions.includes(PERMISSIONS.RETURN_LOAN_FOR_REWORK) ||
+      isCheckerManager(user.customRoleName) ||
+      isAssignedCheckerOfficer;
+
+    if (!canRework) return createErrorResult("You are not authorized to rework back one stage.", "reworkBackOneStage");
+
+    // Determine the previous status based on current status
+    let previousStatus: string | null = null;
+    let previousAssigneeId: string | null = null;
+    let stageNameForHistory: string = "";
+
+    switch (queueEntry.status) {
+      case "PENDING_CHECKER_REVIEW":
+        previousStatus = "ASSIGNED_TO_CHECKER_OFFICER";
+        stageNameForHistory = "Checker Officer";
+        break;
+      case "ASSIGNED_TO_CHECKER_OFFICER":
+        previousStatus = "ASSIGNED_TO_CHECKER_MANAGER";
+        stageNameForHistory = "Checker Manager";
+        break;
+      case "ASSIGNED_TO_CHECKER_MANAGER":
+        previousStatus = "ASSIGNED_TO_OFFICER";
+        if (queueEntry.makerOfficerId) previousAssigneeId = queueEntry.makerOfficerId;
+        stageNameForHistory = "Maker Officer";
+        break;
+      case "ASSIGNED_TO_OFFICER":
+        previousStatus = "ASSIGNED_TO_MANAGER";
+        if (queueEntry.makerId) previousAssigneeId = queueEntry.makerId;
+        stageNameForHistory = "Maker Manager";
+        break;
+      case "ASSIGNED_TO_MANAGER":
+        previousStatus = "PENDING";
+        stageNameForHistory = "Valuation Department Director";
+        break;
+      default:
+        return createErrorResult("Cannot rework back from the current stage.", "reworkBackOneStage");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const updateData: any = { status: previousStatus };
+      if (previousAssigneeId) {
+        updateData.assignedToId = previousAssigneeId;
+      } else {
+        updateData.assignedToId = null;
+      }
+
+      await tx.valuationQueue.update({
+        where: { id: queueId },
+        data: updateData,
+      });
+
+      // Update loan assignment if needed
+      if (previousAssigneeId) {
+        await tx.loanRequest.update({
+          where: { id: queueEntry.loanRequestId },
+          data: {
+            assignedToUsers: { set: [{ id: previousAssigneeId }] },
+          },
+        });
+      } else {
+        await tx.loanRequest.update({
+          where: { id: queueEntry.loanRequestId },
+          data: {
+            assignedToUsers: { set: [] },
+          },
+        });
+      }
+
+      // Sync WF-02 stage
+      await syncValuationStage(tx, queueEntry.loanRequestId, previousStatus);
+
+      await tx.loanHistoryEntry.create({
+        data: {
+          loanRequestId: queueEntry.loanRequestId,
+          userId: user.id,
+          stageName: "Valuation Rework",
+          notes: `Case reworked back to ${stageNameForHistory} by ${user.fullName}. Reason: ${reworkReason}.`,
+        },
+      });
+
+      // Send notification if there's an assignee
+      if (previousAssigneeId) {
+        const assignee = await tx.user.findUnique({
+          where: { id: previousAssigneeId },
+          select: { name: true },
+        });
+        if (assignee) {
+          await createCaseAssignedNotifications(tx, {
+            loanRequestId: queueEntry.loanRequestId,
+            loanNumber: queueEntry.loanRequest.loanNumber ?? "",
+            customerName: queueEntry.loanRequest.customer?.name ?? undefined,
+            assigneeIds: [previousAssigneeId],
+            assignedByUserId: user.id,
+            assignedByName: user.fullName,
+          });
+        }
+      }
+    });
+
+    return { success: true };
+  } catch (e: any) {
+    return createErrorResult(e.message, "reworkBackOneStage");
+  }
+}
+
+/** Director's "Active Assignments" tab — all cases routed by current user (cases they created "Valuation Routing" for). */
 export async function getValuationCasesByAssigner(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
   try {
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "getValuationCasesByAssigner");
 
+    const routingHistory = await prisma.loanHistoryEntry.findMany({
+      where: { userId: user.id, stageName: "Valuation Routing" },
+      select: { loanRequestId: true },
+      distinct: ['loanRequestId'],
+    });
+
+    const loanRequestIds = routingHistory.map(h => h.loanRequestId);
+    if (loanRequestIds.length === 0) return { cases: [] };
+
     const cases = await prisma.valuationQueue.findMany({
-      where: {
-        status: {
-          in: [...ACTIVE_ASSIGNMENT_STATUSES, "PENDING_CHECKER_REVIEW", "PENDING_FINALIZATION", "COMPLETED"]
-        }
-      },
+      where: { loanRequestId: { in: loanRequestIds }, status: { not: "PENDING" } },
       include: {
         loanRequest: { include: LOAN_INCLUDE },
         assignedTo: { include: { customRole: true } },
@@ -747,12 +901,20 @@ export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases
     const orConditions: any[] = [];
 
     if (isMakerManager(user.customRoleName) || isAdmin) {
-      orConditions.push({ status: "ASSIGNED_TO_MANAGER" });
+      if (isAdmin) {
+        orConditions.push({ status: "ASSIGNED_TO_MANAGER" });
+      } else {
+        orConditions.push({ status: "ASSIGNED_TO_MANAGER", assignedToId: user.id });
+      }
       orConditions.push({ status: "PENDING_FINALIZATION" });
     }
 
     if (isCheckerManager(user.customRoleName) || isAdmin) {
-      orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER" });
+      if (isAdmin) {
+        orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER" });
+      } else {
+        orConditions.push({ status: "ASSIGNED_TO_CHECKER_MANAGER", assignedToId: user.id });
+      }
       orConditions.push({ status: "PENDING_CHECKER_REVIEW" });
     }
 

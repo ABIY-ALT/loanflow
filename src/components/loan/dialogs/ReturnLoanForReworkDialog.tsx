@@ -29,6 +29,7 @@ interface ReturnLoanForReworkDialogProps {
   currentDepartment?: string;
   onSubmit: (reworkNote: string, assigneeIds: string[], isCommentOnly?: boolean) => Promise<void>;
   onReturnToCRM?: (reworkNote: string) => Promise<void>;
+  onReturnToMakerOfficer?: (reworkNote: string) => Promise<void>;
   isSaving: boolean;
   /** When true, forces comment-only mode (no rework checkbox, no assignee picker) */
   forceCommentOnly?: boolean;
@@ -42,6 +43,7 @@ export function ReturnLoanForReworkDialog({
   currentDepartment,
   onSubmit,
   onReturnToCRM,
+  onReturnToMakerOfficer,
   isSaving,
   forceCommentOnly = false,
 }: ReturnLoanForReworkDialogProps) {
@@ -90,6 +92,11 @@ export function ReturnLoanForReworkDialog({
   const handleReturnToCRM = async () => {
     if (!loan || !onReturnToCRM) return;
     await onReturnToCRM(reworkNote);
+  };
+
+  const handleReturnToMakerOfficer = async () => {
+    if (!loan || !onReturnToMakerOfficer) return;
+    await onReturnToMakerOfficer(reworkNote);
   };
 
   if (!loan) return null;
@@ -197,22 +204,36 @@ export function ReturnLoanForReworkDialog({
             </div>
           )}
         </div>
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:space-x-0">
-          {onReturnToCRM && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleReturnToCRM}
-              disabled={isSaving || !reworkNote.trim()}
-              className="w-full justify-center text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 sm:w-auto"
-            >
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Return to Originating CRM
-            </Button>
-          )}
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:ml-auto">
+        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {onReturnToCRM && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReturnToCRM}
+                disabled={isSaving || !reworkNote.trim()}
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Return to Originating CRM
+              </Button>
+            )}
+            {onReturnToMakerOfficer && loan.valuationQueue && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReturnToMakerOfficer}
+                disabled={isSaving || !reworkNote.trim()}
+                className="text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Return to Valuation Officer (Maker 01-A)
+              </Button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isSaving} className="w-full sm:w-auto">Cancel</Button>
+              <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
             </DialogClose>
             <Button
               type="button"
@@ -220,7 +241,6 @@ export function ReturnLoanForReworkDialog({
               disabled={isSaving || !reworkNote.trim()}
               variant="default"
               className={cn(
-                'w-full sm:w-auto',
                 forceCommentOnly
                   ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                   : isCommentOnly
