@@ -7,6 +7,7 @@ export const VALUATION_STAGE_LABELS: Record<string, string> = {
   ASSIGNED_TO_CHECKER_OFFICER: 'Valuation Checker 01-A',
   PENDING_CHECKER_REVIEW: 'Valuation Checker Review',
   PENDING_FINALIZATION: 'Valuation Finalization',
+  PENDING_DIRECTOR_FINALIZATION: 'Valuation Director Finalization',
   COMPLETED: 'Completed',
 };
 

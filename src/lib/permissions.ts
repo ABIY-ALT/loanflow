@@ -42,6 +42,10 @@ export const PERMISSIONS = {
   VIEW_DISTRICT_DASHBOARD: "VIEW_DISTRICT_DASHBOARD", // District command center analytics
   VIEW_DISTRICT_VALUATION: "VIEW_DISTRICT_VALUATION", // District valuation queue access
   
+  // Valuation Specific Actions
+  VIEW_VALUATION_QUEUE: "VIEW_VALUATION_QUEUE", // Valuation Queue
+  VIEW_VALUATION_REVIEW: "VIEW_VALUATION_REVIEW", // Valuation Review for Manager
+  
   // High-Level / Administrative Actions
   TERMINATE_LOAN_PROCESS: "TERMINATE_LOAN_PROCESS", // Can permanently stop a loan process
   MANUAL_STAGE_TRANSITION: "MANUAL_STAGE_TRANSITION", // Can move a loan to any stage in any workflow
@@ -97,6 +101,8 @@ export const PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   VIEW_REPORTS: "Can view the main reports page and its sub-reports.",
   VIEW_DISTRICT_DASHBOARD: "Can view the District Dashboard with analytics, CRM performance, and loan summaries.",
   VIEW_DISTRICT_VALUATION: "Can access the Valuation queue and valuation review.",
+  VIEW_VALUATION_QUEUE: "Can access the general Valuation Queue (incoming cases).",
+  VIEW_VALUATION_REVIEW: "Can access the Valuation Review queue for managers.",
   TERMINATE_LOAN_PROCESS: "Can terminate a loan process at any stage, ending all activities.",
   MANUAL_STAGE_TRANSITION: "Can manually move a loan to any stage of any workflow, overriding the standard sequence.",
   MANAGE_SETTINGS_WORKFLOWS: "Can access settings to define and manage loan workflow definitions and versions.",
@@ -151,8 +157,10 @@ export const PERMISSION_CATEGORIES: { name: string; permissions: PermissionCateg
   {
     name: "Valuation (Sidebar)",
     permissions: [
-      { permission: "VIEW_DISTRICT_VALUATION", label: "Valuation - access valuation queues and review" },
-      { permission: "VIEW_MY_VALUATION_CASES", label: "My Valuation - assigned valuation cases" },
+      { permission: "VIEW_VALUATION_QUEUE", label: "Valuation Queue - view incoming department cases" },
+      { permission: "VIEW_VALUATION_REVIEW", label: "Valuation Review - review queue for managers" },
+      { permission: "VIEW_MY_VALUATION_CASES", label: "My Valuation - cases assigned to officer" },
+      { permission: "VIEW_DISTRICT_VALUATION", label: "District Valuation - general access" },
     ],
   },
   {

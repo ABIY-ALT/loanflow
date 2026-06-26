@@ -7,7 +7,8 @@ export type ValuationQueueStatus =
   | 'ASSIGNED_TO_CHECKER_MANAGER' // With Checker Manager, awaiting assignment to a Checker Officer
   | 'ASSIGNED_TO_CHECKER_OFFICER' // With Checker Officer, performing verification
   | 'PENDING_CHECKER_REVIEW' // With Checker Manager, final review of the verification
-  | 'PENDING_FINALIZATION' // With Maker Manager, finalizing the valuation
+  | 'PENDING_FINALIZATION' // With Maker Manager, finalizing the valuation (loan amount <= threshold)
+  | 'PENDING_DIRECTOR_FINALIZATION' // With Valuation Director, finalizing the valuation (loan amount > threshold)
   | 'COMPLETED' // Valuation complete, case returned to CRM / next workflow
   // Retired statuses (kept for backward-compat with any in-flight rows):
   | 'PENDING_MANAGER_REVIEW'

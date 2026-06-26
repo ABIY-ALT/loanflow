@@ -422,6 +422,7 @@ export function LoanDetailHeader({
           )}
           {isActionableStage &&
             !assignMovesStage &&
+            !isValuationFlow &&
             (isAdmin || isCurrentUserAssigned || canDirectPromote) &&
             !loan.isReadyForManagerReview &&
             (canMarkStageComplete || canDirectPromote) && (
@@ -461,7 +462,13 @@ export function LoanDetailHeader({
               </Button>
             )}
 
-          {isActionableStage && loan.isReadyForManagerReview && canApprove && (
+          {isActionableStage && isValuationFlow && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
+              Valuation in progress: complete work via the <span className="font-semibold">Valuation Dashboard</span>.
+            </div>
+          )}
+
+          {isActionableStage && loan.isReadyForManagerReview && canApprove && !isValuationFlow && (
             <>
               <Button
                 onClick={onManagerPromoteLoan}

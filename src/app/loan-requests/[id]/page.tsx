@@ -989,6 +989,27 @@ export default function LoanDetailPage() {
     return null;
   })();
 
+  const reworkComment = (() => {
+    if (loan.currentStageStatus !== 'RETURNED_FOR_REWORK') return null;
+    const fromHistory = [...(loan.history || [])]
+      .reverse()
+      .find((h) => h.notes?.includes('Reason: ') || h.notes?.toLowerCase().includes('rework'));
+    if (fromHistory?.notes) {
+      const match = fromHistory.notes.match(/Reason:\s*(.*)/);
+      if (match) {
+        return {
+          text: match[1].trim(),
+          by: fromHistory.userName || 'Reviewer',
+        };
+      }
+      return {
+        text: fromHistory.notes,
+        by: fromHistory.userName || 'Reviewer',
+      };
+    }
+    return null;
+  })();
+
   return (
     <div className="space-y-6">
       {loan.submissionType === 'TYPE2' && Number(loan.loanAmount) > 20000000 && (
@@ -1077,6 +1098,15 @@ export default function LoanDetailPage() {
                     <p className="text-xs">
                       <span className="font-semibold text-indigo-800">{analystComment.by} commented:</span>{' '}
                       <span className="text-indigo-900 whitespace-pre-wrap break-words">{analystComment.text}</span>
+                    </p>
+                  </div>
+                )}
+                {reworkComment && (
+                  <div className="flex items-start gap-1.5 max-w-xs text-left bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
+                    <p className="text-xs">
+                      <span className="font-semibold text-amber-800">Rework remark by {reworkComment.by}:</span>{' '}
+                      <span className="text-amber-900 whitespace-pre-wrap break-words">{reworkComment.text}</span>
                     </p>
                   </div>
                 )}

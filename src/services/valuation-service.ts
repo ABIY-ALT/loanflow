@@ -12,6 +12,14 @@ import { createCaseAssignedNotifications } from './notification-service';
 
 const VALUATION_DEPT_NAME = 'Property Valuation Department';
 
+/**
+ * Loan amount (ETB) above which the finalization of a valuation is escalated to the
+ * Valuation Director (finalized from the Valuation Department Dashboard) instead of the
+ * Maker Manager (finalized from the Valuation Review queue). At or below the threshold the
+ * Maker Manager finalizes as before.
+ */
+const DIRECTOR_FINALIZATION_THRESHOLD = 80_000_000;
+
 /** Shared Prisma include for ValuationQueue → loanRequest relations used across all queue queries. */
 const LOAN_INCLUDE = {
   customer: true,
@@ -42,6 +50,7 @@ const VALUATION_WF02_STAGE_BY_STATUS: Record<string, string> = {
   ASSIGNED_TO_CHECKER_OFFICER: 'Valuation Checker 01-A',
   PENDING_CHECKER_REVIEW: 'Valuation Checker',
   PENDING_FINALIZATION: 'Valuation Finalization',
+  PENDING_DIRECTOR_FINALIZATION: 'Valuation Finalization',
 };
 
 async function syncValuationStage(tx: any, loanRequestId: string, status: string) {
@@ -138,6 +147,39 @@ export async function getIncomingValuationCases(): Promise<ValuationResult<{ cas
     return { cases: dedupeValuationCases(mapped) };
   } catch (e: any) {
     return createErrorResult(e.message, "getIncomingValuationCases");
+  }
+}
+
+/**
+ * Director Finalization queue — high-value cases (loan amount > DIRECTOR_FINALIZATION_THRESHOLD)
+ * approved by the Checker Manager that now await the Valuation Director's final sign-off. Surfaced
+ * on the Valuation Department Dashboard alongside the incoming queue.
+ */
+export async function getDirectorFinalizationQueue(): Promise<ValuationResult<{ cases: ValuationQueueItem[] }>> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return createErrorResult("Unauthorized", "getDirectorFinalizationQueue");
+
+    const canView =
+      user.permissions.includes(PERMISSIONS.VIEW_INCOMING_CASES) ||
+      user.permissions.includes(PERMISSIONS.VIEW_DISTRICT_VALUATION) ||
+      user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+
+    if (!canView) return createErrorResult("Unauthorized", "getDirectorFinalizationQueue");
+
+    const cases = await prisma.valuationQueue.findMany({
+      where: { status: "PENDING_DIRECTOR_FINALIZATION" },
+      include: {
+        loanRequest: { include: LOAN_INCLUDE },
+        assignedTo: true,
+      },
+      orderBy: { updatedAt: 'asc' }
+    });
+
+    const mapped = cases.map(mapValuationQueueItem);
+    return { cases: dedupeValuationCases(mapped) };
+  } catch (e: any) {
+    return createErrorResult(e.message, "getDirectorFinalizationQueue");
   }
 }
 
@@ -409,14 +451,17 @@ export async function approveValuationReport(queueId: string) {
     if (!user) return createErrorResult("Unauthorized", "approveValuationReport");
 
     const queueEntry = await prisma.valuationQueue.findUnique({
-      where: { id: queueId }
+      where: { id: queueId },
+      include: { loanRequest: { select: { loanAmount: true } } },
     });
 
     if (!queueEntry) return createErrorResult("Queue entry not found", "approveValuationReport");
 
     // Workflow transitions:
-    //   PENDING_CHECKER_REVIEW -> PENDING_FINALIZATION  (Checker Manager approves the verification)
-    //   PENDING_FINALIZATION   -> COMPLETED             (Maker Manager finalizes the valuation)
+    //   PENDING_CHECKER_REVIEW -> PENDING_FINALIZATION           (Checker Manager approves; amount <= threshold → Maker Manager finalizes)
+    //   PENDING_CHECKER_REVIEW -> PENDING_DIRECTOR_FINALIZATION  (Checker Manager approves; amount > threshold → Valuation Director finalizes)
+    //   PENDING_FINALIZATION   -> COMPLETED                      (Maker Manager finalizes the valuation)
+    //   PENDING_DIRECTOR_FINALIZATION -> COMPLETED               (Valuation Director finalizes the valuation)
     const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
     let nextStatus = queueEntry.status;
     let notes = "";
@@ -426,8 +471,15 @@ export async function approveValuationReport(queueId: string) {
       if (!allowed) {
         return createErrorResult("Only a Checker Manager can approve the verification.", "approveValuationReport");
       }
-      nextStatus = "PENDING_FINALIZATION";
-      notes = `Verification approved by ${user.fullName}. Sent to the Maker Manager for finalization.`;
+      // High-value valuations finalize with the Valuation Director; the rest with the Maker Manager.
+      const loanAmount = Number(queueEntry.loanRequest?.loanAmount ?? 0);
+      if (loanAmount > DIRECTOR_FINALIZATION_THRESHOLD) {
+        nextStatus = "PENDING_DIRECTOR_FINALIZATION";
+        notes = `Verification approved by ${user.fullName}. Loan amount exceeds ${DIRECTOR_FINALIZATION_THRESHOLD.toLocaleString()} ETB; sent to the Valuation Director for finalization.`;
+      } else {
+        nextStatus = "PENDING_FINALIZATION";
+        notes = `Verification approved by ${user.fullName}. Sent to the Maker Manager for finalization.`;
+      }
     } else if (queueEntry.status === "PENDING_FINALIZATION") {
       const allowed = isMakerManager(user.customRoleName) || isAdmin;
       if (!allowed) {
@@ -435,6 +487,13 @@ export async function approveValuationReport(queueId: string) {
       }
       nextStatus = "COMPLETED";
       notes = `Valuation finalized by ${user.fullName}. Valuation completed.`;
+    } else if (queueEntry.status === "PENDING_DIRECTOR_FINALIZATION") {
+      const allowed = isDirectorRole(user.customRoleName) || isAdmin;
+      if (!allowed) {
+        return createErrorResult("Only the Valuation Director can finalize this valuation.", "approveValuationReport");
+      }
+      nextStatus = "COMPLETED";
+      notes = `Valuation finalized by ${user.fullName} (Valuation Director). Valuation completed.`;
     } else {
       return createErrorResult("Case is not in a state that can be approved.", "approveValuationReport");
     }
@@ -681,6 +740,9 @@ export async function reworkToMakerOfficer(
         where: { id: queueEntry.loanRequestId },
         data: {
           assignedToUsers: { set: [{ id: queueEntry.makerOfficerId! }] },
+          stageCompletedBy: { set: [] },
+          currentStageStatus: 'RETURNED_FOR_REWORK',
+          isReadyForManagerReview: false,
         },
       });
 
@@ -903,7 +965,7 @@ export async function getValuationReviewQueue(): Promise<ValuationResult<{ cases
     const { user } = await getCurrentUser();
     if (!user) return createErrorResult("Unauthorized", "getValuationReviewQueue");
 
-    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS);
+    const isAdmin = user.permissions.includes(PERMISSIONS.MANAGE_USERS) || user.permissions.includes(PERMISSIONS.VIEW_VALUATION_REVIEW);
     const orConditions: any[] = [];
 
     if (isMakerManager(user.customRoleName) || isAdmin) {

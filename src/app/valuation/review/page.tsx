@@ -53,9 +53,10 @@ export default function ValuationReviewQueue() {
   const { toast } = useToast();
 
   const isAdmin = user?.permissions.includes(PERMISSIONS.MANAGE_USERS) ?? false;
+  const hasReviewPerm = user?.permissions.includes(PERMISSIONS.VIEW_VALUATION_REVIEW) ?? false;
   const isMakerMgr = !!user?.customRoleName?.includes('Manager') && !!user?.customRoleName?.includes('Maker');
   const isCheckerMgr = !!user?.customRoleName?.includes('Manager') && !!user?.customRoleName?.includes('Checker');
-  const canAccess = isAdmin || isMakerMgr || isCheckerMgr;
+  const canAccess = isAdmin || hasReviewPerm || isMakerMgr || isCheckerMgr;
 
   const [cases, setCases] = useState<ValuationQueueItem[]>([]);
   const [assignedByCases, setAssignedByCases] = useState<ValuationQueueItem[]>([]);

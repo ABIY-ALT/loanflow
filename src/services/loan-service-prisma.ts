@@ -1688,10 +1688,30 @@ export async function completeValuationWork(loanRequestId: string) {
       let nextStatus: string;
       let nextStageName: string;
       let notes: string;
+      let targetUserId: string | null = null;
+      let isReworkReturn = false;
+
       if (queueEntry.status === "ASSIGNED_TO_OFFICER") {
-        nextStatus = "ASSIGNED_TO_CHECKER_MANAGER";
-        nextStageName = "Checker Manager";
-        notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker Manager.`;
+        const lastReworkEvent = await tx.loanHistoryEntry.findFirst({
+          where: { loanRequestId, stageName: "Rework to Maker Officer" },
+          orderBy: { timestamp: "desc" }
+        });
+        const lastCompletionEvent = await tx.loanHistoryEntry.findFirst({
+          where: { loanRequestId, stageName: "Valuation Completed" },
+          orderBy: { timestamp: "desc" }
+        });
+
+        if (lastReworkEvent && (!lastCompletionEvent || lastReworkEvent.timestamp > lastCompletionEvent.timestamp)) {
+          nextStatus = "ASSIGNED_TO_CHECKER_OFFICER";
+          nextStageName = "Valuation Checker 01-A";
+          notes = `Rework completed by ${user.fullName}. Returned directly to Valuation Checker.`;
+          targetUserId = lastReworkEvent.userId;
+          isReworkReturn = true;
+        } else {
+          nextStatus = "ASSIGNED_TO_CHECKER_MANAGER";
+          nextStageName = "Checker Manager";
+          notes = `Valuation completed by ${user.fullName}. Forwarded to the Checker Manager.`;
+        }
       } else if (queueEntry.status === "ASSIGNED_TO_CHECKER_OFFICER") {
         nextStatus = "PENDING_CHECKER_REVIEW";
         nextStageName = "Checker Manager Review";
@@ -1704,14 +1724,15 @@ export async function completeValuationWork(loanRequestId: string) {
         where: { id: queueEntry.id },
         data: {
           status: nextStatus,
-          assignedToId: null, // Clear per-step assignment; case becomes a queue item
+          assignedToId: targetUserId, // Will be the Checker Officer if rework, else null
         }
       });
 
       const data: any = {
         lastUpdatedDate: new Date(),
-        assignedToUsers: { set: [] }, // Clear officer assignment after completion
-        isReadyForManagerReview: false, // Make sure it doesn't show up in Manager Review Queue
+        assignedToUsers: targetUserId ? { set: [{ id: targetUserId }] } : { set: [] },
+        isReadyForManagerReview: false,
+        currentStageStatus: 'Initiated',
         history: {
           create: {
             userId: user.id,

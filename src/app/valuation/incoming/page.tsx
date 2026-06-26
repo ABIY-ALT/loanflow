@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowRight, UserCheck, Users, Info, Undo2, Eye, Phone, ExternalLink } from 'lucide-react';
+import { Loader2, ArrowRight, UserCheck, Users, Info, Undo2, Eye, Phone, ExternalLink, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
-import { getIncomingValuationCases, getValuationDeptStaff, routeValuationCase, getValuationCasesByAssigner } from '@/services/valuation-service';
+import { getIncomingValuationCases, getValuationDeptStaff, routeValuationCase, getValuationCasesByAssigner, getDirectorFinalizationQueue, approveValuationReport } from '@/services/valuation-service';
 import { returnToOriginatingCRM } from '@/services/loan-service-prisma';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -43,6 +43,9 @@ function CrmCell({ loan }: { loan: LoanRequest }) {
 export default function ValuationIncomingQueue() {
   const [cases, setCases] = useState<ValuationQueueItem[]>([]);
   const [assignedCases, setAssignedCases] = useState<ValuationQueueItem[]>([]);
+  const [finalizationCases, setFinalizationCases] = useState<ValuationQueueItem[]>([]);
+  const [finalizeCase, setFinalizeCase] = useState<ValuationQueueItem | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [staff, setStaff] = useState<ValuationStaff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCase, setSelectedCase] = useState<ValuationQueueItem | null>(null);
@@ -58,10 +61,11 @@ export default function ValuationIncomingQueue() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [casesResult, staffResult, assignedResult] = await Promise.all([
+      const [casesResult, staffResult, assignedResult, finalizationResult] = await Promise.all([
         getIncomingValuationCases(),
         getValuationDeptStaff(),
-        getValuationCasesByAssigner()
+        getValuationCasesByAssigner(),
+        getDirectorFinalizationQueue()
       ]);
 
       if ('error' in casesResult) toast({ title: "Error", description: casesResult.error, variant: "destructive" });
@@ -72,6 +76,9 @@ export default function ValuationIncomingQueue() {
 
       if ('error' in assignedResult) toast({ title: "Error", description: assignedResult.error, variant: "destructive" });
       else setAssignedCases(assignedResult.cases || []);
+
+      if ('error' in finalizationResult) toast({ title: "Error", description: finalizationResult.error, variant: "destructive" });
+      else setFinalizationCases(finalizationResult.cases || []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       toast({ title: "Error", description: message, variant: "destructive" });
@@ -99,6 +106,26 @@ export default function ValuationIncomingQueue() {
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setIsRouting(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!finalizeCase) return;
+    setIsFinalizing(true);
+    try {
+      const result = await approveValuationReport(finalizeCase.id);
+      if ('error' in result) {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Valuation finalized successfully." });
+        setFinalizeCase(null);
+        fetchData();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unexpected error";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setIsFinalizing(false);
     }
   };
 
@@ -145,6 +172,10 @@ export default function ValuationIncomingQueue() {
             {cases.length > 0 && <Badge className="ml-2 bg-amber-500">{cases.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="assigned">Active Assignments</TabsTrigger>
+          <TabsTrigger value="finalization">
+            Pending Finalization
+            {finalizationCases.length > 0 && <Badge className="ml-2 bg-green-600">{finalizationCases.length}</Badge>}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Incoming Queue ── */}
@@ -283,6 +314,66 @@ export default function ValuationIncomingQueue() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Pending Finalization (Director sign-off for high-value cases) ── */}
+        <TabsContent value="finalization">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Director Finalization</CardTitle>
+              <CardDescription>
+                High-value valuations (loan amount above 80,000,000 ETB) approved by the Checker Manager and awaiting your final sign-off.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Case Number</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>CRM / Phone</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead>Loan Amount</TableHead>
+                    <TableHead>Last Update</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {finalizationCases.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No cases awaiting finalization.</TableCell>
+                    </TableRow>
+                  ) : (
+                    finalizationCases.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.loanRequest.loanNumber}</TableCell>
+                        <TableCell>{c.loanRequest.customerName ?? '—'}</TableCell>
+                        <TableCell><CrmCell loan={c.loanRequest} /></TableCell>
+                        <TableCell>{c.loanRequest.customerBranch ?? '—'}</TableCell>
+                        <TableCell>{Number(c.loanRequest.loanAmount).toLocaleString()} ETB</TableCell>
+                        <TableCell>{new Date(c.updatedAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setFinalizeCase(c)}>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Finalize
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setViewCase(c)} title="Quick view">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Link href={`/loan-requests/${c.loanRequest.id}`} passHref>
+                              <Button size="sm" variant="ghost" title="View full loan">
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* ── Read-only View Dialog ── */}
@@ -390,6 +481,38 @@ export default function ValuationIncomingQueue() {
               <Button onClick={handleRoute} disabled={isRouting || !selectedAssignee}>
                 {isRouting ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
                 Route & Assign
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Finalize Valuation Dialog (Director) ── */}
+      {finalizeCase && (
+        <Dialog open={!!finalizeCase} onOpenChange={(open) => { if (!open) setFinalizeCase(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Finalize Valuation</DialogTitle>
+              <DialogDescription>
+                Case {finalizeCase.loanRequest.loanNumber} — {finalizeCase.loanRequest.customerName}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-3 p-4 bg-muted rounded-md text-sm">
+                <div><span className="text-muted-foreground">Customer</span><p className="font-semibold mt-0.5">{finalizeCase.loanRequest.customerName}</p></div>
+                <div><span className="text-muted-foreground">Loan Amount</span><p className="font-semibold mt-0.5">{Number(finalizeCase.loanRequest.loanAmount).toLocaleString()} ETB</p></div>
+                <div><span className="text-muted-foreground">CRM</span><p className="font-semibold mt-0.5">{finalizeCase.loanRequest.createdBy?.fullName ?? '—'}</p></div>
+                <div><span className="text-muted-foreground">Branch</span><p className="font-semibold mt-0.5">{finalizeCase.loanRequest.customerBranch ?? '—'}</p></div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Finalizing completes the valuation and returns the case to the originating CRM / next workflow stage. This cannot be undone.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setFinalizeCase(null)} disabled={isFinalizing}>Cancel</Button>
+              <Button onClick={handleFinalize} disabled={isFinalizing} className="bg-green-600 hover:bg-green-700">
+                {isFinalizing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                Finalize Valuation
               </Button>
             </DialogFooter>
           </DialogContent>
