@@ -35,13 +35,13 @@ const LOAN_INCLUDE = {
  * stay on their single "HO Valuation Review" stage until COMPLETED and are skipped.
  */
 const VALUATION_WF02_STAGE_BY_STATUS: Record<string, string> = {
-  PENDING: 'Valuation Department Director',
-  ASSIGNED_TO_MANAGER: 'Valuation Maker Manager',
+  PENDING: 'Valuation Director',
+  ASSIGNED_TO_MANAGER: 'Valuation Maker',
   ASSIGNED_TO_OFFICER: 'Valuation 01-A',
-  ASSIGNED_TO_CHECKER_MANAGER: 'Checker Manager',
+  ASSIGNED_TO_CHECKER_MANAGER: 'Valuation Checker',
   ASSIGNED_TO_CHECKER_OFFICER: 'Valuation Checker 01-A',
-  PENDING_CHECKER_REVIEW: 'Checker Manager Review',
-  PENDING_FINALIZATION: 'Valuation Maker Manager (Final Valuation Stage)',
+  PENDING_CHECKER_REVIEW: 'Valuation Checker',
+  PENDING_FINALIZATION: 'Valuation Finalization',
 };
 
 async function syncValuationStage(tx: any, loanRequestId: string, status: string) {

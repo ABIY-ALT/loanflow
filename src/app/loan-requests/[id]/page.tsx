@@ -1027,7 +1027,7 @@ export default function LoanDetailPage() {
         requiresApproval={(currentStageDef?.requiresApproval ?? true) && !isWf05CommitteeStage}
         assignMovesStage={isWf05RoutingStage}
         hasOutstandingInfoRequest={hasOutstandingInfoRequest}
-        isValuationFlow={!!loan.isReadyForValuation && !loan.isValuationCompleted}
+        isValuationFlow={isInValuationWorkspace}
       />
 
       <Card className="shadow-lg">
