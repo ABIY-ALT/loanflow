@@ -594,6 +594,9 @@ export async function approveValuationReport(queueId: string) {
           updatePayload.stageEntryDate = new Date();
           updatePayload.stageDeadline = new Date(Date.now() + nextStage.defaultTimelineDays * 24 * 60 * 60 * 1000);
           updatePayload.currentStageStatus = "Initiated";
+          // CLEAR the assignee so it goes to the next department's general pool (e.g. Analyst Review)
+          updatePayload.assignedToUsers = { set: [] };
+          updatePayload.history.create.notes = `Valuation completed. Case forwarded to ${nextStage.name} by ${user.fullName}.`;
         }
       } else {
         // Head Office Workflow: Original logic (return to sender or move to next workflow if defined)

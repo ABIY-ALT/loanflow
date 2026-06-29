@@ -222,10 +222,9 @@ export default function MyValuationCases() {
     );
   }
 
-  // TYPE1 officer-stage cases that can be marked completed
+  // Officer-stage cases that can be marked completed
   const completableCases = cases.filter(
-    (c) => c.loanRequest.submissionType === 'TYPE1' &&
-           (c.status === 'ASSIGNED_TO_OFFICER' || c.status === 'ASSIGNED_TO_CHECKER_OFFICER'),
+    (c) => (c.status === 'ASSIGNED_TO_OFFICER' || c.status === 'ASSIGNED_TO_CHECKER_OFFICER'),
   );
 
   // ── UI ──────────────────────────────────────────────────────────────────────
@@ -340,18 +339,16 @@ export default function MyValuationCases() {
                               </>
                             )}
 
-                            {/* Return to CRM — TYPE1 Head Office cases only */}
-                            {c.loanRequest.submissionType === 'TYPE1' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-amber-600 border-amber-200 hover:bg-amber-50"
-                                onClick={() => setReturnCaseId(c.loanRequestId)}
-                                title="Return to Center CRM"
-                              >
-                                <Undo2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                            {/* Return to CRM */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                              onClick={() => setReturnCaseId(c.loanRequestId)}
+                              title="Return to Originating CRM"
+                            >
+                              <Undo2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>

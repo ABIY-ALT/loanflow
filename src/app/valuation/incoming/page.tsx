@@ -229,17 +229,15 @@ export default function ValuationIncomingQueue() {
                                 <ExternalLink className="h-4 w-4" />
                               </Button>
                             </Link>
-                            {c.loanRequest.submissionType === 'TYPE1' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-amber-600 border-amber-200 hover:bg-amber-50"
-                                onClick={() => setReturnCaseId(c.loanRequestId)}
-                                title="Return to Center CRM"
-                              >
-                                <Undo2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                              onClick={() => setReturnCaseId(c.loanRequestId)}
+                              title="Return to Originating CRM"
+                            >
+                              <Undo2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
